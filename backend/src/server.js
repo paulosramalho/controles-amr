@@ -157,6 +157,111 @@ app.post("/api/clients-and-orders", async (req, res) => {
   }
 });
 
+// LISTAGEM DE CLIENTES + ORDENS COM FILTROS
+app.get("/api/clients-with-orders", async (req, res) => {
+  const {
+    search,         // nome ou cpf/cnpj
+    status,         // status da ordem: ATIVA, CONCLUIDA etc.
+    fromDate,       // dataInicio >=
+    toDate          // dataInicio <=
+  } = req.query;
+
+  try {
+    const whereOrder = {};
+
+    if (status) {
+      whereOrder.status = status;
+    }
+
+    if (fromDate || toDate) {
+      whereOrder.dataInicio = {};
+      if (fromDate) {
+        whereOrder.dataInicio.gte = new Date(fromDate);
+      }
+      if (toDate) {
+        // até o fim do dia
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        whereOrder.dataInicio.lte = end;
+      }
+    }
+
+    const whereClient = {};
+
+    if (search) {
+      whereClient.OR = [
+        {
+          nomeRazaoSocial: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          cpfCnpj: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    const clientes = await prisma.cliente.findMany({
+      where: whereClient,
+      include: {
+  ordens: {
+    where: Object.keys(whereOrder).length ? whereOrder : undefined,
+    orderBy: { sequenciaCliente: "asc" },
+  },
+},
+      orderBy: { nomeRazaoSocial: "asc" },
+    });
+
+    res.json(clientes);
+  } catch (err) {
+    console.error("Erro ao listar clientes + ordens:", err);
+    res.status(500).json({ message: "Erro ao listar clientes + ordens" });
+  }
+});
+
+// DASHBOARD FINANCEIRO (RESUMO)
+app.get("/api/dashboard/summary", async (req, res) => {
+  try {
+    const [totalClients, totalOrders, totalAtivas, totalConcluidas, sumValores] =
+      await Promise.all([
+        prisma.cliente.count(),
+        prisma.ordemPagamento.count(),
+        prisma.ordemPagamento.count({
+          where: { status: "ATIVA" },
+        }),
+        prisma.ordemPagamento.count({
+          where: { status: "CONCLUIDA" },
+        }),
+        prisma.ordemPagamento.aggregate({
+          _sum: { valorTotalPrevisto: true },
+        }),
+      ]);
+
+    // Agrupamento simples por ano/mês de dataInicio
+    const ordensPorMes = await prisma.ordemPagamento.groupBy({
+      by: ["anoMesInicio"],
+      _count: { _all: true },
+      _sum: { valorTotalPrevisto: true },
+    }).catch(() => []); // se o campo anoMesInicio não existir, não quebra tudo
+
+    res.json({
+      totalClients,
+      totalOrders,
+      totalAtivas,
+      totalConcluidas,
+      totalValorPrevisto: sumValores._sum.valorTotalPrevisto || 0,
+      ordensPorMes,
+    });
+  } catch (err) {
+    console.error("Erro no dashboard:", err);
+    res.status(500).json({ message: "Erro ao carregar dashboard" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Controles-AMR backend rodando na porta ${PORT}`);
 });
