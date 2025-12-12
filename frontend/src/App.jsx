@@ -23,6 +23,205 @@ function useBackendStatus() {
   return status;
 }
 
+/* -------------------------------------------------------------------------- */
+/*                           FORM CLIENTE + ORDEM                             */
+/* -------------------------------------------------------------------------- */
+function ClientOrderForm() {
+  const [client, setClient] = useState({
+    cpfCnpj: "",
+    nomeRazaoSocial: "",
+    email: "",
+    telefone: "",
+  });
+
+  const [order, setOrder] = useState({
+    descricao: "",
+    tipoContrato: "",
+    valorTotalPrevisto: "",
+    modeloPagamento: "AVISTA",
+    dataInicio: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleClientChange = (e) => {
+    const { name, value } = e.target;
+    setClient((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleOrderChange = (e) => {
+    const { name, value } = e.target;
+    setOrder((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const payload = {
+        client,
+        order: {
+          ...order,
+          valorTotalPrevisto: order.valorTotalPrevisto
+            ? Number(order.valorTotalPrevisto.toString().replace(",", "."))
+            : null,
+        },
+      };
+
+      const res = await fetch(`${API_BASE}/api/clients-and-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || "Erro ao criar cliente + ordem");
+      }
+
+      const data = await res.json();
+      setResult(data);
+
+      // resetar form
+      setClient({
+        cpfCnpj: "",
+        nomeRazaoSocial: "",
+        email: "",
+        telefone: "",
+      });
+
+      setOrder({
+        descricao: "",
+        tipoContrato: "",
+        valorTotalPrevisto: "",
+        modeloPagamento: "AVISTA",
+        dataInicio: "",
+      });
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm" onSubmit={handleSubmit}>
+      <div>
+        <h4 className="font-semibold mb-2">Dados do cliente</h4>
+        <div className="space-y-2">
+          <input
+            type="text"
+            name="cpfCnpj"
+            placeholder="CPF/CNPJ"
+            value={client.cpfCnpj}
+            onChange={handleClientChange}
+            className="w-full border rounded px-2 py-1"
+            required
+          />
+          <input
+            type="text"
+            name="nomeRazaoSocial"
+            placeholder="Nome / Razão Social"
+            value={client.nomeRazaoSocial}
+            onChange={handleClientChange}
+            className="w-full border rounded px-2 py-1"
+            required
+          />
+          <input
+            type="email"
+            name="email"
+            placeholder="E-mail"
+            value={client.email}
+            onChange={handleClientChange}
+            className="w-full border rounded px-2 py-1"
+          />
+          <input
+            type="text"
+            name="telefone"
+            placeholder="Telefone"
+            value={client.telefone}
+            onChange={handleClientChange}
+            className="w-full border rounded px-2 py-1"
+          />
+        </div>
+      </div>
+
+      <div>
+        <h4 className="font-semibold mb-2">Dados da ordem de pagamento</h4>
+        <div className="space-y-2">
+          <input
+            type="text"
+            name="descricao"
+            placeholder="Descrição / Objeto"
+            value={order.descricao}
+            onChange={handleOrderChange}
+            className="w-full border rounded px-2 py-1"
+          />
+          <input
+            type="text"
+            name="tipoContrato"
+            placeholder="Tipo de contrato"
+            value={order.tipoContrato}
+            onChange={handleOrderChange}
+            className="w-full border rounded px-2 py-1"
+          />
+          <input
+            type="text"
+            name="valorTotalPrevisto"
+            placeholder="Valor total previsto"
+            value={order.valorTotalPrevisto}
+            onChange={handleOrderChange}
+            className="w-full border rounded px-2 py-1"
+          />
+          <select
+            name="modeloPagamento"
+            value={order.modeloPagamento}
+            onChange={handleOrderChange}
+            className="w-full border rounded px-2 py-1"
+          >
+            <option value="AVISTA">À vista</option>
+            <option value="ENTRADA_E_PARCELAS">Entrada + parcelas</option>
+            <option value="PARCELAS">Somente parcelas</option>
+          </select>
+          <input
+            type="date"
+            name="dataInicio"
+            value={order.dataInicio}
+            onChange={handleOrderChange}
+            className="w-full border rounded px-2 py-1"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="md:col-span-2 flex gap-4 items-center">
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-4 py-2 rounded bg-slate-900 text-white disabled:opacity-60"
+        >
+          {loading ? "Salvando..." : "Salvar cliente + ordem"}
+        </button>
+
+        {error && <span className="text-xs text-red-600">{error}</span>}
+        {result && (
+          <span className="text-xs text-green-700">
+            Criado! Cliente #{result.cliente.id}, Ordem #{result.ordem.id} (sequência {result.ordem.sequenciaCliente})
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
 function App() {
   const backend = useBackendStatus();
 
@@ -58,14 +257,13 @@ function App() {
         </div>
       </header>
 
-      {/* Layout principal */}
+      {/* Layout */}
       <main className="flex">
-        {/* Sidebar */}
         <aside className="w-80 border-r bg-white px-6 py-6">
           <h2 className="text-sm font-semibold text-slate-700 mb-2">Módulos</h2>
           <ol className="list-decimal list-inside space-y-1 text-sm text-slate-700">
             <li>Pagamentos de clientes</li>
-            <li>Clientes &amp; ordens de pagamento</li>
+            <li>Clientes & ordens de pagamento</li>
             <li>Repasses a advogados</li>
             <li>Estagiários</li>
             <li>Prestadores de serviço</li>
@@ -73,51 +271,17 @@ function App() {
             <li>Controle de acesso</li>
             <li>Relatórios (PDF)</li>
           </ol>
-
-          <p className="mt-4 text-xs text-slate-500">
-            Filtros por advogado, intervalo de datas e cliente serão incluídos nas telas de
-            listagem (Dashboard, pagamentos, repasses, etc.).
-          </p>
         </aside>
 
-        {/* Conteúdo */}
         <section className="flex-1 px-8 py-8">
-          <h2 className="text-lg font-semibold mb-2">
-            Bem-vinda ao protótipo do Controles-AMR
+          <h2 className="text-lg font-semibold mb-4">
+            Cadastro rápido: Cliente + Ordem de Pagamento
           </h2>
 
-          <p className="text-sm text-slate-700 mb-4">
-            Este é o esqueleto inicial da aplicação web que irá controlar:
-          </p>
+          <ClientOrderForm />
 
-          <ul className="list-disc list-inside text-sm text-slate-700 space-y-1 mb-4">
-            <li>Pagamentos efetuados pelos clientes (à vista, entrada + parcelas, apenas parcelas);</li>
-            <li>Cadastro de clientes e sequência de controle de pagamentos (ordens de pagamento);</li>
-            <li>Repasses de honorários aos advogados, com saldos a receber;</li>
-            <li>Pagamentos recorrentes (fixos mensais) a advogados, estagiários e prestadores;</li>
-            <li>Modelos de cálculo de distribuição (advogado, sócio, fundo de reserva, escritório);</li>
-            <li>Login, criação de usuários e recuperação de senha;</li>
-            <li>Relatórios em PDF para administração e conferência.</li>
-          </ul>
-
-          <p className="text-sm text-slate-700 mb-4">
-            Toda a lógica de cálculo e distribuição deverá ser parametrizada em tabelas de configuração,
-            permitindo alteração sem mexer diretamente no código.
-          </p>
-
-          <h3 className="text-sm font-semibold mb-2">Próximos passos sugeridos:</h3>
-          <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
-            <li>Definir modelo de dados inicial (tabelas: clientes, advogados, pagamentos, repasses, etc.).</li>
-            <li>Configurar banco de dados (ex.: Postgres) e camada de acesso.</li>
-            <li>Implementar rotas REST para cada módulo principal.</li>
-            <li>Criar as primeiras telas de cadastro e listagem (clientes, advogados, pagamentos).</li>
-            <li>Implementar login e perfis de acesso (administrativo x operacional).</li>
-          </ul>
-
-          <div className="mt-6 text-xs text-slate-500">
-            <p>
-              API base utilizada: <code>{API_BASE}</code>
-            </p>
+          <div className="mt-10 text-xs text-slate-500">
+            <p>API base utilizada: <code>{API_BASE}</code></p>
           </div>
         </section>
       </main>
