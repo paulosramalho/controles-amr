@@ -48,6 +48,22 @@ const Icon = {
   ),
 };
 
+function LoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-white/80 backdrop-blur">
+      <div className="rounded-2xl border bg-white px-6 py-5 shadow-sm text-center">
+        <img
+          src={logoSrc}
+          alt="AMR Advogados"
+          className="mx-auto h-10 w-auto max-w-[220px] object-contain"
+        />
+        <p className="mt-3 text-sm font-medium text-slate-900">Carregando…</p>
+        <p className="mt-1 text-xs text-slate-500">Conectando ao backend</p>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------- Helpers -------------------------------- */
 function cx(...parts) {
   return parts.filter(Boolean).join(" ");
@@ -722,7 +738,7 @@ export default function App() {
     className={cx(
       "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition flex items-center gap-2",
       view === key
-        ? "bg-blue-900 text-white shadow-sm"
+        ? "bg-amr-navy text-white shadow-sm"
         : "text-slate-700 hover:bg-slate-100"
     )}
   >
@@ -733,6 +749,7 @@ export default function App() {
   </button>
 );
 
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Topbar */}
@@ -740,10 +757,10 @@ export default function App() {
         <div className="flex items-center gap-3">
   {logoSrc && (
     <img
-      src={logoSrc}
-      alt="AMR Advogados"
-      className="h-9 w-9 rounded-xl border bg-white object-contain p-1"
-    />
+  src={logoSrc}
+  alt="AMR Advogados"
+  className="h-10 w-auto max-w-[240px] object-contain"
+/>
   )}
   <div>
     <h1 className="text-lg font-semibold">AMR Advogados</h1>
@@ -764,13 +781,9 @@ export default function App() {
       </header>
 
       {/* Layout */}
-      <div className="mx-auto max-w-7xl px-6 py-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-        {/* Sidebar */}
-         <aside className="rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-120px)] sticky top-[88px]">
-          <div className="mb-3">
-  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-    Operacional
-  </p>
+      <div className="w-full px-0 py-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+  <aside className="pl-4 lg:pl-0 ...">...</aside>
+  <main className="pr-6 ...">...</main>
 </div>
 
 <div className="space-y-2 flex-1">
@@ -801,6 +814,24 @@ export default function App() {
         Configurações
       </button>
     </div>
+<div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
+  <div className="flex items-center justify-between font-mono">
+    <span>{clock.date}</span>
+    <span>{clock.time}</span>
+  </div>
+
+  <div className="flex items-center justify-between">
+    <span className="text-slate-500">Usuário</span>
+    <Badge tone="slate">Em desenvolvimento</Badge>
+  </div>
+
+  <button
+    disabled
+    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
+  >
+    Sair
+  </button>
+</div>
   </div>
 </div>
         </aside>
