@@ -1,8 +1,52 @@
-// Para teste de Deploy - 13/12/25 - 16:36h
-
 import { useEffect, useMemo, useState } from "react";
 
+let logoSrc;
+try {
+  logoSrc = new URL("../../../assets/logo.png", import.meta.url).href;
+} catch {
+  logoSrc = null;
+}
+
+const viewTitle = {
+  create: "Cadastro rápido",
+  list: "Clientes & Ordens",
+  dashboard: "Dashboard financeiro",
+};
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+const Icon = {
+  plus: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ),
+  list: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M8 6h13M8 12h13M8 18h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M3.5 6h.5M3.5 12h.5M3.5 18h.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ),
+  chart: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M8 16v-6M12 16V8M16 16v-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ),
+  lock: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M6 11h12v9H6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  ),
+  settings: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M19.4 15a7.97 7.97 0 0 0 .1-3l2-1.2-2-3.5-2.3.7a7.8 7.8 0 0 0-2.6-1.5L12 2 9.4 6.5A7.8 7.8 0 0 0 6.8 8l-2.3-.7-2 3.5 2 1.2a8 8 0 0 0 0 3l-2 1.2 2 3.5 2.3-.7c.8.7 1.7 1.2 2.6 1.5L12 22l2.6-4.5c.9-.3 1.8-.8 2.6-1.5l2.3.7 2-3.5-2-1.2Z"
+        stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  ),
+};
 
 /* --------------------------------- Helpers -------------------------------- */
 function cx(...parts) {
@@ -672,38 +716,51 @@ export default function App() {
 
   const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
 
-  const navItem = (key, label) => (
-    <button
-      onClick={() => setView(key)}
-      className={cx(
-        "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition",
-        view === key
-          ? "bg-blue-900 text-white shadow-sm"
-          : "text-slate-700 hover:bg-slate-100"
-      )}
-    >
-      {label}
-    </button>
-  );
+  const navItem = (key, label, icon) => (
+  <button
+    onClick={() => setView(key)}
+    className={cx(
+      "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition flex items-center gap-2",
+      view === key
+        ? "bg-blue-900 text-white shadow-sm"
+        : "text-slate-700 hover:bg-slate-100"
+    )}
+  >
+    <span className={cx("opacity-90", view === key ? "text-white" : "text-slate-500")}>
+      {icon}
+    </span>
+    <span>{label}</span>
+  </button>
+);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Topbar */}
       <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold">Controles-AMR</h1>
-            <p className="text-xs text-slate-500">
-              Controle de recebimentos, repasses e obrigações internas – AMR Advogados
-            </p>
-          </div>
+        <div className="flex items-center gap-3">
+  {logoSrc && (
+    <img
+      src={logoSrc}
+      alt="AMR Advogados"
+      className="h-9 w-9 rounded-xl border bg-white object-contain p-1"
+    />
+  )}
+  <div>
+    <h1 className="text-lg font-semibold">AMR Advogados</h1>
+    <p className="text-xs text-slate-500">
+      Controle de recebimentos, repasses e obrigações internas
+    </p>
+  </div>
+</div>
 
           <div className="flex items-center gap-2">
-            <Badge tone={backendLabel === "ok" ? "green" : backendLabel === "erro" ? "red" : "amber"}>
-              Backend: {backendLabel}
-            </Badge>
-          </div>
-        </div>
+  <Badge tone="blue">{viewTitle[view] || "Módulo"}</Badge>
+  <Badge
+    tone={backendLabel === "ok" ? "green" : backendLabel === "erro" ? "red" : "amber"}
+  >
+    Backend: {backendLabel}
+  </Badge>
+</div>
       </header>
 
       {/* Layout */}
@@ -711,40 +768,40 @@ export default function App() {
         {/* Sidebar */}
          <aside className="rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-120px)] sticky top-[88px]">
           <div className="mb-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Módulos
-            </p>
-          </div>
+  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+    Operacional
+  </p>
+</div>
 
-          <div className="space-y-2 flex-1">
-            {navItem("create", "Cadastro rápido (Cliente + Ordem)")}
-            {navItem("list", "Listagem (Clientes & Ordens)")}
-            {navItem("dashboard", "Dashboard financeiro")}
-          </div>
+<div className="space-y-2 flex-1">
+  {navItem("create", "Cadastro rápido", <Icon.plus />)}
+  {navItem("list", "Clientes & Ordens", <Icon.list />)}
+  {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
 
-          <div className="mt-4 rounded-2xl border bg-slate-50/60 p-3">
-            <p className="text-xs text-slate-600">
-              Dica: use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido.
-            </p>
-          </div>
-<div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
-  <div className="flex items-center justify-between font-mono">
-    <span>{clock.date}</span>
-    <span>{clock.time}</span>
+  <div className="mt-5">
+    <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+      Administrativo
+    </p>
+    <div className="space-y-2">
+      <button
+        disabled
+        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+        title="Disponível quando o login estiver ativo"
+      >
+        <Icon.lock className="h-4 w-4" />
+        Controle de acesso
+      </button>
+
+      <button
+        disabled
+        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+        title="Em breve"
+      >
+        <Icon.settings className="h-4 w-4" />
+        Configurações
+      </button>
+    </div>
   </div>
-
-  <div className="flex items-center justify-between">
-    <span className="text-slate-500">Usuário</span>
-    <Badge tone="slate">Em desenvolvimento</Badge>
-  </div>
-
-  <button
-    disabled
-    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
-    title="Disponível quando o login estiver ativo"
-  >
-    Sair
-  </button>
 </div>
         </aside>
 
