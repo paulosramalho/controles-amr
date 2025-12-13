@@ -1,20 +1,34 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import logoSrc from "./assets/logo.png";
 
-let logoSrc;
-try {
-  logoSrc = new URL("./assets/logo.png", import.meta.url).href;
-} catch {
-  logoSrc = null;
+/** Helpers */
+function cx(...classes) {
+  return classes.filter(Boolean).join(" ");
 }
 
-const viewTitle = {
-  create: "Cadastro rápido",
-  list: "Clientes & Ordens",
-  dashboard: "Dashboard financeiro",
-};
+function moneyBRL(value) {
+  if (value == null) return "—";
+  const n = typeof value === "string" ? Number(value) : value;
+  if (Number.isNaN(n)) return String(value);
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+  };
+}
+
+/** Minimal icons (no deps) */
 const Icon = {
   plus: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
@@ -42,66 +56,26 @@ const Icon = {
   settings: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" />
-      <path d="M19.4 15a7.97 7.97 0 0 0 .1-3l2-1.2-2-3.5-2.3.7a7.8 7.8 0 0 0-2.6-1.5L12 2 9.4 6.5A7.8 7.8 0 0 0 6.8 8l-2.3-.7-2 3.5 2 1.2a8 8 0 0 0 0 3l-2 1.2 2 3.5 2.3-.7c.8.7 1.7 1.2 2.6 1.5L12 22l2.6-4.5c.9-.3 1.8-.8 2.6-1.5l2.3.7 2-3.5-2-1.2Z"
-        stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path
+        d="M19.4 15a7.97 7.97 0 0 0 .1-3l2-1.2-2-3.5-2.3.7a7.8 7.8 0 0 0-2.6-1.5L12 2 9.4 6.5A7.8 7.8 0 0 0 6.8 8l-2.3-.7-2 3.5 2 1.2a8 8 0 0 0 0 3l-2 1.2 2 3.5 2.3-.7c.8.7 1.7 1.2 2.6 1.5L12 22l2.6-4.5c.9-.3 1.8-.8 2.6-1.5l2.3.7 2-3.5-2-1.2Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
 };
 
-function LoadingOverlay() {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-white/80 backdrop-blur">
-      <div className="rounded-2xl border bg-white px-6 py-5 shadow-sm text-center">
-        <img
-          src={logoSrc}
-          alt="AMR Advogados"
-          className="mx-auto h-10 w-auto max-w-[220px] object-contain"
-        />
-        <p className="mt-3 text-sm font-medium text-slate-900">Carregando…</p>
-        <p className="mt-1 text-xs text-slate-500">Conectando ao backend</p>
-      </div>
-    </div>
-  );
-}
-
-/* --------------------------------- Helpers -------------------------------- */
-function cx(...parts) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function fmtBRL(value) {
-  if (value === null || value === undefined) return "—";
-  const n =
-    typeof value === "string"
-      ? Number(value.toString().replace(",", "."))
-      : Number(value);
-  if (Number.isNaN(n)) return String(value);
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function fmtDateBR(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("pt-BR");
-}
-
-function Badge({ children, tone = "slate" }) {
-  const tones = {
+function Badge({ tone = "slate", children }) {
+  const map = {
     slate: "bg-slate-100 text-slate-700 border-slate-200",
-    green: "bg-green-50 text-green-700 border-green-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    violet: "bg-violet-50 text-violet-700 border-violet-200",
+    blue: "bg-blue-50 text-blue-800 border-blue-200",
+    green: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    red: "bg-red-50 text-red-800 border-red-200",
+    amber: "bg-amber-50 text-amber-800 border-amber-200",
   };
   return (
-    <span
-      className={cx(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-        tones[tone] || tones.slate
-      )}
-    >
+    <span className={cx("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", map[tone])}>
       {children}
     </span>
   );
@@ -110,7 +84,7 @@ function Badge({ children, tone = "slate" }) {
 function Card({ title, subtitle, children, right }) {
   return (
     <div className="rounded-2xl border bg-white shadow-sm">
-      {(title || subtitle || right) && (
+      {(title || right) && (
         <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
           <div>
             {title && <h3 className="text-sm font-semibold text-slate-900">{title}</h3>}
@@ -124,91 +98,115 @@ function Card({ title, subtitle, children, right }) {
   );
 }
 
-function Input({ label, ...props }) {
+function Input({ label, hint, ...props }) {
   return (
     <label className="block">
-      {label && <span className="mb-1 block text-xs font-medium text-slate-700">{label}</span>}
+      {label && <span className="block text-xs font-medium text-slate-700">{label}</span>}
       <input
         {...props}
         className={cx(
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-          "placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200",
+          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
+          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100",
           props.className
         )}
       />
+      {hint && <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>}
     </label>
   );
 }
 
-function Select({ label, children, ...props }) {
+function Select({ label, hint, children, ...props }) {
   return (
     <label className="block">
-      {label && <span className="mb-1 block text-xs font-medium text-slate-700">{label}</span>}
+      {label && <span className="block text-xs font-medium text-slate-700">{label}</span>}
       <select
         {...props}
         className={cx(
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-          "focus:border-slate-400 focus:ring-2 focus:ring-slate-200",
+          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
+          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100",
           props.className
         )}
       >
         {children}
       </select>
+      {hint && <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>}
     </label>
   );
 }
 
-function Button({ variant = "primary", ...props }) {
+function Button({ variant = "primary", children, ...props }) {
+  const base =
+    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm";
   const variants = {
-    primary:
-      "bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-200 border-blue-900",
-    ghost:
-      "bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-200 border-slate-200",
+    primary: "bg-blue-900 text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-200",
+    secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
+    ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
   };
   return (
     <button
       {...props}
-      className={cx(
-        "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium shadow-sm",
-        "outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60",
-        variants[variant] || variants.primary,
-        props.className
-      )}
-    />
+      className={cx(base, variants[variant], props.disabled && "opacity-60 cursor-not-allowed", props.className)}
+    >
+      {children}
+    </button>
   );
 }
 
-/* --------------------------- Backend status hook --------------------------- */
-function useBackendStatus() {
-  const [status, setStatus] = useState({ loading: true, ok: false });
-
-  useEffect(() => {
-    async function check() {
-      try {
-        const res = await fetch(`${API_BASE}/api/health`);
-        if (!res.ok) throw new Error("HTTP error");
-        const data = await res.json();
-        setStatus({ loading: false, ok: true, data });
-      } catch (err) {
-        setStatus({ loading: false, ok: false });
-      }
-    }
-    check();
-  }, []);
-
-  return status;
+function LoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-white/80 backdrop-blur">
+      <div className="rounded-2xl border bg-white px-6 py-5 shadow-sm text-center">
+        <img src={logoSrc} alt="AMR Advogados" className="mx-auto h-10 w-auto max-w-[240px] object-contain" />
+        <p className="mt-3 text-sm font-medium text-slate-900">Carregando…</p>
+        <p className="mt-1 text-xs text-slate-500">Conectando ao backend</p>
+      </div>
+    </div>
+  );
 }
 
-/* ------------------------- FORM CLIENTE + ORDEM --------------------------- */
-function ClientOrderForm() {
-  const [client, setClient] = useState({
+export default function App() {
+  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const clock = useClock();
+
+  const [view, setView] = useState("create");
+
+  const viewTitle = useMemo(
+    () => ({
+      create: "Cadastro rápido",
+      list: "Clientes & Ordens",
+      dashboard: "Dashboard financeiro",
+    }),
+    []
+  );
+
+  const [backend, setBackend] = useState({ loading: true, ok: false, label: "verificando" });
+
+  useEffect(() => {
+    let alive = true;
+    async function ping() {
+      setBackend({ loading: true, ok: false, label: "verificando" });
+      try {
+        const r = await fetch(`${API_BASE}/api/health`);
+        if (!alive) return;
+        if (r.ok) setBackend({ loading: false, ok: true, label: "ok" });
+        else setBackend({ loading: false, ok: false, label: "erro" });
+      } catch {
+        if (!alive) return;
+        setBackend({ loading: false, ok: false, label: "erro" });
+      }
+    }
+    ping();
+    return () => {
+      alive = false;
+    };
+  }, [API_BASE]);
+
+  // screens state
+  const [form, setForm] = useState({
     cpfCnpj: "",
     nomeRazaoSocial: "",
     email: "",
     telefone: "",
-  });
-
-  const [order, setOrder] = useState({
     descricao: "",
     tipoContrato: "",
     valorTotalPrevisto: "",
@@ -216,631 +214,462 @@ function ClientOrderForm() {
     dataInicio: "",
   });
 
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [createStatus, setCreateStatus] = useState({ type: "idle", msg: "" });
 
-  const handleClientChange = (e) => {
-    const { name, value } = e.target;
-    setClient((prev) => ({ ...prev, [name]: value }));
-  };
+  const [filters, setFilters] = useState({ q: "", status: "ALL" });
+  const [listState, setListState] = useState({ loading: false, error: "", data: [] });
 
-  const handleOrderChange = (e) => {
-    const { name, value } = e.target;
-    setOrder((prev) => ({ ...prev, [name]: value }));
-  };
+  const [dashState, setDashState] = useState({ loading: false, error: "", data: null });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResult(null);
+  async function createClientAndOrder() {
+    setCreateStatus({ type: "loading", msg: "" });
 
     try {
       const payload = {
-        client,
-        order: {
-          ...order,
-          valorTotalPrevisto: order.valorTotalPrevisto
-            ? Number(order.valorTotalPrevisto.toString().replace(",", "."))
-            : null,
+        cpfCnpj: form.cpfCnpj?.trim(),
+        nomeRazaoSocial: form.nomeRazaoSocial?.trim(),
+        email: form.email?.trim() || null,
+        telefone: form.telefone?.trim() || null,
+
+        // ordem (não obrigatória no seu fluxo futuro; aqui mantemos como está no protótipo)
+        ordem: {
+          descricao: form.descricao?.trim() || null,
+          tipoContrato: form.tipoContrato?.trim() || null,
+          valorTotalPrevisto: form.valorTotalPrevisto ? String(form.valorTotalPrevisto).replace(",", ".") : null,
+          modeloPagamento: form.modeloPagamento,
+          dataInicio: form.dataInicio ? new Date(form.dataInicio).toISOString() : new Date().toISOString(),
         },
       };
 
-      const res = await fetch(`${API_BASE}/api/clients-and-orders`, {
+      const r = await fetch(`${API_BASE}/api/clients-and-orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || "Erro ao criar cliente + ordem");
-      }
+      const j = await r.json().catch(() => ({}));
 
-      const data = await res.json();
-      setResult(data);
+      if (!r.ok) throw new Error(j?.message || "Falha ao criar cliente + ordem");
 
-      setClient({ cpfCnpj: "", nomeRazaoSocial: "", email: "", telefone: "" });
-      setOrder({
-        descricao: "",
-        tipoContrato: "",
-        valorTotalPrevisto: "",
-        modeloPagamento: "AVISTA",
-        dataInicio: "",
+      setCreateStatus({
+        type: "success",
+        msg: `Criado! Cliente #${j?.cliente?.id ?? "?"}, Ordem #${j?.ordem?.id ?? "?"} (seq. ${j?.ordem?.sequenciaCliente ?? "?"})`,
       });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+
+      // limpa parcialmente
+      setForm((p) => ({ ...p, descricao: "", tipoContrato: "", valorTotalPrevisto: "" }));
+    } catch (e) {
+      setCreateStatus({ type: "error", msg: e?.message || "Erro inesperado" });
     }
-  };
+  }
 
-  return (
-    <Card
-      title="Cadastro rápido"
-      subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-      right={
-        <Badge tone="blue">
-          API <span className="font-mono">{API_BASE.replace(/^https?:\/\//, "")}</span>
-        </Badge>
-      }
-    >
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-2xl border bg-slate-50/40 p-4">
-            <h4 className="text-sm font-semibold text-slate-900">Cliente</h4>
-            <p className="mt-1 text-xs text-slate-500">
-              Dados principais para identificação e contato.
-            </p>
+  async function loadClientsWithOrders() {
+    setListState((s) => ({ ...s, loading: true, error: "" }));
 
-            <div className="mt-4 grid grid-cols-1 gap-3">
-              <Input
-                label="CPF/CNPJ"
-                name="cpfCnpj"
-                placeholder="Ex.: 111.222.333-44"
-                value={client.cpfCnpj}
-                onChange={handleClientChange}
-                required
-              />
-              <Input
-                label="Nome / Razão Social"
-                name="nomeRazaoSocial"
-                placeholder="Ex.: Empresa X Ltda."
-                value={client.nomeRazaoSocial}
-                onChange={handleClientChange}
-                required
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input
-                  label="E-mail"
-                  name="email"
-                  type="email"
-                  placeholder="financeiro@empresa.com"
-                  value={client.email}
-                  onChange={handleClientChange}
-                />
-                <Input
-                  label="Telefone"
-                  name="telefone"
-                  placeholder="(99) 9 9999-9999"
-                  value={client.telefone}
-                  onChange={handleClientChange}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-slate-50/40 p-4">
-            <h4 className="text-sm font-semibold text-slate-900">Ordem de Pagamento</h4>
-            <p className="mt-1 text-xs text-slate-500">
-              Detalhes do contrato/ocorrência vinculada ao cliente.
-            </p>
-
-            <div className="mt-4 grid grid-cols-1 gap-3">
-              <Input
-                label="Descrição / Objeto"
-                name="descricao"
-                placeholder="Ex.: Contrato consultivo mensal"
-                value={order.descricao}
-                onChange={handleOrderChange}
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input
-                  label="Tipo de contrato"
-                  name="tipoContrato"
-                  placeholder="Ex.: esporádico, recorrente..."
-                  value={order.tipoContrato}
-                  onChange={handleOrderChange}
-                />
-                <Input
-                  label="Valor total previsto"
-                  name="valorTotalPrevisto"
-                  placeholder="Ex.: 10000"
-                  value={order.valorTotalPrevisto}
-                  onChange={handleOrderChange}
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Select
-                  label="Modelo de pagamento"
-                  name="modeloPagamento"
-                  value={order.modeloPagamento}
-                  onChange={handleOrderChange}
-                >
-                  <option value="AVISTA">À vista</option>
-                  <option value="ENTRADA_E_PARCELAS">Entrada + parcelas</option>
-                  <option value="PARCELAS">Somente parcelas</option>
-                </Select>
-                <Input
-                  label="Data de início"
-                  type="date"
-                  name="dataInicio"
-                  value={order.dataInicio}
-                  onChange={handleOrderChange}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Salvando..." : "Salvar cliente + ordem"}
-          </Button>
-
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              {error}
-            </div>
-          )}
-
-          {result && (
-            <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-              Criado! Cliente <b>#{result.cliente.id}</b> • Ordem <b>#{result.ordem.id}</b> • Sequência{" "}
-              <b>{result.ordem.sequenciaCliente}</b>
-            </div>
-          )}
-        </div>
-      </form>
-    </Card>
-  );
-}
-
-/* ------------------------- LISTAGEM CLIENTES + ORDENS --------------------- */
-function ClientsOrdersList() {
-  const [filters, setFilters] = useState({
-    search: "",
-    status: "",
-    fromDate: "",
-    toDate: "",
-  });
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const hasFilters = useMemo(() => {
-    return Boolean(filters.search || filters.status || filters.fromDate || filters.toDate);
-  }, [filters]);
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
+    const qs = new URLSearchParams();
+    if (filters.q?.trim()) qs.set("q", filters.q.trim());
+    if (filters.status && filters.status !== "ALL") qs.set("status", filters.status);
 
     try {
-      const params = new URLSearchParams();
-      if (filters.search) params.append("search", filters.search);
-      if (filters.status) params.append("status", filters.status);
-      if (filters.fromDate) params.append("fromDate", filters.fromDate);
-      if (filters.toDate) params.append("toDate", filters.toDate);
-
-      const res = await fetch(`${API_BASE}/api/clients-with-orders?${params.toString()}`);
-      if (!res.ok) throw new Error("Erro ao carregar listagem");
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      const r = await fetch(`${API_BASE}/api/clients-with-orders?${qs.toString()}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.message || "Erro ao listar clientes + ordens");
+      setListState({ loading: false, error: "", data: Array.isArray(j) ? j : [] });
+    } catch (e) {
+      setListState({ loading: false, error: e?.message || "Erro ao listar", data: [] });
     }
-  };
+  }
+
+  async function loadDashboard() {
+    setDashState((s) => ({ ...s, loading: true, error: "" }));
+    try {
+      const r = await fetch(`${API_BASE}/api/dashboard/summary`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.message || "Erro ao carregar dashboard");
+      setDashState({ loading: false, error: "", data: j });
+    } catch (e) {
+      setDashState({ loading: false, error: e?.message || "Erro ao carregar dashboard", data: null });
+    }
+  }
 
   useEffect(() => {
-    load();
+    if (view === "list") loadClientsWithOrders();
+    if (view === "dashboard") loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const clearFilters = () => {
-    setFilters({ search: "", status: "", fromDate: "", toDate: "" });
-    // recarrega sem filtro
-    setTimeout(() => load(), 0);
-  };
-
-  const statusTone = (s) => {
-    if (s === "ATIVA") return "green";
-    if (s === "CONCLUIDA") return "slate";
-    return "amber";
-  };
-
-  const modeloTone = (m) => {
-    if (m === "AVISTA") return "violet";
-    if (m === "ENTRADA_E_PARCELAS") return "blue";
-    return "amber";
-  };
-
-  return (
-    <div className="space-y-4">
-      <Card
-        title="Filtros"
-        subtitle="Busque por cliente/CPF-CNPJ e refine por status e período."
-        right={
-          <div className="flex items-center gap-2">
-            {hasFilters && <Badge tone="amber">Filtros ativos</Badge>}
-            <Button variant="ghost" type="button" onClick={clearFilters}>
-              Limpar
-            </Button>
-            <Button type="button" onClick={load} disabled={loading}>
-              {loading ? "Atualizando..." : "Atualizar"}
-            </Button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Input
-            label="Cliente / CPF-CNPJ"
-            value={filters.search}
-            onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
-            placeholder="Digite parte do nome ou do CPF/CNPJ"
-          />
-          <Select
-            label="Status"
-            value={filters.status}
-            onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
-          >
-            <option value="">Todos</option>
-            <option value="ATIVA">Ativa</option>
-            <option value="CONCLUIDA">Concluída</option>
-          </Select>
-          <Input
-            label="Início (de)"
-            type="date"
-            value={filters.fromDate}
-            onChange={(e) => setFilters((p) => ({ ...p, fromDate: e.target.value }))}
-          />
-          <Input
-            label="Início (até)"
-            type="date"
-            value={filters.toDate}
-            onChange={(e) => setFilters((p) => ({ ...p, toDate: e.target.value }))}
-          />
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {error}
-          </div>
-        )}
-      </Card>
-
-      <Card
-        title="Clientes e ordens"
-        subtitle="Listagem com detalhes por cliente."
-        right={<Badge tone="slate">{data.length} cliente(s)</Badge>}
-      >
-        <div className="overflow-auto rounded-2xl border">
-          <table className="min-w-[980px] w-full border-collapse text-xs">
-            <thead className="sticky top-0 bg-slate-100">
-              <tr>
-                <th className="border-b px-3 py-2 text-left">Cliente</th>
-                <th className="border-b px-3 py-2 text-left">CPF/CNPJ</th>
-                <th className="border-b px-3 py-2 text-center">Ordens</th>
-                <th className="border-b px-3 py-2 text-left">Ordens (detalhes)</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                    Carregando...
-                  </td>
-                </tr>
-              )}
-
-              {!loading && data.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-10 text-center text-slate-500">
-                    Nada por aqui. Tente ajustar filtros ou cadastre um cliente/ordem.
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                data.map((cli, idx) => (
-                  <tr key={cli.id} className={idx % 2 ? "bg-slate-50/50" : "bg-white"}>
-                    <td className="border-b px-3 py-3 align-top">
-                      <div className="font-medium text-slate-900">{cli.nomeRazaoSocial}</div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {cli.email && <Badge tone="slate">{cli.email}</Badge>}
-                        {cli.telefone && <Badge tone="slate">{cli.telefone}</Badge>}
-                        {cli.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
-                      </div>
-                    </td>
-
-                    <td className="border-b px-3 py-3 align-top font-mono text-[11px] text-slate-700">
-                      {cli.cpfCnpj}
-                    </td>
-
-                    <td className="border-b px-3 py-3 align-top text-center">
-                      <Badge tone="blue">{cli.ordens?.length || 0}</Badge>
-                    </td>
-
-                    <td className="border-b px-3 py-3 align-top">
-                      {cli.ordens?.length ? (
-                        <div className="overflow-auto rounded-xl border bg-white">
-                          <table className="min-w-[720px] w-full border-collapse text-[11px]">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="border-b px-2 py-1 text-left">Seq.</th>
-                                <th className="border-b px-2 py-1 text-left">Descrição</th>
-                                <th className="border-b px-2 py-1 text-left">Tipo</th>
-                                <th className="border-b px-2 py-1 text-right">Previsto</th>
-                                <th className="border-b px-2 py-1 text-center">Modelo</th>
-                                <th className="border-b px-2 py-1 text-center">Status</th>
-                                <th className="border-b px-2 py-1 text-center">Início</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {cli.ordens.map((ord, j) => (
-                                <tr key={ord.id} className={j % 2 ? "bg-slate-50/40" : "bg-white"}>
-                                  <td className="border-b px-2 py-1">{ord.sequenciaCliente}</td>
-                                  <td className="border-b px-2 py-1">{ord.descricao || "—"}</td>
-                                  <td className="border-b px-2 py-1">{ord.tipoContrato || "—"}</td>
-                                  <td className="border-b px-2 py-1 text-right">{fmtBRL(ord.valorTotalPrevisto)}</td>
-                                  <td className="border-b px-2 py-1 text-center">
-                                    <Badge tone={modeloTone(ord.modeloPagamento)}>{ord.modeloPagamento}</Badge>
-                                  </td>
-                                  <td className="border-b px-2 py-1 text-center">
-                                    <Badge tone={statusTone(ord.status)}>{ord.status}</Badge>
-                                  </td>
-                                  <td className="border-b px-2 py-1 text-center">{fmtDateBR(ord.dataInicio)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500">Sem ordens.</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/* ------------------------------ DASHBOARD VIEW ---------------------------- */
-function DashboardView() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/dashboard/summary`);
-      if (!res.ok) throw new Error("Erro ao carregar dashboard");
-      const json = await res.json();
-      setData(json);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  return (
-    <div className="space-y-4">
-      <Card
-        title="Dashboard financeiro"
-        subtitle="Por enquanto, este resumo reflete os valores previstos das Ordens. Entradas reais virão com Pagamentos."
-        right={
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={load} disabled={loading}>
-              {loading ? "Atualizando..." : "Atualizar"}
-            </Button>
-          </div>
-        }
-      >
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="rounded-2xl border bg-white p-4">
-            <p className="text-xs text-slate-500">Clientes cadastrados</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">
-              {data?.totalClients ?? "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-4">
-            <p className="text-xs text-slate-500">Ordens</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">
-              {data?.totalOrders ?? "—"}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge tone="green">Ativas: {data?.totalAtivas ?? "—"}</Badge>
-              <Badge tone="slate">Concluídas: {data?.totalConcluidas ?? "—"}</Badge>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-4">
-            <p className="text-xs text-slate-500">Total previsto</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">
-              {data ? fmtBRL(data.totalValorPrevisto) : "—"}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Somatório de valorTotalPrevisto</p>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-4">
-            <p className="text-xs text-slate-500">Ambiente</p>
-            <p className="mt-2 text-sm font-medium text-slate-900">API Base</p>
-            <p className="mt-1 text-xs font-mono break-all text-slate-600">
-              {API_BASE}
-            </p>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function useClock() {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const pad = (n) => String(n).padStart(2, "0");
-  return {
-    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-  };
-}
-
-/* ---------------------------------- App ---------------------------------- */
-export default function App() {
-  const backend = useBackendStatus();
-  const [view, setView] = useState("create"); // create | list | dashboard
-
-  const clock = useClock();
-
-  const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
+  }, [view]);
 
   const navItem = (key, label, icon) => (
-  <button
-    onClick={() => setView(key)}
-    className={cx(
-      "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition flex items-center gap-2",
-      view === key
-        ? "bg-amr-navy text-white shadow-sm"
-        : "text-slate-700 hover:bg-slate-100"
-    )}
-  >
-    <span className={cx("opacity-90", view === key ? "text-white" : "text-slate-500")}>
-      {icon}
-    </span>
-    <span>{label}</span>
-  </button>
-);
+    <button
+      onClick={() => setView(key)}
+      className={cx(
+        "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition flex items-center gap-2",
+        view === key ? "bg-blue-900 text-white shadow-sm" : "text-slate-700 hover:bg-slate-100"
+      )}
+    >
+      <span className={cx("opacity-90", view === key ? "text-white" : "text-slate-500")}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 
+  // Loading overlay while pinging backend
+  if (backend.loading) return <LoadingOverlay />;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Topbar */}
-      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
-        <div className="flex items-center gap-3">
-  {logoSrc && (
-    <img
-  src={logoSrc}
-  alt="AMR Advogados"
-  className="h-10 w-auto max-w-[240px] object-contain"
-/>
-  )}
-  <div>
-    <h1 className="text-lg font-semibold">AMR Advogados</h1>
-    <p className="text-xs text-slate-500">
-      Controle de recebimentos, repasses e obrigações internas
-    </p>
-  </div>
-</div>
+      <header className="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
+        <div className="w-full px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <img
+              src={logoSrc}
+              alt="AMR Advogados"
+              className="h-10 w-auto max-w-[240px] object-contain"
+              title="AMR Advogados"
+            />
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold leading-tight truncate">AMR Advogados</h1>
+              <p className="text-xs text-slate-500 truncate">
+                Controle de recebimentos, repasses e obrigações internas
+              </p>
+            </div>
+          </div>
 
-          <div className="flex items-center gap-2">
-  <Badge tone="blue">{viewTitle[view] || "Módulo"}</Badge>
-  <Badge
-    tone={backendLabel === "ok" ? "green" : backendLabel === "erro" ? "red" : "amber"}
-  >
-    Backend: {backendLabel}
-  </Badge>
-</div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge tone="blue">{viewTitle[view] || "Módulo"}</Badge>
+            <Badge tone={backend.label === "ok" ? "green" : backend.label === "erro" ? "red" : "amber"}>
+              Backend: {backend.label}
+            </Badge>
+          </div>
+        </div>
       </header>
 
-      {/* Layout */}
-      <div className="w-full px-0 py-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
-  <aside className="pl-4 lg:pl-0 ...">...</aside>
-  <main className="pr-6 ...">...</main>
-</div>
+      {/* Content grid */}
+      <div className="w-full grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
+        {/* Sidebar (left, close to margin) */}
+        <aside className="pl-0 lg:pl-0">
+          <div className="sticky top-[92px]">
+            <div className="ml-4 lg:ml-4 rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-140px)]">
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Operacional</p>
+              </div>
 
-<div className="space-y-2 flex-1">
-  {navItem("create", "Cadastro rápido", <Icon.plus />)}
-  {navItem("list", "Clientes & Ordens", <Icon.list />)}
-  {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
+              <div className="space-y-2 flex-1">
+                {navItem("create", "Cadastro rápido", <Icon.plus />)}
+                {navItem("list", "Clientes & Ordens", <Icon.list />)}
+                {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
 
-  <div className="mt-5">
-    <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-      Administrativo
-    </p>
-    <div className="space-y-2">
-      <button
-        disabled
-        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-        title="Disponível quando o login estiver ativo"
-      >
-        <Icon.lock className="h-4 w-4" />
-        Controle de acesso
-      </button>
+                <div className="mt-5">
+                  <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Administrativo
+                  </p>
 
-      <button
-        disabled
-        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-        title="Em breve"
-      >
-        <Icon.settings className="h-4 w-4" />
-        Configurações
-      </button>
-    </div>
-<div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
-  <div className="flex items-center justify-between font-mono">
-    <span>{clock.date}</span>
-    <span>{clock.time}</span>
-  </div>
+                  <div className="space-y-2">
+                    <button
+                      disabled
+                      className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+                      title="Disponível quando o login estiver ativo"
+                    >
+                      <Icon.lock />
+                      Controle de acesso
+                    </button>
 
-  <div className="flex items-center justify-between">
-    <span className="text-slate-500">Usuário</span>
-    <Badge tone="slate">Em desenvolvimento</Badge>
-  </div>
+                    <button
+                      disabled
+                      className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+                      title="Em breve"
+                    >
+                      <Icon.settings />
+                      Configurações
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-  <button
-    disabled
-    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
-  >
-    Sair
-  </button>
-</div>
-  </div>
-</div>
+              {/* Sidebar footer */}
+              <div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
+                <div className="flex items-center justify-between font-mono">
+                  <span>{clock.date}</span>
+                  <span>{clock.time}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Usuário</span>
+                  <Badge tone="slate">Em desenvolvimento</Badge>
+                </div>
+
+                <button
+                  disabled
+                  className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
+                  title="Disponível quando o login estiver ativo"
+                >
+                  Sair
+                </button>
+              </div>
+            </div>
+          </div>
         </aside>
 
-        {/* Content */}
-        <main className="space-y-6">
-          {view === "create" && <ClientOrderForm />}
-          {view === "list" && <ClientsOrdersList />}
-          {view === "dashboard" && <DashboardView />}
+        {/* Main */}
+        <main className="pr-6 pl-4 lg:pl-0">
+          {view === "create" && (
+            <div className="space-y-6">
+              <Card
+                title="Cadastro rápido: Cliente + Ordem"
+                subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
+                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900">Dados do cliente</h4>
+                      <p className="text-xs text-slate-500">CPF/CNPJ, nome e contato principal.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Input
+                        label="CPF/CNPJ"
+                        placeholder="Ex.: 111.222.333-44"
+                        value={form.cpfCnpj}
+                        onChange={(e) => setForm((p) => ({ ...p, cpfCnpj: e.target.value }))}
+                      />
+                      <Input
+                        label="Nome / Razão Social"
+                        placeholder="Ex.: Empresa X Ltda."
+                        value={form.nomeRazaoSocial}
+                        onChange={(e) => setForm((p) => ({ ...p, nomeRazaoSocial: e.target.value }))}
+                      />
+                      <Input
+                        label="E-mail"
+                        placeholder="financeiro@empresa.com"
+                        value={form.email}
+                        onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                      />
+                      <Input
+                        label="Telefone"
+                        placeholder="(99) 9 9999-9999"
+                        value={form.telefone}
+                        onChange={(e) => setForm((p) => ({ ...p, telefone: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900">Dados da ordem de pagamento</h4>
+                      <p className="text-xs text-slate-500">Contrato/ocorrência vinculada ao cliente.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <Input
+                        label="Descrição / Objeto"
+                        placeholder="Ex.: Contrato consultivo mensal"
+                        value={form.descricao}
+                        onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))}
+                      />
+                      <Input
+                        label="Tipo de contrato"
+                        placeholder="Ex.: esporádico, recorrente..."
+                        value={form.tipoContrato}
+                        onChange={(e) => setForm((p) => ({ ...p, tipoContrato: e.target.value }))}
+                      />
+                      <Input
+                        label="Valor total previsto"
+                        placeholder="Ex.: 10000"
+                        value={form.valorTotalPrevisto}
+                        onChange={(e) => setForm((p) => ({ ...p, valorTotalPrevisto: e.target.value }))}
+                      />
+                      <Select
+                        label="Modelo de pagamento"
+                        value={form.modeloPagamento}
+                        onChange={(e) => setForm((p) => ({ ...p, modeloPagamento: e.target.value }))}
+                      >
+                        <option value="AVISTA">À vista</option>
+                        <option value="ENTRADA_E_PARCELAS">Entrada + parcelas</option>
+                        <option value="APENAS_PARCELAS">Apenas parcelas</option>
+                      </Select>
+
+                      <Input
+                        label="Data de início"
+                        type="date"
+                        value={form.dataInicio}
+                        onChange={(e) => setForm((p) => ({ ...p, dataInicio: e.target.value }))}
+                        className="md:col-span-2"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Button onClick={createClientAndOrder} disabled={createStatus.type === "loading"}>
+                        {createStatus.type === "loading" ? "Salvando..." : "Salvar cliente + ordem"}
+                      </Button>
+
+                      {createStatus.type === "success" && <Badge tone="green">{createStatus.msg}</Badge>}
+                      {createStatus.type === "error" && <Badge tone="red">{createStatus.msg}</Badge>}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card title="Dica" subtitle="Use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido.">
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => setView("list")}>
+                    Ir para Listagem
+                  </Button>
+                  <Button variant="ghost" onClick={() => setView("dashboard")}>
+                    Ver Dashboard
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {view === "list" && (
+            <div className="space-y-6">
+              <Card
+                title="Listagem: Clientes & Ordens"
+                subtitle="Filtros por nome/CPF/CNPJ e status da ordem."
+                right={
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" onClick={loadClientsWithOrders}>
+                      Atualizar
+                    </Button>
+                  </div>
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  <Input
+                    label="Busca"
+                    placeholder="Nome ou CPF/CNPJ..."
+                    value={filters.q}
+                    onChange={(e) => setFilters((p) => ({ ...p, q: e.target.value }))}
+                  />
+                  <Select
+                    label="Status da ordem"
+                    value={filters.status}
+                    onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
+                  >
+                    <option value="ALL">Todas</option>
+                    <option value="ATIVA">Ativas</option>
+                    <option value="CONCLUIDA">Concluídas</option>
+                    <option value="CANCELADA">Canceladas</option>
+                  </Select>
+
+                  <div className="flex items-end">
+                    <Button onClick={loadClientsWithOrders} className="w-full">
+                      Aplicar filtros
+                    </Button>
+                  </div>
+                </div>
+
+                {listState.loading && <p className="text-sm text-slate-500">Carregando...</p>}
+                {listState.error && <p className="text-sm text-red-700">{listState.error}</p>}
+
+                {!listState.loading && !listState.error && listState.data?.length === 0 && (
+                  <p className="text-sm text-slate-500">Nenhum cliente encontrado.</p>
+                )}
+
+                {!listState.loading && !listState.error && listState.data?.length > 0 && (
+                  <div className="overflow-auto rounded-xl border">
+                    <table className="min-w-full text-sm">
+                      <thead className="sticky top-0 bg-slate-50 border-b">
+                        <tr className="text-left text-xs font-semibold text-slate-600">
+                          <th className="px-4 py-3">Cliente</th>
+                          <th className="px-4 py-3">CPF/CNPJ</th>
+                          <th className="px-4 py-3">Contato</th>
+                          <th className="px-4 py-3">Ordens</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {listState.data.map((c, idx) => (
+                          <tr key={c.id} className={cx("border-b", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-slate-900">{c.nomeRazaoSocial}</div>
+                              <div className="text-xs text-slate-500">ID #{c.id}</div>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs">{c.cpfCnpj}</td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs text-slate-700">{c.email || "—"}</div>
+                              <div className="text-xs text-slate-500">{c.telefone || "—"}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="space-y-2">
+                                {(c.ordens || []).map((o) => (
+                                  <div key={o.id} className="rounded-xl border bg-white px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-sm font-semibold text-slate-900">
+                                        {o.descricao || "Ordem sem descrição"}{" "}
+                                        <span className="text-xs font-normal text-slate-500">
+                                          (seq. {o.sequenciaCliente})
+                                        </span>
+                                      </div>
+                                      <Badge tone={o.status === "ATIVA" ? "green" : o.status === "CONCLUIDA" ? "slate" : "amber"}>
+                                        {o.status}
+                                      </Badge>
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-600">
+                                      {o.tipoContrato ? `${o.tipoContrato} • ` : ""}
+                                      {o.valorTotalPrevisto ? `Previsto: ${moneyBRL(o.valorTotalPrevisto)}` : "Sem valor previsto"}
+                                    </div>
+                                  </div>
+                                ))}
+                                {(c.ordens || []).length === 0 && <span className="text-xs text-slate-500">Sem ordens</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {view === "dashboard" && (
+            <div className="space-y-6">
+              <Card
+                title="Dashboard financeiro"
+                subtitle="Resumo dos cadastros e ordens."
+                right={
+                  <Button variant="secondary" onClick={loadDashboard}>
+                    Atualizar
+                  </Button>
+                }
+              >
+                {dashState.loading && <p className="text-sm text-slate-500">Carregando...</p>}
+                {dashState.error && <p className="text-sm text-red-700">{dashState.error}</p>}
+
+                {!dashState.loading && !dashState.error && dashState.data && (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs text-slate-500">Clientes</p>
+                      <p className="mt-1 text-2xl font-semibold">{dashState.data.totalClients ?? 0}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs text-slate-500">Ordens</p>
+                      <p className="mt-1 text-2xl font-semibold">{dashState.data.totalOrders ?? 0}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs text-slate-500">Ativas</p>
+                      <p className="mt-1 text-2xl font-semibold">{dashState.data.totalAtivas ?? 0}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs text-slate-500">Concluídas</p>
+                      <p className="mt-1 text-2xl font-semibold">{dashState.data.totalConcluidas ?? 0}</p>
+                    </div>
+
+                    <div className="md:col-span-4 rounded-2xl border bg-white p-4">
+                      <p className="text-xs text-slate-500">Valor total previsto</p>
+                      <p className="mt-1 text-2xl font-semibold">
+                        {moneyBRL(dashState.data.totalValorPrevisto)}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        API base utilizada: <span className="font-mono">{API_BASE}</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
         </main>
       </div>
     </div>
