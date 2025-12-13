@@ -648,10 +648,28 @@ function DashboardView() {
   );
 }
 
+function useClock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const pad = (n) => String(n).padStart(2, "0");
+
+  return {
+    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+  };
+}
+
 /* ---------------------------------- App ---------------------------------- */
 export default function App() {
   const backend = useBackendStatus();
   const [view, setView] = useState("create"); // create | list | dashboard
+
+  const clock = useClock();
 
   const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
 
@@ -692,25 +710,45 @@ export default function App() {
       {/* Layout */}
       <div className="mx-auto max-w-7xl px-6 py-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* Sidebar */}
-        <aside className="rounded-2xl border bg-white shadow-sm p-4 h-fit">
-          <div className="mb-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Módulos
-            </p>
-          </div>
+        <aside className="flex h-[calc(100vh-120px)] flex-col rounded-2xl border bg-white shadow-sm p-4">
+  {/* TOPO */}
+  <div className="mb-4">
+    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+      Módulos
+    </p>
+  </div>
 
-          <div className="space-y-2">
-            {navItem("create", "Cadastro rápido (Cliente + Ordem)")}
-            {navItem("list", "Listagem (Clientes & Ordens)")}
-            {navItem("dashboard", "Dashboard financeiro")}
-          </div>
+  {/* MENU */}
+  <div className="flex-1 space-y-2">
+    {navItem("create", "Cadastro rápido (Cliente + Ordem)")}
+    {navItem("list", "Listagem (Clientes & Ordens)")}
+    {navItem("dashboard", "Dashboard financeiro")}
+  </div>
 
-          <div className="mt-4 rounded-2xl border bg-slate-50/60 p-3">
-            <p className="text-xs text-slate-600">
-              Dica: use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido.
-            </p>
-          </div>
-        </aside>
+  {/* RODAPÉ */}
+  <div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
+    {/* Data e hora */}
+    <div className="flex items-center justify-between font-mono">
+      <span>{clock.date}</span>
+      <span>{clock.time}</span>
+    </div>
+
+    {/* Usuário */}
+    <div className="flex items-center justify-between">
+      <span className="text-slate-500">Usuário</span>
+      <Badge tone="slate">Em desenvolvimento</Badge>
+    </div>
+
+    {/* Sair */}
+    <button
+      disabled
+      className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
+      title="Disponível quando o login estiver ativo"
+    >
+      Sair
+    </button>
+  </div>
+</aside>
 
         {/* Content */}
         <main className="space-y-6">
