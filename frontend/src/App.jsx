@@ -648,21 +648,6 @@ function DashboardView() {
   );
 }
 
-function useClock() {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const pad = (n) => String(n).padStart(2, "0");
-
-  return {
-    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-  };
-}
 
 /* ---------------------------------- App ---------------------------------- */
 export default function App() {
