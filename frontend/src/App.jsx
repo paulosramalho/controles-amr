@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 let logoSrc;
 try {
-  logoSrc = new URL("../../../assets/logo.png", import.meta.url).href;
+  logoSrc = new URL("../../assets/logo.png", import.meta.url).href;
 } catch {
   logoSrc = null;
 }
