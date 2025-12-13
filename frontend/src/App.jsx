@@ -669,8 +669,6 @@ export default function App() {
   const backend = useBackendStatus();
   const [view, setView] = useState("create"); // create | list | dashboard
 
-   const clock = useClock();
-
   const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
 
   const navItem = (key, label) => (
