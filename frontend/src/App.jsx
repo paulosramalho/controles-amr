@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-// Alterando para testar deploy - 16:21h
-
 /* --------------------------------- Helpers -------------------------------- */
 function cx(...parts) {
   return parts.filter(Boolean).join(" ");
