@@ -101,7 +101,7 @@ function Select({ label, children, ...props }) {
 function Button({ variant = "primary", ...props }) {
   const variants = {
     primary:
-      "bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-200 border-slate-900",
+      "bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-200 border-blue-900",
     ghost:
       "bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-200 border-slate-200",
   };
@@ -648,10 +648,27 @@ function DashboardView() {
   );
 }
 
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+  };
+}
+
 /* ---------------------------------- App ---------------------------------- */
 export default function App() {
   const backend = useBackendStatus();
   const [view, setView] = useState("create"); // create | list | dashboard
+
+  const clock = useClock();
 
   const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
 
@@ -661,7 +678,7 @@ export default function App() {
       className={cx(
         "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition",
         view === key
-          ? "bg-slate-900 text-white shadow-sm"
+          ? "bg-blue-900 text-white shadow-sm"
           : "text-slate-700 hover:bg-slate-100"
       )}
     >
@@ -692,14 +709,14 @@ export default function App() {
       {/* Layout */}
       <div className="mx-auto max-w-7xl px-6 py-6 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* Sidebar */}
-        <aside className="rounded-2xl border bg-white shadow-sm p-4 h-fit">
+         <aside className="rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-120px)] sticky top-[88px]">
           <div className="mb-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Módulos
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 flex-1">
             {navItem("create", "Cadastro rápido (Cliente + Ordem)")}
             {navItem("list", "Listagem (Clientes & Ordens)")}
             {navItem("dashboard", "Dashboard financeiro")}
@@ -710,6 +727,25 @@ export default function App() {
               Dica: use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido.
             </p>
           </div>
+<div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
+  <div className="flex items-center justify-between font-mono">
+    <span>{clock.date}</span>
+    <span>{clock.time}</span>
+  </div>
+
+  <div className="flex items-center justify-between">
+    <span className="text-slate-500">Usuário</span>
+    <Badge tone="slate">Em desenvolvimento</Badge>
+  </div>
+
+  <button
+    disabled
+    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
+    title="Disponível quando o login estiver ativo"
+  >
+    Sair
+  </button>
+</div>
         </aside>
 
         {/* Content */}
