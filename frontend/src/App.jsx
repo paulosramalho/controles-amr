@@ -648,7 +648,6 @@ function DashboardView() {
   );
 }
 
-
 /* ---------------------------------- App ---------------------------------- */
 export default function App() {
   const backend = useBackendStatus();
