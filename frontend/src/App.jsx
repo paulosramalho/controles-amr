@@ -1,3 +1,5 @@
+// Para teste de Deploy - 13/12/25 - 16:36h
+
 import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
