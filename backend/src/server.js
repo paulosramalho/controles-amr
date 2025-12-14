@@ -102,7 +102,6 @@ function serializeCliente(c) {
     ...c,
     createdAtBR: formatDateBR(c.createdAt),
     updatedAtBR: formatDateBR(c.updatedAt),
-    // telefone e cpfCnpj ficam “crus” (numéricos) no backend; máscara é do frontend
     ordens: Array.isArray(c.ordens) ? c.ordens.map(serializeOrdem) : c.ordens,
   };
 }
@@ -115,7 +114,6 @@ function serializeOrdem(o) {
     updatedAtBR: formatDateBR(o.updatedAt),
     dataInicioBR: formatDateBR(o.dataInicio),
     dataFimPrevistaBR: formatDateBR(o.dataFimPrevista),
-    // valores limpos (Number) + exibível opcional
     valorTotalPrevisto: valorNum,
     valorTotalPrevistoBR: valorNum === null ? null : formatBRL(valorNum),
   };
@@ -132,50 +130,34 @@ function calcAnoMes(date) {
 
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
-   Tudo aqui é temporário e pode ser removido depois.
-   - Não quebra o app se faltar dependência (bcrypt/jwt).
-   - Vai funcionar de verdade quando schema.prisma tiver model Usuario.
 ========================= */
 
 const JWT_SECRET = process.env.JWT_SECRET || "DEV_ONLY_CHANGE_ME";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
-// Lazy-load libs: não derruba o servidor se você ainda não instalou.
+// Lazy-load libs
 let _bcrypt = null;
 let _jwt = null;
 
 async function getAuthLibs() {
   if (!_bcrypt) {
-    try {
-      const mod = await import("bcryptjs");
-      _bcrypt = mod.default || mod;
-    } catch {
-      throw new Error(
-        "Dependência faltando: bcryptjs. Instale no backend: npm i bcryptjs"
-      );
-    }
+    const mod = await import("bcryptjs");
+    _bcrypt = mod.default || mod;
   }
   if (!_jwt) {
-    try {
-      const mod = await import("jsonwebtoken");
-      _jwt = mod.default || mod;
-    } catch {
-      throw new Error(
-        "Dependência faltando: jsonwebtoken. Instale no backend: npm i jsonwebtoken"
-      );
-    }
+    const mod = await import("jsonwebtoken");
+    _jwt = mod.default || mod;
   }
   return { bcrypt: _bcrypt, jwt: _jwt };
 }
 
-// Sanitiza usuário para responder ao frontend
 function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id,
     nome: u.nome,
     email: u.email,
-    role: u.role, // "ADMIN" | "USER"
+    role: u.role,
     ativo: u.ativo,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
@@ -199,34 +181,33 @@ async function attachUserIfPresent(req, _res, next) {
     const { jwt } = await getAuthLibs();
     const payload = jwt.verify(token, JWT_SECRET);
 
-    // Se o schema ainda não tiver Usuario, isso vai dar erro -> ignoramos (não quebra).
+    // Se o schema ainda não tiver Usuario, não quebra
     if (!prisma.usuario) return next();
 
-    const u = await prisma.usuario.findUnique({ where: { id: payload.sub } });
+    // ✅ CORREÇÃO CRÍTICA:
+    // payload.sub vem como string (ex: "1") e o Prisma espera Int.
+    const userId = Number(payload.sub);
+    if (!Number.isFinite(userId)) return next();
+
+    const u = await prisma.usuario.findUnique({ where: { id: userId } });
     if (u && u.ativo) req.user = publicUser(u);
   } catch {
-    // token inválido, expirado, libs faltando, etc — não trava a navegação
+    // token inválido/expirado etc — não trava a navegação pública
   }
   return next();
 }
 
 app.use(attachUserIfPresent);
 
-// Middleware: exige login
 function requireAuth(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({ message: "Não autenticado." });
-  }
+  if (!req.user) return res.status(401).json({ message: "Não autenticado." });
   return next();
 }
 
-// Middleware: exige role
 function requireRole(role) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ message: "Não autenticado." });
-    if (req.user.role !== role) {
-      return res.status(403).json({ message: "Acesso negado." });
-    }
+    if (req.user.role !== role) return res.status(403).json({ message: "Acesso negado." });
     return next();
   };
 }
@@ -235,8 +216,7 @@ function requireRole(role) {
    ROTAS
 ========================= */
 
-// Health check
-app.get("/api/health", async (req, res) => {
+app.get("/api/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", message: "Controles-AMR backend ativo", db: "ok" });
@@ -247,20 +227,14 @@ app.get("/api/health", async (req, res) => {
 });
 
 /* =========================
-   AUTH — ROTAS (ADMIN/USER)
+   AUTH — ROTAS
 ========================= */
 
-/**
- * POST /api/auth/login
- * Body: { email, senha }
- * Retorna: { token, user }
- */
 app.post("/api/auth/login", async (req, res) => {
   try {
     if (!prisma.usuario) {
       return res.status(501).json({
-        message:
-          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
       });
     }
 
@@ -269,9 +243,7 @@ app.post("/api/auth/login", async (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const senha = String(req.body?.senha || "");
 
-    if (!email || !senha) {
-      return res.status(400).json({ message: "Informe email e senha." });
-    }
+    if (!email || !senha) return res.status(400).json({ message: "Informe email e senha." });
 
     const u = await prisma.usuario.findUnique({ where: { email } });
     if (!u || !u.ativo) return res.status(401).json({ message: "Credenciais inválidas." });
@@ -288,29 +260,19 @@ app.post("/api/auth/login", async (req, res) => {
     return res.json({ token, user: publicUser(u) });
   } catch (err) {
     console.error("Erro no login:", err);
-    return res.status(501).json({ message: err.message || "Login indisponível." });
+    return res.status(500).json({ message: "Erro no login" });
   }
 });
 
-/**
- * GET /api/auth/me
- * Header: Authorization: Bearer <token>
- */
 app.get("/api/auth/me", requireAuth, async (req, res) => {
   return res.json({ user: req.user });
 });
 
-/**
- * POST /api/auth/change-password
- * Header: Authorization: Bearer <token>
- * Body: { senhaAtual, novaSenha }
- */
 app.post("/api/auth/change-password", requireAuth, async (req, res) => {
   try {
     if (!prisma.usuario) {
       return res.status(501).json({
-        message:
-          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
       });
     }
 
@@ -342,21 +304,15 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     return res.json({ message: "Senha alterada com sucesso." });
   } catch (err) {
     console.error("Erro ao trocar senha:", err);
-    return res.status(501).json({ message: err.message || "Troca de senha indisponível." });
+    return res.status(500).json({ message: "Erro ao trocar senha" });
   }
 });
 
-/**
- * ADMIN: criar usuário (pra já testarmos as duas visões)
- * POST /api/admin/users
- * Body: { nome, email, role, senhaInicial }
- */
 app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
   try {
     if (!prisma.usuario) {
       return res.status(501).json({
-        message:
-          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
       });
     }
 
@@ -364,7 +320,7 @@ app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
 
     const nome = String(req.body?.nome || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
-    const role = String(req.body?.role || "USER").toUpperCase(); // ADMIN | USER
+    const role = String(req.body?.role || "USER").toUpperCase();
     const senhaInicial = String(req.body?.senhaInicial || "");
 
     if (!nome || !email || !senhaInicial) {
@@ -374,38 +330,27 @@ app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
       return res.status(400).json({ message: 'role inválido. Use "ADMIN" ou "USER".' });
     }
     if (senhaInicial.length < 8) {
-      return res
-        .status(400)
-        .json({ message: "senhaInicial deve ter no mínimo 8 caracteres." });
+      return res.status(400).json({ message: "senhaInicial deve ter no mínimo 8 caracteres." });
     }
 
     const senhaHash = await bcrypt.hash(senhaInicial, 10);
 
     const created = await prisma.usuario.create({
-      data: {
-        nome,
-        email,
-        role,
-        senhaHash,
-        ativo: true,
-      },
+      data: { nome, email, role, senhaHash, ativo: true },
     });
 
     return res.status(201).json({ user: publicUser(created) });
   } catch (err) {
     console.error("Erro ao criar usuário:", err);
-    // se email for unique e já existir, Prisma vai reclamar
     return res.status(500).json({ message: "Erro ao criar usuário", error: err.message });
   }
 });
 
 /* =========================
-   DADOS — ROTAS EXISTENTES
-   (mantidas e compatíveis)
+   DADOS — ROTAS
 ========================= */
 
-// LISTAR CLIENTES
-app.get("/api/clients", async (req, res) => {
+app.get("/api/clients", async (_req, res) => {
   try {
     const clientes = await prisma.cliente.findMany({
       orderBy: { nomeRazaoSocial: "asc" },
@@ -417,8 +362,7 @@ app.get("/api/clients", async (req, res) => {
   }
 });
 
-// LISTAR ORDENS DE PAGAMENTO
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", async (_req, res) => {
   try {
     const ordens = await prisma.ordemPagamento.findMany({
       include: { cliente: true },
@@ -437,8 +381,7 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
-// LISTAR MODELOS DE DISTRIBUIÇÃO (A–G)
-app.get("/api/config/distribution-models", async (req, res) => {
+app.get("/api/config/distribution-models", async (_req, res) => {
   try {
     const modelos = await prisma.modeloDistribuicao.findMany({
       orderBy: [{ codigo: "asc" }, { id: "asc" }],
@@ -450,7 +393,6 @@ app.get("/api/config/distribution-models", async (req, res) => {
   }
 });
 
-// CRIAR CLIENTE + ORDEM (num tiro só)
 app.post("/api/clients-and-orders", async (req, res) => {
   const { client, order } = req.body;
 
@@ -464,12 +406,10 @@ app.post("/api/clients-and-orders", async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       let cliente;
 
-      // Se veio client.id, usamos cliente existente
       if (client.id) {
         cliente = await tx.cliente.findUnique({ where: { id: client.id } });
         if (!cliente) throw new Error("Cliente informado não existe.");
       } else {
-        // Normalizações básicas (backend guarda limpo)
         const cpfCnpj = client.cpfCnpj ? onlyDigits(client.cpfCnpj) : "";
         const telefone = client.telefone ? onlyDigits(client.telefone) : null;
 
@@ -485,19 +425,16 @@ app.post("/api/clients-and-orders", async (req, res) => {
         });
       }
 
-      // próxima sequência por cliente
       const ultimaOrdem = await tx.ordemPagamento.findFirst({
         where: { clienteId: cliente.id },
         orderBy: { sequenciaCliente: "desc" },
       });
       const proximaSequencia = (ultimaOrdem?.sequenciaCliente ?? 0) + 1;
 
-      // Datas: aceitar DD/MM/AAAA / YYYY-MM-DD / ISO
       const dataInicio = parseDateInput(order.dataInicio);
       const anoMesInicio = calcAnoMes(dataInicio);
       const dataFimPrevista = parseDateInput(order.dataFimPrevista);
 
-      // Valor: sempre numérico limpo
       const valor = toNumberOrNull(order.valorTotalPrevisto);
 
       const novaOrdem = await tx.ordemPagamento.create({
@@ -512,7 +449,6 @@ app.post("/api/clients-and-orders", async (req, res) => {
           dataInicio: dataInicio ?? new Date(),
           dataFimPrevista,
           status: order.status ?? "ATIVA",
-          // se existir no schema:
           anoMesInicio: anoMesInicio ?? null,
         },
       });
@@ -533,7 +469,6 @@ app.post("/api/clients-and-orders", async (req, res) => {
   }
 });
 
-// LISTAGEM DE CLIENTES + ORDENS COM FILTROS
 app.get("/api/clients-with-orders", async (req, res) => {
   const search = req.query.q ?? req.query.search;
   const status = req.query.status;
@@ -578,8 +513,6 @@ app.get("/api/clients-with-orders", async (req, res) => {
       orderBy: { nomeRazaoSocial: "asc" },
     });
 
-    // TODO (Fase Users): se req.user.role === "USER", filtrar por escopo do usuário
-    // Ex.: limitar por advogadoId/usuarioId relacionado ao movimento.
     res.json(clientes.map(serializeCliente));
   } catch (err) {
     console.error("Erro ao listar clientes + ordens:", err);
@@ -587,8 +520,7 @@ app.get("/api/clients-with-orders", async (req, res) => {
   }
 });
 
-// DASHBOARD FINANCEIRO (RESUMO)
-app.get("/api/dashboard/summary", async (req, res) => {
+app.get("/api/dashboard/summary", async (_req, res) => {
   try {
     const [totalClients, totalOrders, totalAtivas, totalConcluidas, sumValores] =
       await Promise.all([
@@ -618,7 +550,6 @@ app.get("/api/dashboard/summary", async (req, res) => {
       )
       .catch(() => []);
 
-    // TODO (Fase Users): se req.user.role === "USER", filtrar por escopo do usuário
     res.json({
       totalClients,
       totalOrders,
