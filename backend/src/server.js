@@ -138,7 +138,7 @@ async function attachUserIfPresent(req, _res, next) {
     const { jwt } = await getAuthLibs();
     const payload = jwt.verify(token, JWT_SECRET);
     console.log("Payload decodificado:", payload); // Verifica se o payload é válido
-    ...
+   
   } catch (err) {
     console.error("Erro ao validar token:", err);
   }
