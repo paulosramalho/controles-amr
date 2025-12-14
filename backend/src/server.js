@@ -1,3 +1,4 @@
+// backend/src/server.js
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
@@ -130,6 +131,107 @@ function calcAnoMes(date) {
 }
 
 /* =========================
+   AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
+   Tudo aqui é temporário e pode ser removido depois.
+   - Não quebra o app se faltar dependência (bcrypt/jwt).
+   - Vai funcionar de verdade quando schema.prisma tiver model Usuario.
+========================= */
+
+const JWT_SECRET = process.env.JWT_SECRET || "DEV_ONLY_CHANGE_ME";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+
+// Lazy-load libs: não derruba o servidor se você ainda não instalou.
+let _bcrypt = null;
+let _jwt = null;
+
+async function getAuthLibs() {
+  if (!_bcrypt) {
+    try {
+      const mod = await import("bcryptjs");
+      _bcrypt = mod.default || mod;
+    } catch {
+      throw new Error(
+        "Dependência faltando: bcryptjs. Instale no backend: npm i bcryptjs"
+      );
+    }
+  }
+  if (!_jwt) {
+    try {
+      const mod = await import("jsonwebtoken");
+      _jwt = mod.default || mod;
+    } catch {
+      throw new Error(
+        "Dependência faltando: jsonwebtoken. Instale no backend: npm i jsonwebtoken"
+      );
+    }
+  }
+  return { bcrypt: _bcrypt, jwt: _jwt };
+}
+
+// Sanitiza usuário para responder ao frontend
+function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    role: u.role, // "ADMIN" | "USER"
+    ativo: u.ativo,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+    createdAtBR: formatDateBR(u.createdAt),
+    updatedAtBR: formatDateBR(u.updatedAt),
+  };
+}
+
+function getBearerToken(req) {
+  const h = req.headers.authorization || "";
+  const m = String(h).match(/^Bearer\s+(.+)$/i);
+  return m ? m[1] : null;
+}
+
+// Middleware: tenta anexar user se token existir (não obriga)
+async function attachUserIfPresent(req, _res, next) {
+  const token = getBearerToken(req);
+  if (!token) return next();
+
+  try {
+    const { jwt } = await getAuthLibs();
+    const payload = jwt.verify(token, JWT_SECRET);
+
+    // Se o schema ainda não tiver Usuario, isso vai dar erro -> ignoramos (não quebra).
+    if (!prisma.usuario) return next();
+
+    const u = await prisma.usuario.findUnique({ where: { id: payload.sub } });
+    if (u && u.ativo) req.user = publicUser(u);
+  } catch {
+    // token inválido, expirado, libs faltando, etc — não trava a navegação
+  }
+  return next();
+}
+
+app.use(attachUserIfPresent);
+
+// Middleware: exige login
+function requireAuth(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Não autenticado." });
+  }
+  return next();
+}
+
+// Middleware: exige role
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: "Não autenticado." });
+    if (req.user.role !== role) {
+      return res.status(403).json({ message: "Acesso negado." });
+    }
+    return next();
+  };
+}
+
+/* =========================
    ROTAS
 ========================= */
 
@@ -144,14 +246,170 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+/* =========================
+   AUTH — ROTAS (ADMIN/USER)
+========================= */
+
+/**
+ * POST /api/auth/login
+ * Body: { email, senha }
+ * Retorna: { token, user }
+ */
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message:
+          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt, jwt } = await getAuthLibs();
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const senha = String(req.body?.senha || "");
+
+    if (!email || !senha) {
+      return res.status(400).json({ message: "Informe email e senha." });
+    }
+
+    const u = await prisma.usuario.findUnique({ where: { email } });
+    if (!u || !u.ativo) return res.status(401).json({ message: "Credenciais inválidas." });
+
+    const ok = await bcrypt.compare(senha, u.senhaHash);
+    if (!ok) return res.status(401).json({ message: "Credenciais inválidas." });
+
+    const token = jwt.sign(
+      { role: u.role },
+      JWT_SECRET,
+      { subject: String(u.id), expiresIn: JWT_EXPIRES_IN }
+    );
+
+    return res.json({ token, user: publicUser(u) });
+  } catch (err) {
+    console.error("Erro no login:", err);
+    return res.status(501).json({ message: err.message || "Login indisponível." });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Header: Authorization: Bearer <token>
+ */
+app.get("/api/auth/me", requireAuth, async (req, res) => {
+  return res.json({ user: req.user });
+});
+
+/**
+ * POST /api/auth/change-password
+ * Header: Authorization: Bearer <token>
+ * Body: { senhaAtual, novaSenha }
+ */
+app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message:
+          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const senhaAtual = String(req.body?.senhaAtual || "");
+    const novaSenha = String(req.body?.novaSenha || "");
+
+    if (!senhaAtual || !novaSenha) {
+      return res.status(400).json({ message: "Informe senha atual e nova senha." });
+    }
+    if (novaSenha.length < 8) {
+      return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+    }
+
+    const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
+    if (!u || !u.ativo) return res.status(401).json({ message: "Usuário inválido." });
+
+    const ok = await bcrypt.compare(senhaAtual, u.senhaHash);
+    if (!ok) return res.status(401).json({ message: "Senha atual inválida." });
+
+    const novoHash = await bcrypt.hash(novaSenha, 10);
+
+    await prisma.usuario.update({
+      where: { id: u.id },
+      data: { senhaHash: novoHash },
+    });
+
+    return res.json({ message: "Senha alterada com sucesso." });
+  } catch (err) {
+    console.error("Erro ao trocar senha:", err);
+    return res.status(501).json({ message: err.message || "Troca de senha indisponível." });
+  }
+});
+
+/**
+ * ADMIN: criar usuário (pra já testarmos as duas visões)
+ * POST /api/admin/users
+ * Body: { nome, email, role, senhaInicial }
+ */
+app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message:
+          "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = String(req.body?.nome || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const role = String(req.body?.role || "USER").toUpperCase(); // ADMIN | USER
+    const senhaInicial = String(req.body?.senhaInicial || "");
+
+    if (!nome || !email || !senhaInicial) {
+      return res.status(400).json({ message: "Informe nome, email e senhaInicial." });
+    }
+    if (!["ADMIN", "USER"].includes(role)) {
+      return res.status(400).json({ message: 'role inválido. Use "ADMIN" ou "USER".' });
+    }
+    if (senhaInicial.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "senhaInicial deve ter no mínimo 8 caracteres." });
+    }
+
+    const senhaHash = await bcrypt.hash(senhaInicial, 10);
+
+    const created = await prisma.usuario.create({
+      data: {
+        nome,
+        email,
+        role,
+        senhaHash,
+        ativo: true,
+      },
+    });
+
+    return res.status(201).json({ user: publicUser(created) });
+  } catch (err) {
+    console.error("Erro ao criar usuário:", err);
+    // se email for unique e já existir, Prisma vai reclamar
+    return res.status(500).json({ message: "Erro ao criar usuário", error: err.message });
+  }
+});
+
+/* =========================
+   DADOS — ROTAS EXISTENTES
+   (mantidas e compatíveis)
+========================= */
+
 // LISTAR CLIENTES
 app.get("/api/clients", async (req, res) => {
   try {
     const clientes = await prisma.cliente.findMany({
       orderBy: { nomeRazaoSocial: "asc" },
     });
-
-    // Adiciona campos BR sem quebrar
     res.json(clientes.map((c) => serializeCliente({ ...c, ordens: [] })));
   } catch (err) {
     console.error("Erro ao listar clientes:", err);
@@ -190,11 +448,6 @@ app.get("/api/config/distribution-models", async (req, res) => {
     console.error("Erro ao listar modelos de distribuição:", err);
     res.status(500).json({ message: "Erro ao listar modelos de distribuição" });
   }
-});
-
-// Login (placeholder)
-app.post("/api/auth/login", (req, res) => {
-  res.status(501).json({ message: "Login ainda não implementado." });
 });
 
 // CRIAR CLIENTE + ORDEM (num tiro só)
@@ -259,13 +512,14 @@ app.post("/api/clients-and-orders", async (req, res) => {
           dataInicio: dataInicio ?? new Date(),
           dataFimPrevista,
           status: order.status ?? "ATIVA",
+          // se existir no schema:
+          anoMesInicio: anoMesInicio ?? null,
         },
       });
 
       return { cliente, ordem: novaOrdem };
     });
 
-    // devolve com campos BR + valor numérico
     res.status(201).json({
       cliente: serializeCliente({ ...result.cliente, ordens: [] }),
       ordem: serializeOrdem(result.ordem),
@@ -281,7 +535,6 @@ app.post("/api/clients-and-orders", async (req, res) => {
 
 // LISTAGEM DE CLIENTES + ORDENS COM FILTROS
 app.get("/api/clients-with-orders", async (req, res) => {
-  // aceita aliases: q OU search
   const search = req.query.q ?? req.query.search;
   const status = req.query.status;
   const fromDate = req.query.fromDate;
@@ -308,7 +561,6 @@ app.get("/api/clients-with-orders", async (req, res) => {
       if (from) whereOrder.dataInicio.gte = from;
 
       if (to) {
-        // inclui o dia inteiro
         const end = new Date(to);
         end.setUTCHours(23, 59, 59, 999);
         whereOrder.dataInicio.lte = end;
@@ -326,6 +578,8 @@ app.get("/api/clients-with-orders", async (req, res) => {
       orderBy: { nomeRazaoSocial: "asc" },
     });
 
+    // TODO (Fase Users): se req.user.role === "USER", filtrar por escopo do usuário
+    // Ex.: limitar por advogadoId/usuarioId relacionado ao movimento.
     res.json(clientes.map(serializeCliente));
   } catch (err) {
     console.error("Erro ao listar clientes + ordens:", err);
@@ -345,10 +599,8 @@ app.get("/api/dashboard/summary", async (req, res) => {
         prisma.ordemPagamento.aggregate({ _sum: { valorTotalPrevisto: true } }),
       ]);
 
-    // normaliza soma para Number
     const totalValorPrevisto = toNumberOrNull(sumValores?._sum?.valorTotalPrevisto) ?? 0;
 
-    // tentativa de groupBy opcional
     const ordensPorMes = await prisma.ordemPagamento
       .groupBy({
         by: ["anoMesInicio"],
@@ -358,7 +610,6 @@ app.get("/api/dashboard/summary", async (req, res) => {
       .then((rows) =>
         rows.map((r) => ({
           ...r,
-          // normaliza soma
           _sum: {
             ...r._sum,
             valorTotalPrevisto: toNumberOrNull(r?._sum?.valorTotalPrevisto) ?? 0,
@@ -367,13 +618,14 @@ app.get("/api/dashboard/summary", async (req, res) => {
       )
       .catch(() => []);
 
+    // TODO (Fase Users): se req.user.role === "USER", filtrar por escopo do usuário
     res.json({
       totalClients,
       totalOrders,
       totalAtivas,
       totalConcluidas,
-      totalValorPrevisto,          // numérico limpo
-      totalValorPrevistoBR: formatBRL(totalValorPrevisto), // exibição opcional
+      totalValorPrevisto,
+      totalValorPrevistoBR: formatBRL(totalValorPrevisto),
       ordensPorMes,
     });
   } catch (err) {
