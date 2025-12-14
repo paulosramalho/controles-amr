@@ -343,6 +343,13 @@ function LoadingOverlay() {
   );
 }
 
+function saudacaoPorHorario(date = new Date()) {
+  const h = date.getHours();
+  if (h >= 5 && h < 12) return "Bom dia";
+  if (h >= 12 && h < 18) return "Boa tarde";
+  return "Boa noite"; // 18:00–04:59
+}
+
 /** =========================
  *  APP
  *  ========================= */
@@ -1043,8 +1050,9 @@ export default function App() {
               {restModalStep === "postpone" && (
                 <>
                   <p className="text-sm text-slate-800">
-                    Ok. Informe a nova hora (HH:MM:SS) e eu volto a contar.
-                  </p>
+  {saudacaoPorHorario(clock.now)} 🌙<br />
+  Descanse. Depois a gente continua.
+</p>
 
                   <label className="block">
                     <span className="block text-xs font-medium text-slate-700">Nova hora</span>
