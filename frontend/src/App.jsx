@@ -153,9 +153,51 @@ function useClock() {
   }, []);
   const pad = (n) => String(n).padStart(2, "0");
   return {
+    now, // ✅ mantém Date disponível (útil p/ [TEMP-REST])
     date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
   };
+}
+
+/** =========================
+ *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
+ *  - Correção principal: quando diff<=0, NÃO resetar step a cada tick
+ *  - Usa trava restFiredAt para disparar UMA vez por alvo
+ *  ========================= */
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function parseTimeToHMS(timeStr = "") {
+  const parts = String(timeStr).split(":").map((x) => Number(x));
+  if (parts.length < 2) return null;
+  const [h, m, s = 0] = parts;
+  if ([h, m, s].some((n) => Number.isNaN(n))) return null;
+  if (h < 0 || h > 23) return null;
+  if (m < 0 || m > 59) return null;
+  if (s < 0 || s > 59) return null;
+  return { h, m, s };
+}
+
+function buildNextTargetDate(timeStr, now = new Date()) {
+  const hms = parseTimeToHMS(timeStr);
+  if (!hms) return null;
+
+  const target = new Date(now);
+  target.setHours(hms.h, hms.m, hms.s, 0);
+
+  // se já passou hoje, agenda para amanhã
+  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  return target;
+}
+
+function msToHHMMSS(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
 
 /** =========================
@@ -369,6 +411,39 @@ export default function App() {
 
   const [dashState, setDashState] = useState({ loading: false, error: "", data: null });
 
+  // [TEMP-REST] -------------------------------------------------
+  // DESCANSO (TEMPORÁRIO) — tudo aqui será removido ao final
+  // -------------------------------------------------------------
+  const [restTime, setRestTime] = useState(""); // HH:MM:SS
+  const [restTarget, setRestTarget] = useState(null); // Date
+  const [restCountdown, setRestCountdown] = useState("00:00:00");
+  const [restModalOpen, setRestModalOpen] = useState(false);
+  const [restModalStep, setRestModalStep] = useState("prompt"); // prompt | postpone | goodnight
+  const [restPostponeTime, setRestPostponeTime] = useState("");
+  const [restFiredAt, setRestFiredAt] = useState(null); // trava para não re-disparar
+
+  useEffect(() => {
+    if (!restTarget) return;
+
+    const tick = () => {
+      const n = new Date();
+      const diff = restTarget.getTime() - n.getTime();
+      setRestCountdown(msToHHMMSS(diff));
+
+      // ✅ dispara só uma vez por alvo e NÃO reseta o step a cada segundo
+      if (diff <= 0 && !restFiredAt) {
+        setRestFiredAt(n);
+        setRestModalOpen(true);
+        setRestModalStep("prompt");
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [restTarget, restFiredAt]);
+  // [/TEMP-REST] -----------------------------------------------
+
   async function createClientAndOrder() {
     setDocTouched(true);
     setPhoneTouched(true);
@@ -541,6 +616,64 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL) */}
+                <div className="mt-5 rounded-2xl border bg-slate-50 p-3">
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Descanso (temporário)
+                  </p>
+
+                  <div className="mt-2 space-y-2">
+                    <label className="block">
+                      <span className="block text-xs font-medium text-slate-700">Hora de descansar</span>
+                      <input
+                        type="time"
+                        step="1"
+                        value={restTime}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRestTime(v);
+
+                          const next = buildNextTargetDate(v, new Date());
+                          setRestTarget(next);
+
+                          // rearmar disparo para o novo alvo
+                          setRestFiredAt(null);
+
+                          // se estava em modal, fecha (novo alvo)
+                          setRestModalOpen(false);
+                          setRestModalStep("prompt");
+                        }}
+                        className={cx(
+                          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
+                          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        )}
+                      />
+                      <span className="mt-1 block text-[11px] text-slate-500">
+                        Tudo aqui é temporário e será removido ao final.
+                      </span>
+                    </label>
+
+                    <div className="rounded-xl border bg-white px-3 py-2">
+                      <div className="flex items-center justify-between text-xs text-slate-600">
+                        <span>Hora escolhida</span>
+                        <span className="font-mono text-slate-900">
+                          {restTarget
+                            ? `${pad2(restTarget.getHours())}:${pad2(restTarget.getMinutes())}:${pad2(
+                                restTarget.getSeconds()
+                              )}`
+                            : "—"}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                        <span>Regressivo</span>
+                        <span className="font-mono text-slate-900">{restTarget ? restCountdown : "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* [/TEMP-REST] */}
               </div>
 
               {/* Sidebar footer: DATA (DD/MM/AAAA) + HORA (HH:MM:SS) */}
@@ -762,7 +895,6 @@ export default function App() {
                             <td className="px-4 py-3 font-mono text-xs">{formatCpfCnpj(c.cpfCnpj)}</td>
                             <td className="px-4 py-3">
                               <div className="text-xs text-slate-700">{c.email || "—"}</div>
-                              {/* ✅ TELEFONE MASCARADO NA LISTAGEM (Diretriz 7) */}
                               <div className="text-xs text-slate-500">
                                 {c.telefone ? formatTelefoneBR(c.telefone) : "—"}
                               </div>
@@ -859,6 +991,127 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* [TEMP-REST] MODAL — TEMPORÁRIO (REMOVER AO FINAL) */}
+      {restModalOpen && (
+        <div className="fixed inset-0 z-[999] grid place-items-center bg-black/40 backdrop-blur-sm">
+          <div className="w-[min(520px,92vw)] rounded-2xl border bg-white shadow-lg">
+            <div className="border-b px-5 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Hora de descansar</h3>
+              <p className="mt-1 text-xs text-slate-500">Alerta temporário — remover ao final.</p>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {restModalStep === "prompt" && (
+                <>
+                  <p className="text-sm text-slate-800">
+                    Chegou a hora escolhida. Você deve ir descansar agora.
+                  </p>
+
+                  <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                    <div className="flex justify-between">
+                      <span>Agora</span>
+                      <span className="font-mono">{clock.time}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between">
+                      <span>Regressivo</span>
+                      <span className="font-mono">{restCountdown}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                    <button
+                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-900 hover:bg-slate-200"
+                      onClick={() => {
+                        setRestModalStep("postpone");
+                        setRestPostponeTime(restTime || "");
+                      }}
+                    >
+                      Postergar (excepcionalmente)
+                    </button>
+
+                    <button
+                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
+                      onClick={() => setRestModalStep("goodnight")}
+                    >
+                      Não, vou descansar
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {restModalStep === "postpone" && (
+                <>
+                  <p className="text-sm text-slate-800">
+                    Ok. Informe a nova hora (HH:MM:SS) e eu volto a contar.
+                  </p>
+
+                  <label className="block">
+                    <span className="block text-xs font-medium text-slate-700">Nova hora</span>
+                    <input
+                      type="time"
+                      step="1"
+                      value={restPostponeTime}
+                      onChange={(e) => setRestPostponeTime(e.target.value)}
+                      className={cx(
+                        "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
+                        "focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      )}
+                    />
+                  </label>
+
+                  <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                    <button
+                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-900 hover:bg-slate-200"
+                      onClick={() => setRestModalStep("prompt")}
+                    >
+                      Voltar
+                    </button>
+
+                    <button
+                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
+                      onClick={() => {
+                        const next = buildNextTargetDate(restPostponeTime, new Date());
+                        if (next) {
+                          setRestTime(restPostponeTime);
+                          setRestTarget(next);
+                          setRestFiredAt(null); // rearmar para o novo alvo
+                          setRestModalOpen(false);
+                          setRestModalStep("prompt");
+                        }
+                      }}
+                    >
+                      Confirmar nova hora
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {restModalStep === "goodnight" && (
+                <>
+                  <p className="text-sm text-slate-800">
+                    Boa noite 🌙<br />
+                    Descanse. Amanhã a gente continua.
+                  </p>
+
+                  <div className="flex justify-end">
+                    <button
+                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
+                      onClick={() => {
+                        // não zerar restFiredAt aqui (senão reabre instantâneo)
+                        setRestModalOpen(false);
+                      }}
+                    >
+                      Retornar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* [/TEMP-REST] */}
     </div>
   );
 }
