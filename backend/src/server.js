@@ -128,7 +128,7 @@ function calcAnoMes(date) {
   return `${y}-${m}`;
 }
 
-function attachUserIfPresent(req, _res, next) {
+async function attachUserIfPresent(req, _res, next) {
   const token = getBearerToken(req);
   console.log("Token recebido:", token); // Verifica se o token chegou
 
