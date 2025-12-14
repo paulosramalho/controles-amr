@@ -153,7 +153,7 @@ function useClock() {
   }, []);
   const pad = (n) => String(n).padStart(2, "0");
   return {
-    now, // ✅ mantém Date disponível (útil p/ [TEMP-REST])
+    now,
     date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
   };
@@ -161,8 +161,6 @@ function useClock() {
 
 /** =========================
  *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
- *  - Correção principal: quando diff<=0, NÃO resetar step a cada tick
- *  - Usa trava restFiredAt para disparar UMA vez por alvo
  *  ========================= */
 
 function pad2(n) {
@@ -198,6 +196,13 @@ function msToHHMMSS(ms) {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+
+function saudacaoComIcone(date = new Date()) {
+  const h = date.getHours();
+  if (h >= 5 && h < 12) return { text: "Bom dia", icon: "☀️" };
+  if (h >= 12 && h < 18) return { text: "Boa tarde", icon: "🌤️" };
+  return { text: "Boa noite", icon: "🌙" };
 }
 
 /** =========================
@@ -237,6 +242,28 @@ const Icon = {
         strokeWidth="2"
         strokeLinejoin="round"
       />
+    </svg>
+  ),
+  user: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path
+        d="M20 21a8 8 0 1 0-16 0"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  ),
+  logout: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path d="M10 17l-1 0a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M15 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 12H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   ),
 };
@@ -320,6 +347,7 @@ function Button({ variant = "primary", children, ...props }) {
     primary: "bg-blue-900 text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-200",
     secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
     ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
+    danger: "bg-red-600 text-white hover:bg-red-500 focus:ring-2 focus:ring-red-200",
   };
   return (
     <button
@@ -331,31 +359,43 @@ function Button({ variant = "primary", children, ...props }) {
   );
 }
 
-function LoadingOverlay() {
+function LoadingOverlay({ title = "Carregando…", subtitle = "Aguarde" }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-white/80 backdrop-blur">
       <div className="rounded-2xl border bg-white px-6 py-5 shadow-sm text-center">
         <img src={logoSrc} alt="AMR Advogados" className="mx-auto h-10 w-auto max-w-[240px] object-contain" />
-        <p className="mt-3 text-sm font-medium text-slate-900">Carregando…</p>
-        <p className="mt-1 text-xs text-slate-500">Conectando ao backend</p>
+        <p className="mt-3 text-sm font-medium text-slate-900">{title}</p>
+        <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       </div>
     </div>
   );
 }
 
-function saudacaoPorHorario(date = new Date()) {
-  const h = date.getHours();
-  if (h >= 5 && h < 12) return "Bom dia";
-  if (h >= 12 && h < 18) return "Boa tarde";
-  return "Boa noite"; // 18:00–04:59
+/** =========================
+ *  AUTH — localStorage + Bearer token
+ *  =========================
+ *  - Token guardado em localStorage (por enquanto)
+ *  - Validação em /api/auth/me
+ *  - Sidebar e layout variam por role (ADMIN | USER)
+ *  ========================= */
+
+const TOKEN_KEY = "amr_token";
+
+function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 
-function saudacaoComIcone(date = new Date()) {
-  const h = date.getHours();
-
-  if (h >= 5 && h < 12) return { text: "Bom dia", icon: "☀️" };
-  if (h >= 12 && h < 18) return { text: "Boa tarde", icon: "🌤️" };
-  return { text: "Boa noite", icon: "🌙" };
+function setStoredToken(token) {
+  try {
+    if (!token) localStorage.removeItem(TOKEN_KEY);
+    else localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // noop
+  }
 }
 
 /** =========================
@@ -366,19 +406,26 @@ export default function App() {
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
   const clock = useClock();
 
-  const [view, setView] = useState("create");
+  // ✅ Auth state
+  const [auth, setAuth] = useState({
+    status: "checking", // checking | anon | authed
+    token: "",
+    user: null, // { id, nome, email, role }
+    error: "",
+  });
 
-  const viewTitle = useMemo(
-    () => ({
-      create: "Cadastro rápido",
-      list: "Clientes & Ordens",
-      dashboard: "Dashboard financeiro",
-    }),
-    []
-  );
-
+  // ✅ Backend health
   const [backend, setBackend] = useState({ loading: true, label: "verificando" });
 
+  // ✅ API helper com Authorization automático
+  async function apiFetch(path, options = {}) {
+    const token = auth.token || getStoredToken();
+    const headers = new Headers(options.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(`${API_BASE}${path}`, { ...options, headers });
+  }
+
+  // 1) health
   useEffect(() => {
     let alive = true;
     async function ping() {
@@ -398,6 +445,74 @@ export default function App() {
     };
   }, [API_BASE]);
 
+  // 2) auth bootstrap (token -> /me)
+  useEffect(() => {
+    let alive = true;
+
+    async function bootAuth() {
+      const token = getStoredToken();
+      if (!token) {
+        if (!alive) return;
+        setAuth({ status: "anon", token: "", user: null, error: "" });
+        return;
+      }
+
+      // valida token
+      try {
+        const r = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.message || "Sessão inválida");
+
+        if (!alive) return;
+        setAuth({
+          status: "authed",
+          token,
+          user: j?.user || j, // aceita payload {user:{...}} ou {...}
+          error: "",
+        });
+      } catch (e) {
+        setStoredToken("");
+        if (!alive) return;
+        setAuth({ status: "anon", token: "", user: null, error: "Sessão expirada. Faça login novamente." });
+      }
+    }
+
+    bootAuth();
+    return () => {
+      alive = false;
+    };
+  }, [API_BASE]);
+
+  const role = auth.user?.role || "ANON";
+  const isAdmin = role === "ADMIN";
+  const isUser = role === "USER";
+  const isAuthed = auth.status === "authed";
+
+  // ✅ Views (módulos) — vamos manter exatamente o layout aprovado
+  const [view, setView] = useState("create");
+
+  const viewTitle = useMemo(
+    () => ({
+      create: "Cadastro rápido",
+      list: "Clientes & Ordens",
+      dashboard: "Dashboard financeiro",
+      login: "Login",
+    }),
+    []
+  );
+
+  // ✅ Se não autenticado, força módulo login (sem quebrar visual)
+  useEffect(() => {
+    if (auth.status === "anon") setView("login");
+    if (auth.status === "authed" && view === "login") setView("dashboard");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status]);
+
+  /** =========================
+   *  FORM — Cadastro rápido
+   *  ========================= */
   const [form, setForm] = useState({
     cpfCnpj: "",
     nomeRazaoSocial: "",
@@ -405,37 +520,42 @@ export default function App() {
     telefone: "",
     descricao: "",
     tipoContrato: "",
-    valorTotalPrevisto: "", // string mascarada
+    valorTotalPrevisto: "",
     modeloPagamento: "AVISTA",
-    dataInicio: "", // yyyy-mm-dd (input date)
+    dataInicio: "",
   });
 
   const [docTouched, setDocTouched] = useState(false);
   const docValidation = useMemo(() => validateCpfCnpj(form.cpfCnpj), [form.cpfCnpj]);
   const docError = docTouched && !docValidation.ok ? docValidation.msg : "";
 
-  // ✅ Telefone: validação básica (11 dígitos) — Diretriz 7
   const [phoneTouched, setPhoneTouched] = useState(false);
   const phoneValidation = useMemo(() => validateTelefoneBR(form.telefone), [form.telefone]);
   const phoneError = phoneTouched && !phoneValidation.ok ? phoneValidation.msg : "";
 
   const [createStatus, setCreateStatus] = useState({ type: "idle", msg: "" });
 
+  /** =========================
+   *  LIST — Clientes & Ordens
+   *  ========================= */
   const [filters, setFilters] = useState({ q: "", status: "ALL" });
   const [listState, setListState] = useState({ loading: false, error: "", data: [] });
 
+  /** =========================
+   *  DASH — Dashboard
+   *  ========================= */
   const [dashState, setDashState] = useState({ loading: false, error: "", data: null });
 
-  // [TEMP-REST] -------------------------------------------------
-  // DESCANSO (TEMPORÁRIO) — tudo aqui será removido ao final
-  // -------------------------------------------------------------
+  /** =========================
+   *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
+   *  ========================= */
   const [restTime, setRestTime] = useState(""); // HH:MM:SS
-  const [restTarget, setRestTarget] = useState(null); // Date
+  const [restTarget, setRestTarget] = useState(null);
   const [restCountdown, setRestCountdown] = useState("00:00:00");
   const [restModalOpen, setRestModalOpen] = useState(false);
-  const [restModalStep, setRestModalStep] = useState("prompt"); // prompt | postpone | goodnight
+  const [restModalStep, setRestModalStep] = useState("prompt");
   const [restPostponeTime, setRestPostponeTime] = useState("");
-  const [restFiredAt, setRestFiredAt] = useState(null); // trava para não re-disparar
+  const [restFiredAt, setRestFiredAt] = useState(null);
 
   useEffect(() => {
     if (!restTarget) return;
@@ -445,7 +565,6 @@ export default function App() {
       const diff = restTarget.getTime() - n.getTime();
       setRestCountdown(msToHHMMSS(diff));
 
-      // ✅ dispara só uma vez por alvo e NÃO reseta o step a cada segundo
       if (diff <= 0 && !restFiredAt) {
         setRestFiredAt(n);
         setRestModalOpen(true);
@@ -457,7 +576,67 @@ export default function App() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [restTarget, restFiredAt]);
-  // [/TEMP-REST] -----------------------------------------------
+
+  /** =========================
+   *  ACTIONS — Auth
+   *  ========================= */
+  const [loginForm, setLoginForm] = useState({ email: "", senha: "" });
+  const [loginState, setLoginState] = useState({ loading: false, error: "" });
+
+  async function doLogin() {
+    setLoginState({ loading: true, error: "" });
+    try {
+      const payload = {
+        email: String(loginForm.email || "").trim(),
+        senha: String(loginForm.senha || ""),
+      };
+
+      const r = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message || "Falha no login");
+
+      const token = j?.token;
+      if (!token) throw new Error("Token não retornado pelo backend.");
+
+      // salva token
+      setStoredToken(token);
+
+      // valida /me para obter user
+      const me = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const meJson = await me.json().catch(() => ({}));
+      if (!me.ok) throw new Error(meJson?.message || "Falha ao validar sessão.");
+
+      setAuth({
+        status: "authed",
+        token,
+        user: meJson?.user || meJson,
+        error: "",
+      });
+
+      setLoginState({ loading: false, error: "" });
+      setView("dashboard");
+    } catch (e) {
+      setLoginState({ loading: false, error: e?.message || "Erro no login" });
+      setAuth((p) => ({ ...p, status: "anon" }));
+    }
+  }
+
+  function doLogout() {
+    setStoredToken("");
+    setAuth({ status: "anon", token: "", user: null, error: "" });
+    setView("login");
+  }
+
+  /** =========================
+   *  ACTIONS — módulos
+   *  ========================= */
 
   async function createClientAndOrder() {
     setDocTouched(true);
@@ -473,16 +652,14 @@ export default function App() {
     }
 
     const valor = parseMoneyBRL(form.valorTotalPrevisto);
-
     setCreateStatus({ type: "loading", msg: "" });
 
     try {
       const payload = {
-        cpfCnpj: onlyDigits(form.cpfCnpj), // envia SEM máscara (correto)
+        cpfCnpj: onlyDigits(form.cpfCnpj),
         nomeRazaoSocial: form.nomeRazaoSocial?.trim(),
         email: form.email?.trim() || null,
-        telefone: onlyDigits(form.telefone || "") || null, // ✅ envia só números
-
+        telefone: onlyDigits(form.telefone || "") || null,
         ordem: {
           descricao: form.descricao?.trim() || null,
           tipoContrato: form.tipoContrato?.trim() || null,
@@ -492,7 +669,7 @@ export default function App() {
         },
       };
 
-      const r = await fetch(`${API_BASE}/api/clients-and-orders`, {
+      const r = await apiFetch(`/api/clients-and-orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -503,7 +680,9 @@ export default function App() {
 
       setCreateStatus({
         type: "success",
-        msg: `Criado! Cliente #${j?.cliente?.id ?? "?"}, Ordem #${j?.ordem?.id ?? "?"} (seq. ${j?.ordem?.sequenciaCliente ?? "?"})`,
+        msg: `Criado! Cliente #${j?.cliente?.id ?? "?"}, Ordem #${j?.ordem?.id ?? "?"} (seq. ${
+          j?.ordem?.sequenciaCliente ?? "?"
+        })`,
       });
 
       setForm((p) => ({ ...p, descricao: "", tipoContrato: "", valorTotalPrevisto: "" }));
@@ -520,8 +699,8 @@ export default function App() {
     if (filters.status && filters.status !== "ALL") qs.set("status", filters.status);
 
     try {
-      const r = await fetch(`${API_BASE}/api/clients-with-orders?${qs.toString()}`);
-      const j = await r.json();
+      const r = await apiFetch(`/api/clients-with-orders?${qs.toString()}`);
+      const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.message || "Erro ao listar clientes + ordens");
       setListState({ loading: false, error: "", data: Array.isArray(j) ? j : [] });
     } catch (e) {
@@ -532,8 +711,8 @@ export default function App() {
   async function loadDashboard() {
     setDashState((s) => ({ ...s, loading: true, error: "" }));
     try {
-      const r = await fetch(`${API_BASE}/api/dashboard/summary`);
-      const j = await r.json();
+      const r = await apiFetch(`/api/dashboard/summary`);
+      const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.message || "Erro ao carregar dashboard");
       setDashState({ loading: false, error: "", data: j });
     } catch (e) {
@@ -542,10 +721,11 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!isAuthed) return;
     if (view === "list") loadClientsWithOrders();
     if (view === "dashboard") loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, isAuthed]);
 
   const navItem = (key, label, icon) => (
     <button
@@ -560,7 +740,13 @@ export default function App() {
     </button>
   );
 
-  if (backend.loading) return <LoadingOverlay />;
+  // Overlay de boot (backend + auth)
+  if (backend.loading || auth.status === "checking") {
+    return <LoadingOverlay title="Carregando…" subtitle="Conectando e validando sessão" />;
+  }
+
+  // helper p/ badge do topo: módulo selecionado
+  const currentModuleLabel = viewTitle[view] || "Módulo";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -571,11 +757,11 @@ export default function App() {
             <img
               src={logoSrc}
               alt="AMR Advogados"
-              className="h-10 w-auto max-w-[240px] object-contain"
+              className="h-10 w-auto max-w-[260px] object-contain"
               title="AMR Advogados"
             />
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-tight truncate">Amanda Maia Ramalho Advogados</h1>
+              <h1 className="text-lg font-semibold leading-tight truncate">AMR Advogados</h1>
               <p className="text-xs text-slate-500 truncate">
                 Controle de recebimentos, repasses e obrigações internas
               </p>
@@ -583,17 +769,26 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <Badge tone="blue">{viewTitle[view] || "Módulo"}</Badge>
+            <Badge tone="blue">{currentModuleLabel}</Badge>
+
             <Badge tone={backend.label === "ok" ? "green" : backend.label === "erro" ? "red" : "amber"}>
               Backend: {backend.label}
             </Badge>
+
+            {isAuthed ? (
+              <Badge tone="slate">
+                {auth.user?.role || "—"} • {auth.user?.email || "—"}
+              </Badge>
+            ) : (
+              <Badge tone="amber">Não autenticado</Badge>
+            )}
           </div>
         </div>
       </header>
 
       {/* Content grid */}
       <div className="w-full grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
-        {/* Sidebar */}
+        {/* Sidebar (layout aprovado: mantido) */}
         <aside className="pl-0 lg:pl-0">
           <div className="sticky top-[92px]">
             <div className="ml-4 lg:ml-4 rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-140px)]">
@@ -602,35 +797,45 @@ export default function App() {
               </div>
 
               <div className="space-y-2 flex-1">
-                {navItem("create", "Cadastro rápido", <Icon.plus />)}
-                {navItem("list", "Clientes & Ordens", <Icon.list />)}
-                {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
+                {/* Se não authed, só deixa Login */}
+                {!isAuthed ? (
+                  navItem("login", "Login", <Icon.user />)
+                ) : (
+                  <>
+                    {navItem("create", "Cadastro rápido", <Icon.plus />)}
+                    {navItem("list", "Clientes & Ordens", <Icon.list />)}
+                    {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
+                  </>
+                )}
 
-                <div className="mt-5">
-                  <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                    Administrativo
-                  </p>
+                {/* ADMIN ONLY — seção some para USER */}
+                {isAuthed && isAdmin && (
+                  <div className="mt-5">
+                    <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                      Administrativo
+                    </p>
 
-                  <div className="space-y-2">
-                    <button
-                      disabled
-                      className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-                      title="Disponível quando o login estiver ativo"
-                    >
-                      <Icon.lock />
-                      Controle de acesso
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        disabled
+                        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+                        title="Em breve"
+                      >
+                        <Icon.lock />
+                        Controle de acesso
+                      </button>
 
-                    <button
-                      disabled
-                      className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-                      title="Em breve"
-                    >
-                      <Icon.settings />
-                      Configurações
-                    </button>
+                      <button
+                        disabled
+                        className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
+                        title="Em breve"
+                      >
+                        <Icon.settings />
+                        Configurações
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL) */}
                 <div className="mt-5 rounded-2xl border bg-slate-50 p-3">
@@ -652,10 +857,7 @@ export default function App() {
                           const next = buildNextTargetDate(v, new Date());
                           setRestTarget(next);
 
-                          // rearmar disparo para o novo alvo
                           setRestFiredAt(null);
-
-                          // se estava em modal, fecha (novo alvo)
                           setRestModalOpen(false);
                           setRestModalStep("prompt");
                         }}
@@ -691,7 +893,7 @@ export default function App() {
                 {/* [/TEMP-REST] */}
               </div>
 
-              {/* Sidebar footer: DATA (DD/MM/AAAA) + HORA (HH:MM:SS) */}
+              {/* Sidebar footer: DATA + HORA + Usuário + Sair */}
               <div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
                 <div className="flex items-center justify-between font-mono">
                   <span>{clock.date}</span>
@@ -700,16 +902,32 @@ export default function App() {
 
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Usuário</span>
-                  <Badge tone="slate">Em desenvolvimento</Badge>
+
+                  {isAuthed ? (
+                    <Badge tone="slate">{auth.user?.role || "—"}</Badge>
+                  ) : (
+                    <Badge tone="amber">Sem sessão</Badge>
+                  )}
                 </div>
 
-                <button
-                  disabled
-                  className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
-                  title="Disponível quando o login estiver ativo"
-                >
-                  Sair
-                </button>
+                {isAuthed ? (
+                  <button
+                    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-semibold text-slate-900 bg-white hover:bg-slate-50 flex items-center justify-center gap-2"
+                    onClick={doLogout}
+                    title="Encerrar sessão"
+                  >
+                    <Icon.logout />
+                    Sair
+                  </button>
+                ) : (
+                  <button
+                    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
+                    disabled
+                    title="Faça login para sair"
+                  >
+                    Sair
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -717,7 +935,73 @@ export default function App() {
 
         {/* Main */}
         <main className="pr-6 pl-4 lg:pl-0">
-          {view === "create" && (
+          {/* Seção LOGIN */}
+          {view === "login" && (
+            <div className="space-y-6">
+              <Card
+                title="Login"
+                subtitle="Acesse com seu e-mail e senha."
+                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
+              >
+                {auth.error && <p className="mb-3 text-sm text-red-700">{auth.error}</p>}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="E-mail"
+                    placeholder="financeiro@amandaramalho.adv.br"
+                    value={loginForm.email}
+                    onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
+                    autoComplete="username"
+                  />
+                  <Input
+                    label="Senha"
+                    type="password"
+                    placeholder="••••••••"
+                    value={loginForm.senha}
+                    onChange={(e) => setLoginForm((p) => ({ ...p, senha: e.target.value }))}
+                    autoComplete="current-password"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") doLogin();
+                    }}
+                  />
+                </div>
+
+                {loginState.error && <p className="mt-3 text-sm text-red-700">{loginState.error}</p>}
+
+                <div className="mt-4 flex items-center gap-3">
+                  <Button onClick={doLogin} disabled={loginState.loading}>
+                    {loginState.loading ? "Entrando..." : "Entrar"}
+                  </Button>
+
+                  <p className="text-xs text-slate-500">
+                    {backend.label === "ok" ? "Backend conectado." : "Backend com erro — confira Render/local."}
+                  </p>
+                </div>
+
+                <div className="mt-5 rounded-xl border bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-700">Dica rápida</p>
+                  <p className="mt-1">
+                    O token fica salvo no <span className="font-mono">localStorage</span> por enquanto. Depois a gente
+                    endurece isso (refresh + httpOnly cookie se você quiser).
+                  </p>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* BLOQUEIO de telas se não authed */}
+          {!isAuthed && view !== "login" && (
+            <Card
+              title="Acesso restrito"
+              subtitle="Você precisa estar autenticado para acessar este módulo."
+              right={<Badge tone="amber">Login necessário</Badge>}
+            >
+              <Button onClick={() => setView("login")}>Ir para Login</Button>
+            </Card>
+          )}
+
+          {/* MÓDULOS (só authed) */}
+          {isAuthed && view === "create" && (
             <div className="space-y-6">
               <Card
                 title="Cadastro rápido: Cliente + Ordem"
@@ -756,7 +1040,6 @@ export default function App() {
                         onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                       />
 
-                      {/* ✅ TELEFONE COM MÁSCARA + VALIDAÇÃO (Diretriz 7) */}
                       <Input
                         label="Telefone"
                         placeholder="(99) 9 9999-9999"
@@ -844,7 +1127,7 @@ export default function App() {
             </div>
           )}
 
-          {view === "list" && (
+          {isAuthed && view === "list" && (
             <div className="space-y-6">
               <Card
                 title="Listagem: Clientes & Ordens"
@@ -959,7 +1242,7 @@ export default function App() {
             </div>
           )}
 
-          {view === "dashboard" && (
+          {isAuthed && view === "dashboard" && (
             <div className="space-y-6">
               <Card
                 title="Dashboard financeiro"
@@ -1019,9 +1302,7 @@ export default function App() {
             <div className="px-5 py-4 space-y-4">
               {restModalStep === "prompt" && (
                 <>
-                  <p className="text-sm text-slate-800">
-                    Chegou a hora escolhida. Você deve ir descansar agora.
-                  </p>
+                  <p className="text-sm text-slate-800">Chegou a hora escolhida. Você deve ir descansar agora.</p>
 
                   <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     <div className="flex justify-between">
@@ -1058,15 +1339,15 @@ export default function App() {
               {restModalStep === "postpone" && (
                 <>
                   {(() => {
-  const s = saudacaoComIcone(clock.now);
-  return (
-    <p className="text-sm text-slate-800">
-      {s.text} {s.icon}
-      <br />
-      Descanse. Depois a gente continua.
-    </p>
-  );
-})()}
+                    const s = saudacaoComIcone(clock.now);
+                    return (
+                      <p className="text-sm text-slate-800">
+                        {s.text} {s.icon}
+                        <br />
+                        Descanse. Depois a gente continua.
+                      </p>
+                    );
+                  })()}
 
                   <label className="block">
                     <span className="block text-xs font-medium text-slate-700">Nova hora</span>
@@ -1097,7 +1378,7 @@ export default function App() {
                         if (next) {
                           setRestTime(restPostponeTime);
                           setRestTarget(next);
-                          setRestFiredAt(null); // rearmar para o novo alvo
+                          setRestFiredAt(null);
                           setRestModalOpen(false);
                           setRestModalStep("prompt");
                         }
@@ -1112,23 +1393,20 @@ export default function App() {
               {restModalStep === "goodnight" && (
                 <>
                   {(() => {
-  const s = saudacaoComIcone(clock.now);
-  return (
-    <p className="text-sm text-slate-800">
-      {s.text} {s.icon}
-      <br />
-      Descanse. Amanhã a gente continua.
-    </p>
-  );
-})()}
+                    const s = saudacaoComIcone(clock.now);
+                    return (
+                      <p className="text-sm text-slate-800">
+                        {s.text} {s.icon}
+                        <br />
+                        Descanse. Amanhã a gente continua.
+                      </p>
+                    );
+                  })()}
 
                   <div className="flex justify-end">
                     <button
                       className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
-                      onClick={() => {
-                        // não zerar restFiredAt aqui (senão reabre instantâneo)
-                        setRestModalOpen(false);
-                      }}
+                      onClick={() => setRestModalOpen(false)}
                     >
                       Retornar
                     </button>
