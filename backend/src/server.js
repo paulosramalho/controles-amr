@@ -120,6 +120,15 @@ function serializeOrdem(o) {
   };
 }
 
+function calcAnoMes(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
 /* =========================
    ROTAS
 ========================= */
@@ -232,6 +241,7 @@ app.post("/api/clients-and-orders", async (req, res) => {
 
       // Datas: aceitar DD/MM/AAAA / YYYY-MM-DD / ISO
       const dataInicio = parseDateInput(order.dataInicio);
+      const anoMesInicio = calcAnoMes(dataInicio);
       const dataFimPrevista = parseDateInput(order.dataFimPrevista);
 
       // Valor: sempre numérico limpo
