@@ -350,6 +350,14 @@ function saudacaoPorHorario(date = new Date()) {
   return "Boa noite"; // 18:00–04:59
 }
 
+function saudacaoComIcone(date = new Date()) {
+  const h = date.getHours();
+
+  if (h >= 5 && h < 12) return { text: "Bom dia", icon: "☀️" };
+  if (h >= 12 && h < 18) return { text: "Boa tarde", icon: "🌤️" };
+  return { text: "Boa noite", icon: "🌙" };
+}
+
 /** =========================
  *  APP
  *  ========================= */
@@ -1049,10 +1057,16 @@ export default function App() {
 
               {restModalStep === "postpone" && (
                 <>
-                  <p className="text-sm text-slate-800">
-  {saudacaoPorHorario(clock.now)} 🌙<br />
-  Descanse. Depois a gente continua.
-</p>
+                  {(() => {
+  const s = saudacaoComIcone(clock.now);
+  return (
+    <p className="text-sm text-slate-800">
+      {s.text} {s.icon}
+      <br />
+      Descanse. Depois a gente continua.
+    </p>
+  );
+})()}
 
                   <label className="block">
                     <span className="block text-xs font-medium text-slate-700">Nova hora</span>
@@ -1097,10 +1111,16 @@ export default function App() {
 
               {restModalStep === "goodnight" && (
                 <>
-                  <p className="text-sm text-slate-800">
-                    Boa noite 🌙<br />
-                    Descanse. Amanhã a gente continua.
-                  </p>
+                  {(() => {
+  const s = saudacaoComIcone(clock.now);
+  return (
+    <p className="text-sm text-slate-800">
+      {s.text} {s.icon}
+      <br />
+      Descanse. Amanhã a gente continua.
+    </p>
+  );
+})()}
 
                   <div className="flex justify-end">
                     <button
