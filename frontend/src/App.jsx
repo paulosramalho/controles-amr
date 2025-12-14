@@ -92,6 +92,23 @@ function validateCpfCnpj(value) {
   return { ok: false, type: null, msg: "Documento inválido" };
 }
 
+/** Telefone (Diretriz 7): (99) 9 9999-9999 */
+function formatTelefoneBR(value = "") {
+  const d = onlyDigits(value).slice(0, 11);
+  if (!d) return "";
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
+function validateTelefoneBR(value = "") {
+  const d = onlyDigits(value);
+  if (!d) return { ok: true, msg: "" }; // opcional por enquanto
+  if (d.length !== 11) return { ok: false, msg: "Telefone incompleto" };
+  return { ok: true, msg: "" };
+}
+
 /** Datas: sempre DD/MM/AAAA na exibição */
 function formatDateBR(date) {
   if (!date) return "—";
@@ -340,6 +357,11 @@ export default function App() {
   const docValidation = useMemo(() => validateCpfCnpj(form.cpfCnpj), [form.cpfCnpj]);
   const docError = docTouched && !docValidation.ok ? docValidation.msg : "";
 
+  // ✅ Telefone: validação básica (11 dígitos) — Diretriz 7
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneValidation = useMemo(() => validateTelefoneBR(form.telefone), [form.telefone]);
+  const phoneError = phoneTouched && !phoneValidation.ok ? phoneValidation.msg : "";
+
   const [createStatus, setCreateStatus] = useState({ type: "idle", msg: "" });
 
   const [filters, setFilters] = useState({ q: "", status: "ALL" });
@@ -349,8 +371,14 @@ export default function App() {
 
   async function createClientAndOrder() {
     setDocTouched(true);
+    setPhoneTouched(true);
+
     if (!docValidation.ok) {
       setCreateStatus({ type: "error", msg: "CPF/CNPJ inválido. Corrija para salvar." });
+      return;
+    }
+    if (!phoneValidation.ok) {
+      setCreateStatus({ type: "error", msg: "Telefone inválido. Corrija para salvar." });
       return;
     }
 
@@ -363,7 +391,7 @@ export default function App() {
         cpfCnpj: onlyDigits(form.cpfCnpj), // envia SEM máscara (correto)
         nomeRazaoSocial: form.nomeRazaoSocial?.trim(),
         email: form.email?.trim() || null,
-        telefone: onlyDigits(form.telefone || "") || null,
+        telefone: onlyDigits(form.telefone || "") || null, // ✅ envia só números
 
         ordem: {
           descricao: form.descricao?.trim() || null,
@@ -580,12 +608,15 @@ export default function App() {
                         onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                       />
 
+                      {/* ✅ TELEFONE COM MÁSCARA + VALIDAÇÃO (Diretriz 7) */}
                       <Input
                         label="Telefone"
                         placeholder="(99) 9 9999-9999"
                         value={form.telefone}
-                        onChange={(e) => setForm((p) => ({ ...p, telefone: e.target.value }))}
-                        hint="(a máscara do telefone a gente aplica no próximo passo, com componente dedicado)"
+                        onChange={(e) => setForm((p) => ({ ...p, telefone: formatTelefoneBR(e.target.value) }))}
+                        onBlur={() => setPhoneTouched(true)}
+                        error={phoneError}
+                        hint={!phoneError ? "Máscara automática (11 dígitos)" : undefined}
                       />
                     </div>
                   </div>
@@ -728,12 +759,13 @@ export default function App() {
                               <div className="font-medium text-slate-900">{c.nomeRazaoSocial}</div>
                               <div className="text-xs text-slate-500">ID #{c.id}</div>
                             </td>
-                            <td className="px-4 py-3 font-mono text-xs">
-                              {formatCpfCnpj(c.cpfCnpj)}
-                            </td>
+                            <td className="px-4 py-3 font-mono text-xs">{formatCpfCnpj(c.cpfCnpj)}</td>
                             <td className="px-4 py-3">
                               <div className="text-xs text-slate-700">{c.email || "—"}</div>
-                              <div className="text-xs text-slate-500">{c.telefone || "—"}</div>
+                              {/* ✅ TELEFONE MASCARADO NA LISTAGEM (Diretriz 7) */}
+                              <div className="text-xs text-slate-500">
+                                {c.telefone ? formatTelefoneBR(c.telefone) : "—"}
+                              </div>
                             </td>
                             <td className="px-4 py-3">
                               <div className="space-y-2">
@@ -746,7 +778,11 @@ export default function App() {
                                           (seq. {o.sequenciaCliente})
                                         </span>
                                       </div>
-                                      <Badge tone={o.status === "ATIVA" ? "green" : o.status === "CONCLUIDA" ? "slate" : "amber"}>
+                                      <Badge
+                                        tone={
+                                          o.status === "ATIVA" ? "green" : o.status === "CONCLUIDA" ? "slate" : "amber"
+                                        }
+                                      >
                                         {o.status}
                                       </Badge>
                                     </div>
@@ -758,12 +794,12 @@ export default function App() {
                                         : "Sem valor previsto"}
                                     </div>
 
-                                    <div className="mt-1 text-[11px] text-slate-500">
-                                      Início: {formatDateBR(o.dataInicio)}
-                                    </div>
+                                    <div className="mt-1 text-[11px] text-slate-500">Início: {formatDateBR(o.dataInicio)}</div>
                                   </div>
                                 ))}
-                                {(c.ordens || []).length === 0 && <span className="text-xs text-slate-500">Sem ordens</span>}
+                                {(c.ordens || []).length === 0 && (
+                                  <span className="text-xs text-slate-500">Sem ordens</span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -811,9 +847,7 @@ export default function App() {
 
                     <div className="md:col-span-4 rounded-2xl border bg-white p-4">
                       <p className="text-xs text-slate-500">Valor total previsto</p>
-                      <p className="mt-1 text-2xl font-semibold">
-                        {moneyBRL(dashState.data.totalValorPrevisto)}
-                      </p>
+                      <p className="mt-1 text-2xl font-semibold">{moneyBRL(dashState.data.totalValorPrevisto)}</p>
                       <p className="mt-2 text-xs text-slate-500">
                         API base utilizada: <span className="font-mono">{API_BASE}</span>
                       </p>
