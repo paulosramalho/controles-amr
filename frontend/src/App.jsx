@@ -575,7 +575,7 @@ export default function App() {
               title="AMR Advogados"
             />
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-tight truncate">AMR Advogados</h1>
+              <h1 className="text-lg font-semibold leading-tight truncate">Amanda Maia Ramalho Advogados</h1>
               <p className="text-xs text-slate-500 truncate">
                 Controle de recebimentos, repasses e obrigações internas
               </p>
