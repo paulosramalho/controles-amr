@@ -27,7 +27,6 @@ function useBackendStatus() {
  *  DIRETRIZES GERAIS (permanente)
  *  - Datas: DD/MM/AAAA
  *  - Horas: HH:MM:SS
- *  (Demais diretrizes ficam aplicadas nos inputs/formatters do app)
  *  ========================================================= */
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -43,12 +42,8 @@ function formatTimeBR(d) {
 
 /** =========================================================
  *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
- *  - Input de hora de descansar
- *  - Mostra hora escolhida + cronômetro regressivo
- *  - Ao alcançar, modal central com opção de postergar
  *  ========================================================= */
 
-// [TEMP-REST] Hook simples de relógio (para hora atual em tempo real)
 function useNow() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -58,7 +53,6 @@ function useNow() {
   return now;
 }
 
-// [TEMP-REST] Converte "HH:MM" ou "HH:MM:SS" em {h,m,s}
 function parseTimeToHMS(timeStr = "") {
   const parts = String(timeStr).split(":").map((x) => Number(x));
   if (parts.length < 2) return null;
@@ -70,7 +64,6 @@ function parseTimeToHMS(timeStr = "") {
   return { h, m, s };
 }
 
-// [TEMP-REST] Cria um Date alvo baseado em um horário; se já passou hoje, joga para amanhã
 function buildNextTargetDate(timeStr, now = new Date()) {
   const hms = parseTimeToHMS(timeStr);
   if (!hms) return null;
@@ -84,7 +77,6 @@ function buildNextTargetDate(timeStr, now = new Date()) {
   return target;
 }
 
-// [TEMP-REST] ms -> HH:MM:SS
 function msToHHMMSS(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -100,14 +92,11 @@ export default function App() {
   const backendLabel = backend.loading ? "verificando..." : backend.ok ? "ok" : "erro";
 
   const moduleName = useMemo(() => {
-    // Aqui você pode trocar depois para “módulo selecionado”.
-    // Mantendo simples por agora (sem mexer na navegação).
     return "Protótipo";
   }, []);
 
   // [TEMP-REST] ===============================================
   // Descanso — TEMPORÁRIO (REMOVER AO FINAL)
-  // Tudo aqui é temporário e deve ser removido ao final do projeto.
   // [TEMP-REST] ===============================================
   const [restTime, setRestTime] = useState(""); // "HH:MM:SS"
   const [restTarget, setRestTarget] = useState(null); // Date
@@ -115,7 +104,7 @@ export default function App() {
   const [restModalOpen, setRestModalOpen] = useState(false);
   const [restModalStep, setRestModalStep] = useState("prompt"); // "prompt" | "postpone" | "goodnight"
   const [restPostponeTime, setRestPostponeTime] = useState(""); // "HH:MM:SS"
-  const [restFiredAt, setRestFiredAt] = useState(null); // Date (log simples)
+  const [restFiredAt, setRestFiredAt] = useState(null); // Date (trava para não re-disparar)
 
   // [TEMP-REST] Loop de contagem regressiva + disparo do modal
   useEffect(() => {
@@ -126,9 +115,9 @@ export default function App() {
       const diff = restTarget.getTime() - n.getTime();
       setRestCountdown(msToHHMMSS(diff));
 
-      if (diff <= 0) {
-        // só dispara uma vez por alvo
-        setRestFiredAt((prev) => prev ?? n);
+      // ✅ FIX: só dispara UMA vez por alvo e NÃO reseta modalStep a cada segundo
+      if (diff <= 0 && !restFiredAt) {
+        setRestFiredAt(n);
         setRestModalOpen(true);
         setRestModalStep("prompt");
       }
@@ -137,7 +126,8 @@ export default function App() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [restTarget]);
+    // ⚠️ Importante incluir restFiredAt nas deps para o tick respeitar a trava
+  }, [restTarget, restFiredAt]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -197,13 +187,7 @@ export default function App() {
               listagem (Dashboard, pagamentos, repasses, etc.).
             </p>
 
-            {/* [TEMP-REST] ===============================================
-                Descanso — TEMPORÁRIO (REMOVER AO FINAL)
-                Regras:
-                1) input hora de descansar
-                2) mostrar hora escolhida + cronômetro regressivo (HH:MM:SS)
-                3) ao chegar, modal com opção de postergar ou encerrar
-                ========================================================= */}
+            {/* [TEMP-REST] =============================================== */}
             <div className="mt-6 rounded-2xl border bg-slate-50 p-3">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                 Descanso (temporário)
@@ -215,18 +199,22 @@ export default function App() {
                     Hora de descansar
                   </span>
 
-                  {/* step=1 garante HH:MM:SS */}
                   <input
                     type="time"
                     step="1"
                     value={restTime}
                     onChange={(e) => {
-                      const v = e.target.value; // "HH:MM" ou "HH:MM:SS"
+                      const v = e.target.value;
                       setRestTime(v);
                       const next = buildNextTargetDate(v, new Date());
                       setRestTarget(next);
+
+                      // ✅ Ao definir nova meta, destrava o disparo
                       setRestFiredAt(null);
+
+                      // Se estava em modal, fecha (novo alvo)
                       setRestModalOpen(false);
+                      setRestModalStep("prompt");
                     }}
                     className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   />
@@ -279,7 +267,6 @@ export default function App() {
                   type="button"
                   className="rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   onClick={() => {
-                    // Placeholder: quando login existir, aqui vai deslogar.
                     alert("Em desenvolvimento: sair");
                   }}
                 >
@@ -414,8 +401,12 @@ export default function App() {
                         if (next) {
                           setRestTime(restPostponeTime);
                           setRestTarget(next);
+
+                          // ✅ ao confirmar novo alvo, libera novo disparo
                           setRestFiredAt(null);
+
                           setRestModalOpen(false);
+                          setRestModalStep("prompt");
                         }
                       }}
                     >
@@ -436,9 +427,11 @@ export default function App() {
                     <button
                       className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
                       onClick={() => {
-                        // libera a tela quando você voltar
+                        // ✅ IMPORTANTE:
+                        // Não zerar restFiredAt aqui, senão o modal reabre imediatamente
+                        // (restTarget está no passado). Quando você quiser rearmar,
+                        // basta escolher uma nova hora na sidebar.
                         setRestModalOpen(false);
-                        setRestFiredAt(null);
                       }}
                     >
                       Retornar
