@@ -128,23 +128,6 @@ function calcAnoMes(date) {
   return `${y}-${m}`;
 }
 
-async function attachUserIfPresent(req, _res, next) {
-  const token = getBearerToken(req);
-  console.log("Token recebido:", token); // Verifica se o token chegou
-
-  if (!token) return next();
-
-  try {
-    const { jwt } = await getAuthLibs();
-    const payload = jwt.verify(token, JWT_SECRET);
-    console.log("Payload decodificado:", payload); // Verifica se o payload é válido
-   
-  } catch (err) {
-    console.error("Erro ao validar token:", err);
-  }
-  return next();
-}
-
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
 ========================= */
