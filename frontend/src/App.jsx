@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 
 /** =========================
@@ -14,60 +15,60 @@ function onlyDigits(v = "") {
 }
 
 /** CPF/CNPJ máscara */
-function formatCpfCnpj(value = "") {
-  const d = onlyDigits(value);
-
-  // CPF
+function maskCpfCnpj(value) {
+  const d = onlyDigits(value).slice(0, 14);
   if (d.length <= 11) {
-    return d
-      .replace(/^(\d{3})(\d)/, "$1.$2")
-      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4")
-      .slice(0, 14);
+    const cpf = d.padEnd(11, "");
+    const a = cpf.slice(0, 3);
+    const b = cpf.slice(3, 6);
+    const c = cpf.slice(6, 9);
+    const e = cpf.slice(9, 11);
+    let out = a;
+    if (b) out += "." + b;
+    if (c) out += "." + c;
+    if (e) out += "-" + e;
+    return out.replace(/[.\-]$/g, "");
   }
-
-  // CNPJ
-  return d
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5")
-    .slice(0, 18);
+  const cnpj = d.padEnd(14, "");
+  const a = cnpj.slice(0, 2);
+  const b = cnpj.slice(2, 5);
+  const c = cnpj.slice(5, 8);
+  const d4 = cnpj.slice(8, 12);
+  const e = cnpj.slice(12, 14);
+  let out = a;
+  if (b) out += "." + b;
+  if (c) out += "." + c;
+  if (d4) out += "/" + d4;
+  if (e) out += "-" + e;
+  return out.replace(/[.\-\/]$/g, "");
 }
 
-/** CPF validação */
-function isValidCPF(cpfRaw) {
-  const cpf = onlyDigits(cpfRaw);
+function isValidCPF(cpfDigits) {
+  const cpf = onlyDigits(cpfDigits);
   if (cpf.length !== 11) return false;
-  if (/^(\d)\1+$/.test(cpf)) return false;
-
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i);
-  let d1 = (sum * 10) % 11;
-  if (d1 === 10) d1 = 0;
-  if (d1 !== Number(cpf[9])) return false;
-
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i);
-  let d2 = (sum * 10) % 11;
-  if (d2 === 10) d2 = 0;
-
-  return d2 === Number(cpf[10]);
-}
-
-/** CNPJ validação */
-function isValidCNPJ(cnpjRaw) {
-  const cnpj = onlyDigits(cnpjRaw);
-  if (cnpj.length !== 14) return false;
-  if (/^(\d)\1+$/.test(cnpj)) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
 
   const calc = (base) => {
-    const weights =
-      base.length === 12
-        ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-        : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
     let sum = 0;
-    for (let i = 0; i < weights.length; i++) sum += Number(base[i]) * weights[i];
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (base.length + 1 - i);
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const d1 = calc(cpf.slice(0, 9));
+  const d2 = calc(cpf.slice(0, 9) + String(d1));
+  return d1 === Number(cpf[9]) && d2 === Number(cpf[10]);
+}
+
+function isValidCNPJ(cnpjDigits) {
+  const cnpj = onlyDigits(cnpjDigits);
+  if (cnpj.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(cnpj)) return false;
+
+  const calc = (base) => {
+    const weights = base.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * weights[i];
     const mod = sum % 11;
     return mod < 2 ? 0 : 11 - mod;
   };
@@ -82,69 +83,75 @@ function validateCpfCnpj(value) {
   if (!d) return { ok: false, type: null, msg: "Obrigatório" };
   if (d.length < 11) return { ok: false, type: "cpf", msg: "CPF incompleto" };
   if (d.length > 11 && d.length < 14) return { ok: false, type: "cnpj", msg: "CNPJ incompleto" };
-
-  if (d.length === 11) {
-    return isValidCPF(d) ? { ok: true, type: "cpf", msg: "" } : { ok: false, type: "cpf", msg: "CPF inválido" };
-  }
-  if (d.length === 14) {
-    return isValidCNPJ(d) ? { ok: true, type: "cnpj", msg: "" } : { ok: false, type: "cnpj", msg: "CNPJ inválido" };
-  }
+  if (d.length === 11) return isValidCPF(d) ? { ok: true, type: "cpf", msg: "" } : { ok: false, type: "cpf", msg: "CPF inválido" };
+  if (d.length === 14) return isValidCNPJ(d) ? { ok: true, type: "cnpj", msg: "" } : { ok: false, type: "cnpj", msg: "CNPJ inválido" };
   return { ok: false, type: null, msg: "Documento inválido" };
 }
 
-/** Telefone (Diretriz 7): (99) 9 9999-9999 */
-function formatTelefoneBR(value = "") {
+/** Telefone (99) 9 9999-9999 */
+function maskTelefoneBR(value) {
   const d = onlyDigits(value).slice(0, 11);
-  if (!d) return "";
-  if (d.length <= 2) return `(${d}`;
-  if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
+  const a = d.slice(0, 2);
+  const b = d.slice(2, 3);
+  const c = d.slice(3, 7);
+  const e = d.slice(7, 11);
+  let out = "";
+  if (a) out += `(${a})`;
+  if (b) out += ` ${b}`;
+  if (c) out += ` ${c}`;
+  if (e) out += `-${e}`;
+  return out.trim();
 }
 
-function validateTelefoneBR(value = "") {
-  const d = onlyDigits(value);
-  if (!d) return { ok: true, msg: "" }; // opcional por enquanto
-  if (d.length !== 11) return { ok: false, msg: "Telefone incompleto" };
-  return { ok: true, msg: "" };
+/** Datas: DD/MM/AAAA */
+function toISOFromBR(br) {
+  const v = (br || "").trim();
+  if (!v) return "";
+  const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return "";
+  const [, dd, mm, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Datas: sempre DD/MM/AAAA na exibição */
-function formatDateBR(date) {
-  if (!date) return "—";
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "—";
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+function toBRFromISO(iso) {
+  if (!iso) return "";
+  const s = String(iso);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const [, yyyy, mm, dd] = m;
+  return `${dd}/${mm}/${yyyy}`;
 }
 
-/** Valores (R$):
- * digitando: 1->0,01; 12->0,12; 123->1,23; 123456->1.234,56
- */
-function formatMoneyTyping(value = "") {
-  const digits = onlyDigits(value);
-  if (!digits) return "";
-  const number = Number(digits) / 100;
-  return number.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Moeda (R$) - digitando 1=>0,01 etc */
+function moneyToDigits(input) {
+  const d = onlyDigits(input);
+  return d;
 }
 
-function parseMoneyBRL(value = "") {
-  const v = String(value || "").trim();
-  if (!v) return null;
-  // "1.234,56" -> 1234.56
-  const normalized = v.replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
+function digitsToMoneyBRL(digits) {
+  const d = String(digits || "").replace(/\D/g, "");
+  const n = Number(d || "0");
+  const cents = n % 100;
+  const int = Math.floor(n / 100);
+
+  const intStr = String(int).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const centsStr = String(cents).padStart(2, "0");
+  return `${intStr},${centsStr}`;
 }
 
 function moneyBRL(value) {
-  if (value == null || value === "") return "—";
-  const n = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  if (value == null) return "0,00";
+  const s = String(value).replace(".", ",");
+  if (/^\d{1,3}(\.\d{3})*,\d{2}$/.test(s)) return s;
+  const n = Number(String(value).replace(",", "."));
+  if (Number.isNaN(n)) return "0,00";
+  const fixed = n.toFixed(2).replace(".", ",");
+  const parts = fixed.split(",");
+  const intStr = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${intStr},${parts[1]}`;
 }
 
-/** Hora: HH:MM:SS */
+/** Relógio: DD/MM/AAAA + HH:MM:SS */
 function useClock() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -152,61 +159,16 @@ function useClock() {
     return () => clearInterval(id);
   }, []);
   const pad = (n) => String(n).padStart(2, "0");
+  const d = now;
   return {
-    now,
-    date: `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`,
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+    hours: d.getHours(),
   };
 }
 
 /** =========================
- *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
- *  ========================= */
-
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
-
-function parseTimeToHMS(timeStr = "") {
-  const parts = String(timeStr).split(":").map((x) => Number(x));
-  if (parts.length < 2) return null;
-  const [h, m, s = 0] = parts;
-  if ([h, m, s].some((n) => Number.isNaN(n))) return null;
-  if (h < 0 || h > 23) return null;
-  if (m < 0 || m > 59) return null;
-  if (s < 0 || s > 59) return null;
-  return { h, m, s };
-}
-
-function buildNextTargetDate(timeStr, now = new Date()) {
-  const hms = parseTimeToHMS(timeStr);
-  if (!hms) return null;
-
-  const target = new Date(now);
-  target.setHours(hms.h, hms.m, hms.s, 0);
-
-  // se já passou hoje, agenda para amanhã
-  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
-  return target;
-}
-
-function msToHHMMSS(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
-}
-
-function saudacaoComIcone(date = new Date()) {
-  const h = date.getHours();
-  if (h >= 5 && h < 12) return { text: "Bom dia", icon: "☀️" };
-  if (h >= 12 && h < 18) return { text: "Boa tarde", icon: "🌤️" };
-  return { text: "Boa noite", icon: "🌙" };
-}
-
-/** =========================
- *  UI COMPONENTS
+ *  UI PRIMITIVES
  *  ========================= */
 
 const Icon = {
@@ -223,179 +185,137 @@ const Icon = {
   ),
   chart: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
-      <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M8 16v-6M12 16V8M16 16v-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 19V5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M20 19H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M7 15l3-3 3 2 4-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  user: (props) => (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
+      <path
+        d="M20 21a8 8 0 0 0-16 0"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   ),
   lock: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
       <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M6 11h12v9H6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M6 11h12v10H6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   ),
   settings: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
-      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" />
       <path
-        d="M19.4 15a7.97 7.97 0 0 0 .1-3l2-1.2-2-3.5-2.3.7a7.8 7.8 0 0 0-2.6-1.5L12 2 9.4 6.5A7.8 7.8 0 0 0 6.8 8l-2.3-.7-2 3.5 2 1.2a8 8 0 0 0 0 3l-2 1.2 2 3.5 2.3-.7c.8.7 1.7 1.2 2.6 1.5L12 22l2.6-4.5c.9-.3 1.8-.8 2.6-1.5l2.3.7 2-3.5-2-1.2Z"
+        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M19.4 15a7.97 7.97 0 0 0 .1-2l2-1.5-2-3.5-2.4.5a8 8 0 0 0-1.7-1L15 3h-6l-.4 2.5a8 8 0 0 0-1.7 1L4.5 6l-2 3.5L4.5 11a7.97 7.97 0 0 0 .1 2L2.5 14.5l2 3.5 2.4-.5a8 8 0 0 0 1.7 1L9 21h6l.4-2.5a8 8 0 0 0 1.7-1l2.4.5 2-3.5L19.4 15Z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinejoin="round"
       />
     </svg>
   ),
-  user: (props) => (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
-      <path
-        d="M20 21a8 8 0 1 0-16 0"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-    </svg>
-  ),
   logout: (props) => (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" {...props}>
-      <path d="M10 17l-1 0a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M15 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 12H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10 17l5-5-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M21 3v18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   ),
 };
 
-function Badge({ tone = "slate", children }) {
-  const map = {
+function Badge({ children, tone = "slate" }) {
+  const tones = {
     slate: "bg-slate-100 text-slate-700 border-slate-200",
-    blue: "bg-blue-50 text-blue-800 border-blue-200",
-    green: "bg-emerald-50 text-emerald-800 border-emerald-200",
-    red: "bg-red-50 text-red-800 border-red-200",
-    amber: "bg-amber-50 text-amber-800 border-amber-200",
+    blue: "bg-blue-50 text-blue-800 border-blue-100",
+    green: "bg-emerald-50 text-emerald-800 border-emerald-100",
+    red: "bg-red-50 text-red-700 border-red-100",
+    amber: "bg-amber-50 text-amber-800 border-amber-100",
   };
   return (
-    <span className={cx("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", map[tone])}>
+    <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", tones[tone] || tones.slate)}>
       {children}
     </span>
   );
 }
 
-function Card({ title, subtitle, children, right }) {
-  return (
-    <div className="rounded-2xl border bg-white shadow-sm">
-      {(title || right) && (
-        <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-          <div>
-            {title && <h3 className="text-sm font-semibold text-slate-900">{title}</h3>}
-            {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
-          </div>
-          {right && <div className="shrink-0">{right}</div>}
-        </div>
-      )}
-      <div className="px-5 py-4">{children}</div>
-    </div>
-  );
-}
-
-function Input({ label, hint, error, ...props }) {
-  return (
-    <label className="block">
-      {label && <span className="block text-xs font-medium text-slate-700">{label}</span>}
-      <input
-        {...props}
-        className={cx(
-          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-          "focus:ring-2 focus:ring-blue-100",
-          error ? "border-red-300 focus:border-red-300 focus:ring-red-100" : "focus:border-blue-300",
-          props.className
-        )}
-      />
-      {error ? (
-        <span className="mt-1 block text-[11px] text-red-700">{error}</span>
-      ) : hint ? (
-        <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>
-      ) : null}
-    </label>
-  );
-}
-
-function Select({ label, hint, ...props }) {
-  return (
-    <label className="block">
-      {label && <span className="block text-xs font-medium text-slate-700">{label}</span>}
-      <select
-        {...props}
-        className={cx(
-          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100",
-          props.className
-        )}
-      >
-        {props.children}
-      </select>
-      {hint && <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>}
-    </label>
-  );
-}
-
-function Button({ variant = "primary", children, ...props }) {
-  const base = "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm";
-  const variants = {
-    primary: "bg-blue-900 text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-200",
-    secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
-    ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
-    danger: "bg-red-600 text-white hover:bg-red-500 focus:ring-2 focus:ring-red-200",
-  };
+function Button({ children, className = "", ...props }) {
   return (
     <button
       {...props}
-      className={cx(base, variants[variant], props.disabled && "opacity-60 cursor-not-allowed", props.className)}
+      className={cx(
+        "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition",
+        "bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed",
+        className
+      )}
     >
       {children}
     </button>
   );
 }
 
-function LoadingOverlay({ title = "Carregando…", subtitle = "Aguarde" }) {
+function Card({ title, subtitle, right, children }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-white/80 backdrop-blur">
-      <div className="rounded-2xl border bg-white px-6 py-5 shadow-sm text-center">
-        <img src={logoSrc} alt="AMR Advogados" className="mx-auto h-10 w-auto max-w-[240px] object-contain" />
-        <p className="mt-3 text-sm font-medium text-slate-900">{title}</p>
-        <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+    <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="p-5 border-b flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
       </div>
+      <div className="p-5">{children}</div>
     </div>
   );
 }
 
-/** =========================
- *  AUTH — localStorage + Bearer token
- *  =========================
- *  - Token guardado em localStorage (por enquanto)
- *  - Validação em /api/auth/me
- *  - Sidebar e layout variam por role (ADMIN | USER)
- *  ========================= */
-
-const TOKEN_KEY = "amr_token";
-
-function getStoredToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || "";
-  } catch {
-    return "";
-  }
+function Input({ label, error, hint, className = "", ...props }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-medium text-slate-700">{label}</span>
+      <input
+        {...props}
+        className={cx(
+          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
+          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100",
+          error ? "border-red-300" : "border-slate-200",
+          className
+        )}
+      />
+      {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
+      {hint && !error ? <span className="mt-1 block text-xs text-slate-500">{hint}</span> : null}
+    </label>
+  );
 }
 
-function setStoredToken(token) {
-  try {
-    if (!token) localStorage.removeItem(TOKEN_KEY);
-    else localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    // noop
-  }
+function LoadingOverlay({ title = "Carregando…", subtitle = "Aguarde" }) {
+  return (
+    <div className="min-h-screen grid place-items-center bg-slate-50">
+      <div className="rounded-2xl border bg-white p-6 shadow-sm w-[min(520px,92vw)]">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 grid place-items-center">
+            <div className="h-4 w-4 rounded-full border-2 border-blue-200 border-t-blue-900 animate-spin" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">{title}</p>
+            <p className="text-xs text-slate-500">{subtitle}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** =========================
@@ -405,6 +325,8 @@ function setStoredToken(token) {
 export default function App() {
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
   const clock = useClock();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // ✅ Auth state
   const [auth, setAuth] = useState({
@@ -417,43 +339,110 @@ export default function App() {
   // ✅ Backend health
   const [backend, setBackend] = useState({ loading: true, label: "verificando" });
 
-  // ✅ API helper com Authorization automático
-  async function apiFetch(path, options = {}) {
-    const token = auth.token || getStoredToken();
-    const headers = new Headers(options.headers || {});
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    return fetch(`${API_BASE}${path}`, { ...options, headers });
-  }
+  // ✅ Views (módulos) — layout aprovado mantido
+  const [view, setView] = useState("dashboard");
 
-  // 1) health
+  const viewTitle = useMemo(
+    () => ({
+      create: "Cadastro rápido",
+      list: "Clientes & Ordens",
+      dashboard: "Dashboard financeiro",
+      admin_users: "Usuários (Admin)",
+      login: "Login",
+    }),
+    []
+  );
+
+  // ✅ Rotas (permissões e URL)
+  const viewToPath = useMemo(
+    () => ({
+      login: "/login",
+      create: "/create",
+      list: "/list",
+      dashboard: "/dashboard",
+      admin_users: "/admin/users",
+    }),
+    []
+  );
+
+  const pathToView = useMemo(() => {
+    const p = location.pathname || "/";
+    if (p === "/login") return "login";
+    if (p === "/create") return "create";
+    if (p === "/list") return "list";
+    if (p === "/dashboard" || p === "/") return "dashboard";
+    if (p.startsWith("/admin/users")) return "admin_users";
+    if (p.startsWith("/admin")) return "admin_users";
+    return "__unknown__";
+  }, [location.pathname]);
+
+  const isAuthed = auth.status === "authed";
+  const isAdmin = isAuthed && (auth.user?.role === "ADMIN" || auth.user?.role === "admin");
+
+  // ✅ Sincroniza view <-> URL e aplica permissões (ADMIN x USER)
+  useEffect(() => {
+    // 1) Se não autenticado: sempre /login
+    if (auth.status === "anon") {
+      if (location.pathname !== "/login") navigate("/login", { replace: true });
+      if (view !== "login") setView("login");
+      return;
+    }
+
+    // 2) Se autenticado: /login não faz sentido
+    if (auth.status === "authed" && location.pathname === "/login") {
+      navigate("/dashboard", { replace: true });
+      if (view !== "dashboard") setView("dashboard");
+      return;
+    }
+
+    // 3) Se a rota é desconhecida, normaliza
+    if (pathToView === "__unknown__") {
+      const target = auth.status === "authed" ? "/dashboard" : "/login";
+      navigate(target, { replace: true });
+      return;
+    }
+
+    // 4) Permissões: USER não entra em /admin
+    if (pathToView.startsWith("admin") && !isAdmin) {
+      navigate("/dashboard", { replace: true });
+      if (view !== "dashboard") setView("dashboard");
+      return;
+    }
+
+    // 5) Atualiza view a partir da URL
+    if (view !== pathToView) setView(pathToView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status, auth.user?.role, location.pathname, pathToView]);
+
+  // ✅ Quando o usuário clica no menu, navegamos e o efeito acima sincroniza o view
+  const go = (nextView) => {
+    const p = viewToPath[nextView] || "/dashboard";
+    navigate(p);
+  };
+
+  /** =========================
+   *  AUTH — bootstrap
+   *  ========================= */
   useEffect(() => {
     let alive = true;
-    async function ping() {
-      setBackend({ loading: true, label: "verificando" });
+
+    async function run() {
+      // health
       try {
         const r = await fetch(`${API_BASE}/api/health`);
+        const j = await r.json().catch(() => ({}));
         if (!alive) return;
-        setBackend({ loading: false, label: r.ok ? "ok" : "erro" });
+        setBackend({ loading: false, label: r.ok ? "ok" : "erro", details: j });
       } catch {
         if (!alive) return;
         setBackend({ loading: false, label: "erro" });
       }
-    }
-    ping();
-    return () => {
-      alive = false;
-    };
-  }, [API_BASE]);
 
-  // 2) auth bootstrap (token -> /me)
-  useEffect(() => {
-    let alive = true;
-
-    async function bootAuth() {
-      const token = getStoredToken();
+      // token local
+      const token = localStorage.getItem("amr_token") || "";
       if (!token) {
         if (!alive) return;
-        setAuth({ status: "anon", token: "", user: null, error: "" });
+        setAuth((s) => ({ ...s, status: "anon", token: "", user: null }));
         return;
       }
 
@@ -469,46 +458,22 @@ export default function App() {
         setAuth({
           status: "authed",
           token,
-          user: j?.user || j, // aceita payload {user:{...}} ou {...}
+          user: j?.user || j, // aceita payload {user:{...}} ou {id,role,...}
           error: "",
         });
       } catch (e) {
-        setStoredToken("");
+        localStorage.removeItem("amr_token");
         if (!alive) return;
-        setAuth({ status: "anon", token: "", user: null, error: "Sessão expirada. Faça login novamente." });
+        setAuth({ status: "anon", token: "", user: null, error: String(e?.message || "Sessão inválida") });
       }
     }
 
-    bootAuth();
+    run();
     return () => {
       alive = false;
     };
-  }, [API_BASE]);
-
-  const role = auth.user?.role || "ANON";
-  const isAdmin = role === "ADMIN";
-  const isUser = role === "USER";
-  const isAuthed = auth.status === "authed";
-
-  // ✅ Views (módulos) — vamos manter exatamente o layout aprovado
-  const [view, setView] = useState("create");
-
-  const viewTitle = useMemo(
-    () => ({
-      create: "Cadastro rápido",
-      list: "Clientes & Ordens",
-      dashboard: "Dashboard financeiro",
-      login: "Login",
-    }),
-    []
-  );
-
-  // ✅ Se não autenticado, força módulo login (sem quebrar visual)
-  useEffect(() => {
-    if (auth.status === "anon") setView("login");
-    if (auth.status === "authed" && view === "login") setView("dashboard");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status]);
+  }, [API_BASE]);
 
   /** =========================
    *  FORM — Cadastro rápido
@@ -527,199 +492,122 @@ export default function App() {
 
   const [docTouched, setDocTouched] = useState(false);
   const docValidation = useMemo(() => validateCpfCnpj(form.cpfCnpj), [form.cpfCnpj]);
-  const docError = docTouched && !docValidation.ok ? docValidation.msg : "";
 
-  const [phoneTouched, setPhoneTouched] = useState(false);
-  const phoneValidation = useMemo(() => validateTelefoneBR(form.telefone), [form.telefone]);
-  const phoneError = phoneTouched && !phoneValidation.ok ? phoneValidation.msg : "";
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState({ tone: "slate", text: "" });
 
-  const [createStatus, setCreateStatus] = useState({ type: "idle", msg: "" });
+  async function handleSaveClientOrder() {
+    setDocTouched(true);
+    const doc = validateCpfCnpj(form.cpfCnpj);
+    if (!doc.ok) {
+      setSaveMsg({ tone: "red", text: doc.msg });
+      return;
+    }
+    if (!form.nomeRazaoSocial?.trim()) {
+      setSaveMsg({ tone: "red", text: "Nome / Razão Social é obrigatório." });
+      return;
+    }
+    if (!form.descricao?.trim()) {
+      setSaveMsg({ tone: "red", text: "Descrição / Objeto é obrigatório." });
+      return;
+    }
+    if (!form.valorTotalPrevisto?.trim()) {
+      setSaveMsg({ tone: "red", text: "Valor total previsto é obrigatório." });
+      return;
+    }
+    if (!form.dataInicio?.trim()) {
+      setSaveMsg({ tone: "red", text: "Data de início é obrigatória." });
+      return;
+    }
+
+    setSaving(true);
+    setSaveMsg({ tone: "slate", text: "" });
+
+    try {
+      const payload = {
+        cliente: {
+          cpfCnpj: onlyDigits(form.cpfCnpj),
+          nomeRazaoSocial: form.nomeRazaoSocial.trim(),
+          email: form.email?.trim() || null,
+          telefone: onlyDigits(form.telefone) || null,
+        },
+        ordem: {
+          descricao: form.descricao.trim(),
+          tipoContrato: form.tipoContrato?.trim() || null,
+          valorTotalPrevisto: String(form.valorTotalPrevisto).replace(/\D/g, ""),
+          modeloPagamento: form.modeloPagamento,
+          dataInicio: toISOFromBR(form.dataInicio),
+        },
+      };
+
+      const r = await fetch(`${API_BASE}/api/clients-and-orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message || "Erro ao salvar");
+
+      setSaveMsg({ tone: "green", text: "Cliente + Ordem salvos com sucesso." });
+      setForm((f) => ({
+        ...f,
+        descricao: "",
+        tipoContrato: "",
+        valorTotalPrevisto: "",
+        modeloPagamento: "AVISTA",
+        dataInicio: "",
+      }));
+    } catch (e) {
+      setSaveMsg({ tone: "red", text: String(e?.message || "Erro ao salvar") });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   /** =========================
-   *  LIST — Clientes & Ordens
+   *  LISTAGEM — Clientes + Ordens
    *  ========================= */
   const [filters, setFilters] = useState({ q: "", status: "ALL" });
   const [listState, setListState] = useState({ loading: false, error: "", data: [] });
 
+  async function loadClientsWithOrders() {
+    setListState({ loading: true, error: "", data: [] });
+    try {
+      const qs = new URLSearchParams();
+      if (filters.q?.trim()) qs.set("q", filters.q.trim());
+      if (filters.status && filters.status !== "ALL") qs.set("status", filters.status);
+
+      const r = await fetch(`${API_BASE}/api/clients-with-orders?${qs.toString()}`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message || "Erro ao listar clientes + ordens");
+      setListState({ loading: false, error: "", data: Array.isArray(j) ? j : j?.data || [] });
+    } catch (e) {
+      setListState({ loading: false, error: String(e?.message || "Erro ao listar"), data: [] });
+    }
+  }
+
   /** =========================
-   *  DASH — Dashboard
+   *  DASHBOARD
    *  ========================= */
   const [dashState, setDashState] = useState({ loading: false, error: "", data: null });
 
-  /** =========================
-   *  [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL)
-   *  ========================= */
-  const [restTime, setRestTime] = useState(""); // HH:MM:SS
-  const [restTarget, setRestTarget] = useState(null);
-  const [restCountdown, setRestCountdown] = useState("00:00:00");
-  const [restModalOpen, setRestModalOpen] = useState(false);
-  const [restModalStep, setRestModalStep] = useState("prompt");
-  const [restPostponeTime, setRestPostponeTime] = useState("");
-  const [restFiredAt, setRestFiredAt] = useState(null);
-
-  useEffect(() => {
-    if (!restTarget) return;
-
-    const tick = () => {
-      const n = new Date();
-      const diff = restTarget.getTime() - n.getTime();
-      setRestCountdown(msToHHMMSS(diff));
-
-      if (diff <= 0 && !restFiredAt) {
-        setRestFiredAt(n);
-        setRestModalOpen(true);
-        setRestModalStep("prompt");
-      }
-    };
-
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [restTarget, restFiredAt]);
-
-  /** =========================
-   *  ACTIONS — Auth
-   *  ========================= */
-  const [loginForm, setLoginForm] = useState({ email: "", senha: "" });
-  const [loginState, setLoginState] = useState({ loading: false, error: "" });
-
-  async function doLogin() {
-    setLoginState({ loading: true, error: "" });
-    try {
-      const payload = {
-        email: String(loginForm.email || "").trim(),
-        senha: String(loginForm.senha || ""),
-      };
-
-      const r = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.message || "Falha no login");
-
-      const token = j?.token;
-      if (!token) throw new Error("Token não retornado pelo backend.");
-
-      // salva token
-      setStoredToken(token);
-
-      // valida /me para obter user
-      const me = await fetch(`${API_BASE}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const meJson = await me.json().catch(() => ({}));
-      if (!me.ok) throw new Error(meJson?.message || "Falha ao validar sessão.");
-
-      setAuth({
-        status: "authed",
-        token,
-        user: meJson?.user || meJson,
-        error: "",
-      });
-
-      setLoginState({ loading: false, error: "" });
-      setView("dashboard");
-    } catch (e) {
-      setLoginState({ loading: false, error: e?.message || "Erro no login" });
-      setAuth((p) => ({ ...p, status: "anon" }));
-    }
-  }
-
-  function doLogout() {
-    setStoredToken("");
-    setAuth({ status: "anon", token: "", user: null, error: "" });
-    setView("login");
-  }
-
-  /** =========================
-   *  ACTIONS — módulos
-   *  ========================= */
-
-  async function createClientAndOrder() {
-    setDocTouched(true);
-    setPhoneTouched(true);
-
-    if (!docValidation.ok) {
-      setCreateStatus({ type: "error", msg: "CPF/CNPJ inválido. Corrija para salvar." });
-      return;
-    }
-    if (!phoneValidation.ok) {
-      setCreateStatus({ type: "error", msg: "Telefone inválido. Corrija para salvar." });
-      return;
-    }
-
-    const valor = parseMoneyBRL(form.valorTotalPrevisto);
-    setCreateStatus({ type: "loading", msg: "" });
-
-    try {
-      const payload = {
-        cpfCnpj: onlyDigits(form.cpfCnpj),
-        nomeRazaoSocial: form.nomeRazaoSocial?.trim(),
-        email: form.email?.trim() || null,
-        telefone: onlyDigits(form.telefone || "") || null,
-        ordem: {
-          descricao: form.descricao?.trim() || null,
-          tipoContrato: form.tipoContrato?.trim() || null,
-          valorTotalPrevisto: valor == null ? null : String(valor),
-          modeloPagamento: form.modeloPagamento,
-          dataInicio: form.dataInicio ? new Date(form.dataInicio).toISOString() : new Date().toISOString(),
-        },
-      };
-
-      const r = await apiFetch(`/api/clients-and-orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.message || "Falha ao criar cliente + ordem");
-
-      setCreateStatus({
-        type: "success",
-        msg: `Criado! Cliente #${j?.cliente?.id ?? "?"}, Ordem #${j?.ordem?.id ?? "?"} (seq. ${
-          j?.ordem?.sequenciaCliente ?? "?"
-        })`,
-      });
-
-      setForm((p) => ({ ...p, descricao: "", tipoContrato: "", valorTotalPrevisto: "" }));
-    } catch (e) {
-      setCreateStatus({ type: "error", msg: e?.message || "Erro inesperado" });
-    }
-  }
-
-  async function loadClientsWithOrders() {
-    setListState((s) => ({ ...s, loading: true, error: "" }));
-
-    const qs = new URLSearchParams();
-    if (filters.q?.trim()) qs.set("q", filters.q.trim());
-    if (filters.status && filters.status !== "ALL") qs.set("status", filters.status);
-
-    try {
-      const r = await apiFetch(`/api/clients-with-orders?${qs.toString()}`);
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.message || "Erro ao listar clientes + ordens");
-      setListState({ loading: false, error: "", data: Array.isArray(j) ? j : [] });
-    } catch (e) {
-      setListState({ loading: false, error: e?.message || "Erro ao listar", data: [] });
-    }
-  }
-
   async function loadDashboard() {
-    setDashState((s) => ({ ...s, loading: true, error: "" }));
+    setDashState({ loading: true, error: "", data: null });
     try {
-      const r = await apiFetch(`/api/dashboard/summary`);
+      const r = await fetch(`${API_BASE}/api/dashboard/summary`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.message || "Erro ao carregar dashboard");
       setDashState({ loading: false, error: "", data: j });
     } catch (e) {
-      setDashState({ loading: false, error: e?.message || "Erro ao carregar dashboard", data: null });
+      setDashState({ loading: false, error: String(e?.message || "Erro ao carregar"), data: null });
     }
   }
 
+  // carrega dados quando muda view
   useEffect(() => {
     if (!isAuthed) return;
     if (view === "list") loadClientsWithOrders();
@@ -729,42 +617,74 @@ export default function App() {
 
   const navItem = (key, label, icon) => (
     <button
-      onClick={() => setView(key)}
+      onClick={() => go(key)}
       className={cx(
         "w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition flex items-center gap-2",
-        view === key ? "bg-blue-900 text-white shadow-sm" : "text-slate-700 hover:bg-slate-100"
+        view === key ? "bg-blue-900 text-white shadow-sm" : "bg-white text-slate-700 hover:bg-slate-50 border"
       )}
     >
-      <span className={cx("opacity-90", view === key ? "text-white" : "text-slate-500")}>{icon}</span>
-      <span>{label}</span>
+      <span className={cx("shrink-0", view === key ? "text-white" : "text-slate-500")}>{icon}</span>
+      <span className="truncate">{label}</span>
     </button>
   );
 
-  // Overlay de boot (backend + auth)
-  if (backend.loading || auth.status === "checking") {
-    return <LoadingOverlay title="Carregando…" subtitle="Conectando e validando sessão" />;
+  // login form
+  const [loginForm, setLoginForm] = useState({ email: "", senha: "" });
+  const [loginState, setLoginState] = useState({ loading: false, error: "" });
+
+  async function doLogin() {
+    setLoginState({ loading: true, error: "" });
+    try {
+      const r = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginForm.email, senha: loginForm.senha }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message || "Erro no login");
+      if (!j?.token) throw new Error("Token não retornado");
+
+      localStorage.setItem("amr_token", j.token);
+
+      const r2 = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${j.token}` },
+      });
+      const me = await r2.json().catch(() => ({}));
+      if (!r2.ok) throw new Error(me?.message || "Falha ao validar sessão");
+
+      setAuth({ status: "authed", token: j.token, user: me?.user || me, error: "" });
+      setLoginState({ loading: false, error: "" });
+      navigate("/dashboard", { replace: true });
+    } catch (e) {
+      setLoginState({ loading: false, error: String(e?.message || "Erro no login") });
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("amr_token");
+    setAuth({ status: "anon", token: "", user: null, error: "" });
+    navigate("/login", { replace: true });
   }
 
   // helper p/ badge do topo: módulo selecionado
   const currentModuleLabel = viewTitle[view] || "Módulo";
 
+  if (backend.loading || auth.status === "checking") {
+    return <LoadingOverlay title="Carregando…" subtitle="Conectando e validando sessão" />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Topbar */}
-      <header className="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
-        <div className="w-full px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={logoSrc}
-              alt="AMR Advogados"
-              className="h-10 w-auto max-w-[260px] object-contain"
-              title="AMR Advogados"
-            />
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold leading-tight truncate">AMR Advogados</h1>
-              <p className="text-xs text-slate-500 truncate">
-                Controle de recebimentos, repasses e obrigações internas
-              </p>
+      <header className="sticky top-0 z-40 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-4 lg:px-6 h-[76px] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-2xl border bg-white shadow-sm grid place-items-center overflow-hidden">
+              <img src={logoSrc} alt="AMR Advogados" className="h-10 w-auto" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold text-slate-900">AMR Advogados</p>
+              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
             </div>
           </div>
 
@@ -780,14 +700,25 @@ export default function App() {
                 {auth.user?.role || "—"} • {auth.user?.email || "—"}
               </Badge>
             ) : (
-              <Badge tone="amber">Não autenticado</Badge>
+              <Badge tone="amber">Não logado</Badge>
             )}
+
+            {isAuthed ? (
+              <button
+                onClick={logout}
+                className="ml-2 inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                title="Sair"
+              >
+                <Icon.logout />
+                Sair
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
 
-      {/* Content grid */}
-      <div className="w-full grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
+      {/* Body */}
+      <div className="mx-auto max-w-7xl px-4 lg:px-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
         {/* Sidebar (layout aprovado: mantido) */}
         <aside className="pl-0 lg:pl-0">
           <div className="sticky top-[92px]">
@@ -797,18 +728,16 @@ export default function App() {
               </div>
 
               <div className="space-y-2 flex-1">
-                {/* Se não authed, só deixa Login */}
                 {!isAuthed ? (
                   navItem("login", "Login", <Icon.user />)
                 ) : (
                   <>
                     {navItem("create", "Cadastro rápido", <Icon.plus />)}
-                    {navItem("list", "Clientes & Ordens", <Icon.list />)}
+                    {navItem("list", "Listagem (Clientes & Ordens)", <Icon.list />)}
                     {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
                   </>
                 )}
 
-                {/* ADMIN ONLY — seção some para USER */}
                 {isAuthed && isAdmin && (
                   <div className="mt-5">
                     <p className="mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
@@ -816,6 +745,8 @@ export default function App() {
                     </p>
 
                     <div className="space-y-2">
+                      {navItem("admin_users", "Usuários", <Icon.user />)}
+
                       <button
                         disabled
                         className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
@@ -836,167 +767,54 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
-                {/* [TEMP-REST] DESCANSO — TEMPORÁRIO (REMOVER AO FINAL) */}
-                <div className="mt-5 rounded-2xl border bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                    Descanso (temporário)
-                  </p>
-
-                  <div className="mt-2 space-y-2">
-                    <label className="block">
-                      <span className="block text-xs font-medium text-slate-700">Hora de descansar</span>
-                      <input
-                        type="time"
-                        step="1"
-                        value={restTime}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setRestTime(v);
-
-                          const next = buildNextTargetDate(v, new Date());
-                          setRestTarget(next);
-
-                          setRestFiredAt(null);
-                          setRestModalOpen(false);
-                          setRestModalStep("prompt");
-                        }}
-                        className={cx(
-                          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-                          "focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                        )}
-                      />
-                      <span className="mt-1 block text-[11px] text-slate-500">
-                        Tudo aqui é temporário e será removido ao final.
-                      </span>
-                    </label>
-
-                    <div className="rounded-xl border bg-white px-3 py-2">
-                      <div className="flex items-center justify-between text-xs text-slate-600">
-                        <span>Hora escolhida</span>
-                        <span className="font-mono text-slate-900">
-                          {restTarget
-                            ? `${pad2(restTarget.getHours())}:${pad2(restTarget.getMinutes())}:${pad2(
-                                restTarget.getSeconds()
-                              )}`
-                            : "—"}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
-                        <span>Regressivo</span>
-                        <span className="font-mono text-slate-900">{restTarget ? restCountdown : "—"}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* [/TEMP-REST] */}
               </div>
 
-              {/* Sidebar footer: DATA + HORA + Usuário + Sair */}
-              <div className="mt-4 border-t pt-3 space-y-3 text-xs text-slate-600">
-                <div className="flex items-center justify-between font-mono">
-                  <span>{clock.date}</span>
-                  <span>{clock.time}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Usuário</span>
-
-                  {isAuthed ? (
-                    <Badge tone="slate">{auth.user?.role || "—"}</Badge>
-                  ) : (
-                    <Badge tone="amber">Sem sessão</Badge>
-                  )}
-                </div>
-
-                {isAuthed ? (
-                  <button
-                    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-semibold text-slate-900 bg-white hover:bg-slate-50 flex items-center justify-center gap-2"
-                    onClick={doLogout}
-                    title="Encerrar sessão"
-                  >
-                    <Icon.logout />
-                    Sair
-                  </button>
-                ) : (
-                  <button
-                    className="w-full rounded-xl border px-3 py-2 text-center text-xs font-medium text-slate-400 cursor-not-allowed bg-slate-50"
-                    disabled
-                    title="Faça login para sair"
-                  >
-                    Sair
-                  </button>
-                )}
+              {/* Rodapé sidebar: Data/Hora + “Usuário” */}
+              <div className="pt-3 border-t flex items-center justify-between text-xs text-slate-500">
+                <span className="font-mono">{clock.date}</span>
+                <span className="font-mono">{clock.time}</span>
+              </div>
+              <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
+                <span>{isAuthed ? "Usuário logado" : "Em desenvolvimento"}</span>
+                <span className="font-medium">{isAuthed ? (auth.user?.nome || "—") : "—"}</span>
               </div>
             </div>
           </div>
         </aside>
 
         {/* Main */}
-        <main className="pr-6 pl-4 lg:pl-0">
-          {/* Seção LOGIN */}
-          {view === "login" && (
-            <div className="space-y-6">
-              <Card
-                title="Login"
-                subtitle="Acesse com seu e-mail e senha."
-                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
-              >
-                {auth.error && <p className="mb-3 text-sm text-red-700">{auth.error}</p>}
+        <main className="space-y-6">
+          {!isAuthed && view === "login" && (
+            <Card title="Login" subtitle="Entre com seu usuário e senha para acessar o sistema.">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="E-mail"
+                  value={loginForm.email}
+                  onChange={(e) => setLoginForm((s) => ({ ...s, email: e.target.value }))}
+                  placeholder="financeiro@amradvogados.com"
+                />
+                <Input
+                  label="Senha"
+                  type="password"
+                  value={loginForm.senha}
+                  onChange={(e) => setLoginForm((s) => ({ ...s, senha: e.target.value }))}
+                  placeholder="••••••••"
+                />
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="E-mail"
-                    placeholder="financeiro@amandaramalho.adv.br"
-                    value={loginForm.email}
-                    onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
-                    autoComplete="username"
-                  />
-                  <Input
-                    label="Senha"
-                    type="password"
-                    placeholder="••••••••"
-                    value={loginForm.senha}
-                    onChange={(e) => setLoginForm((p) => ({ ...p, senha: e.target.value }))}
-                    autoComplete="current-password"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") doLogin();
-                    }}
-                  />
-                </div>
+              {loginState.error ? <p className="mt-3 text-sm text-red-600">{loginState.error}</p> : null}
 
-                {loginState.error && <p className="mt-3 text-sm text-red-700">{loginState.error}</p>}
-
-                <div className="mt-4 flex items-center gap-3">
-                  <Button onClick={doLogin} disabled={loginState.loading}>
-                    {loginState.loading ? "Entrando..." : "Entrar"}
-                  </Button>
-
-                  <p className="text-xs text-slate-500">
-                    {backend.label === "ok" ? "Backend conectado." : "Backend com erro — confira Render/local."}
-                  </p>
-                </div>
-
-                <div className="mt-5 rounded-xl border bg-slate-50 p-3 text-xs text-slate-600">
-                  <p className="font-semibold text-slate-700">Dica rápida</p>
-                  <p className="mt-1">
-                    O token fica salvo no <span className="font-mono">localStorage</span> por enquanto. Depois a gente
-                    endurece isso (refresh + httpOnly cookie se você quiser).
-                  </p>
-                </div>
-              </Card>
-            </div>
+              <div className="mt-4 flex items-center gap-3">
+                <Button onClick={doLogin} disabled={loginState.loading}>
+                  {loginState.loading ? "Entrando…" : "Entrar"}
+                </Button>
+              </div>
+            </Card>
           )}
 
-          {/* BLOQUEIO de telas se não authed */}
           {!isAuthed && view !== "login" && (
-            <Card
-              title="Acesso restrito"
-              subtitle="Você precisa estar autenticado para acessar este módulo."
-              right={<Badge tone="amber">Login necessário</Badge>}
-            >
-              <Button onClick={() => setView("login")}>Ir para Login</Button>
+            <Card title="Acesso restrito" subtitle="Você precisa fazer login para continuar.">
+              <Button onClick={() => go("login")}>Ir para Login</Button>
             </Card>
           )}
 
@@ -1019,35 +837,35 @@ export default function App() {
                       <Input
                         label="CPF/CNPJ"
                         placeholder="CPF: 000.000.000-00 ou CNPJ: 00.000.000/0000-00"
-                        value={form.cpfCnpj}
-                        onChange={(e) => setForm((p) => ({ ...p, cpfCnpj: formatCpfCnpj(e.target.value) }))}
-                        onBlur={() => setDocTouched(true)}
-                        error={docError}
-                        hint={!docError ? "Máscara automática + validação" : undefined}
-                      />
-
-                      <Input
-                        label="Nome / Razão Social"
-                        placeholder="Ex.: Empresa X Ltda."
-                        value={form.nomeRazaoSocial}
-                        onChange={(e) => setForm((p) => ({ ...p, nomeRazaoSocial: e.target.value }))}
-                      />
-
-                      <Input
-                        label="E-mail"
-                        placeholder="financeiro@empresa.com"
-                        value={form.email}
-                        onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                        value={maskCpfCnpj(form.cpfCnpj)}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, cpfCnpj: e.target.value }));
+                          setDocTouched(true);
+                        }}
+                        error={docTouched && !docValidation.ok ? docValidation.msg : ""}
                       />
 
                       <Input
                         label="Telefone"
                         placeholder="(99) 9 9999-9999"
-                        value={form.telefone}
-                        onChange={(e) => setForm((p) => ({ ...p, telefone: formatTelefoneBR(e.target.value) }))}
-                        onBlur={() => setPhoneTouched(true)}
-                        error={phoneError}
-                        hint={!phoneError ? "Máscara automática (11 dígitos)" : undefined}
+                        value={maskTelefoneBR(form.telefone)}
+                        onChange={(e) => setForm((f) => ({ ...f, telefone: e.target.value }))}
+                      />
+
+                      <Input
+                        label="Nome / Razão Social"
+                        placeholder="Ex.: Empresa X Ltda."
+                        className="md:col-span-2"
+                        value={form.nomeRazaoSocial}
+                        onChange={(e) => setForm((f) => ({ ...f, nomeRazaoSocial: e.target.value }))}
+                      />
+
+                      <Input
+                        label="E-mail"
+                        placeholder="financeiro@empresa.com"
+                        className="md:col-span-2"
+                        value={form.email}
+                        onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                       />
                     </div>
                   </div>
@@ -1055,73 +873,61 @@ export default function App() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-sm font-semibold text-slate-900">Dados da ordem de pagamento</h4>
-                      <p className="text-xs text-slate-500">Contrato/ocorrência vinculada ao cliente.</p>
+                      <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Input
                         label="Descrição / Objeto"
                         placeholder="Ex.: Contrato consultivo mensal"
+                        className="md:col-span-2"
                         value={form.descricao}
-                        onChange={(e) => setForm((p) => ({ ...p, descricao: e.target.value }))}
+                        onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
                       />
-
                       <Input
                         label="Tipo de contrato"
                         placeholder="Ex.: esporádico, recorrente..."
                         value={form.tipoContrato}
-                        onChange={(e) => setForm((p) => ({ ...p, tipoContrato: e.target.value }))}
+                        onChange={(e) => setForm((f) => ({ ...f, tipoContrato: e.target.value }))}
                       />
-
                       <Input
-                        label="Valor total previsto (R$)"
-                        placeholder="0,00"
-                        inputMode="numeric"
-                        value={form.valorTotalPrevisto}
-                        onChange={(e) => setForm((p) => ({ ...p, valorTotalPrevisto: formatMoneyTyping(e.target.value) }))}
-                        hint="Máscara: 1→0,01 • 12→0,12 • 123→1,23 • 123456→1.234,56"
+                        label="Valor total previsto"
+                        placeholder="Ex.: 10000"
+                        value={digitsToMoneyBRL(moneyToDigits(form.valorTotalPrevisto))}
+                        onChange={(e) => setForm((f) => ({ ...f, valorTotalPrevisto: e.target.value }))}
+                        hint="Digite números: 1→0,01 | 123456→1.234,56"
                       />
 
-                      <Select
-                        label="Modelo de pagamento"
-                        value={form.modeloPagamento}
-                        onChange={(e) => setForm((p) => ({ ...p, modeloPagamento: e.target.value }))}
-                      >
-                        <option value="AVISTA">À vista</option>
-                        <option value="ENTRADA_E_PARCELAS">Entrada + parcelas</option>
-                        <option value="APENAS_PARCELAS">Apenas parcelas</option>
-                      </Select>
+                      <label className="block">
+                        <span className="block text-xs font-medium text-slate-700">Modelo de pagamento</span>
+                        <select
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                          value={form.modeloPagamento}
+                          onChange={(e) => setForm((f) => ({ ...f, modeloPagamento: e.target.value }))}
+                        >
+                          <option value="AVISTA">À vista</option>
+                          <option value="ENTRADA_E_PARCELAS">Entrada + parcelas</option>
+                          <option value="PARCELAS">Parcelas</option>
+                        </select>
+                      </label>
 
                       <Input
                         label="Data de início"
-                        type="date"
+                        placeholder="dd/mm/aaaa"
                         value={form.dataInicio}
-                        onChange={(e) => setForm((p) => ({ ...p, dataInicio: e.target.value }))}
-                        className="md:col-span-2"
-                        hint="Exibição no app será DD/MM/AAAA (o input date é só para facilitar a seleção)"
+                        onChange={(e) => setForm((f) => ({ ...f, dataInicio: e.target.value }))}
+                        hint="Formato: DD/MM/AAAA"
                       />
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <Button onClick={createClientAndOrder} disabled={createStatus.type === "loading"}>
-                        {createStatus.type === "loading" ? "Salvando..." : "Salvar cliente + ordem"}
+                    <div className="pt-2 flex items-center gap-3">
+                      <Button onClick={handleSaveClientOrder} disabled={saving}>
+                        {saving ? "Salvando…" : "Salvar cliente + ordem"}
                       </Button>
 
-                      {createStatus.type === "success" && <Badge tone="green">{createStatus.msg}</Badge>}
-                      {createStatus.type === "error" && <Badge tone="red">{createStatus.msg}</Badge>}
+                      {saveMsg.text ? <Badge tone={saveMsg.tone}>{saveMsg.text}</Badge> : null}
                     </div>
                   </div>
-                </div>
-              </Card>
-
-              <Card title="Dica" subtitle="Use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido.">
-                <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => setView("list")}>
-                    Ir para Listagem
-                  </Button>
-                  <Button variant="ghost" onClick={() => setView("dashboard")}>
-                    Ver Dashboard
-                  </Button>
                 </div>
               </Card>
             </div>
@@ -1130,114 +936,75 @@ export default function App() {
           {isAuthed && view === "list" && (
             <div className="space-y-6">
               <Card
-                title="Listagem: Clientes & Ordens"
-                subtitle="Filtros por nome/CPF/CNPJ e status da ordem."
-                right={
-                  <div className="flex items-center gap-2">
-                    <Button variant="secondary" onClick={loadClientsWithOrders}>
-                      Atualizar
-                    </Button>
-                  </div>
-                }
+                title="Listagem (Clientes & Ordens)"
+                subtitle="Filtros básicos para validar rapidamente os cadastros."
+                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
               >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <Input
-                    label="Busca"
-                    placeholder="Nome ou CPF/CNPJ..."
+                    label="Busca (cliente / CPF/CNPJ)"
+                    placeholder="Digite parte do nome ou documento…"
                     value={filters.q}
-                    onChange={(e) => setFilters((p) => ({ ...p, q: e.target.value }))}
+                    onChange={(e) => setFilters((s) => ({ ...s, q: e.target.value }))}
                   />
-                  <Select
-                    label="Status da ordem"
-                    value={filters.status}
-                    onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
-                  >
-                    <option value="ALL">Todas</option>
-                    <option value="ATIVA">Ativas</option>
-                    <option value="CONCLUIDA">Concluídas</option>
-                    <option value="CANCELADA">Canceladas</option>
-                  </Select>
+
+                  <label className="block">
+                    <span className="block text-xs font-medium text-slate-700">Status da ordem</span>
+                    <select
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                      value={filters.status}
+                      onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                    >
+                      <option value="ALL">Todas</option>
+                      <option value="ATIVA">Ativas</option>
+                      <option value="CONCLUIDA">Concluídas</option>
+                    </select>
+                  </label>
 
                   <div className="flex items-end">
-                    <Button onClick={loadClientsWithOrders} className="w-full">
-                      Aplicar filtros
+                    <Button onClick={loadClientsWithOrders} disabled={listState.loading}>
+                      {listState.loading ? "Carregando…" : "Aplicar filtros"}
                     </Button>
                   </div>
                 </div>
 
-                {listState.loading && <p className="text-sm text-slate-500">Carregando...</p>}
-                {listState.error && <p className="text-sm text-red-700">{listState.error}</p>}
+                {listState.error ? <p className="mt-4 text-sm text-red-600">{listState.error}</p> : null}
 
-                {!listState.loading && !listState.error && listState.data?.length === 0 && (
-                  <p className="text-sm text-slate-500">Nenhum cliente encontrado.</p>
-                )}
+                <div className="mt-5 space-y-3">
+                  {listState.data?.length ? (
+                    listState.data.map((c) => (
+                      <div key={c.id} className="rounded-2xl border bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{c.nomeRazaoSocial}</p>
+                            <p className="text-xs text-slate-500">
+                              {maskCpfCnpj(c.cpfCnpj)} • {c.email || "—"} • {maskTelefoneBR(c.telefone || "") || "—"}
+                            </p>
+                          </div>
+                          <Badge tone={c.ativo ? "green" : "red"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+                        </div>
 
-                {!listState.loading && !listState.error && listState.data?.length > 0 && (
-                  <div className="overflow-auto rounded-xl border">
-                    <table className="min-w-full text-sm">
-                      <thead className="sticky top-0 bg-slate-50 border-b">
-                        <tr className="text-left text-xs font-semibold text-slate-600">
-                          <th className="px-4 py-3">Cliente</th>
-                          <th className="px-4 py-3">CPF/CNPJ</th>
-                          <th className="px-4 py-3">Contato</th>
-                          <th className="px-4 py-3">Ordens</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {listState.data.map((c, idx) => (
-                          <tr key={c.id} className={cx("border-b", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}>
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-slate-900">{c.nomeRazaoSocial}</div>
-                              <div className="text-xs text-slate-500">ID #{c.id}</div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs">{formatCpfCnpj(c.cpfCnpj)}</td>
-                            <td className="px-4 py-3">
-                              <div className="text-xs text-slate-700">{c.email || "—"}</div>
-                              <div className="text-xs text-slate-500">
-                                {c.telefone ? formatTelefoneBR(c.telefone) : "—"}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="space-y-2">
-                                {(c.ordens || []).map((o) => (
-                                  <div key={o.id} className="rounded-xl border bg-white px-3 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="text-sm font-semibold text-slate-900">
-                                        {o.descricao || "Ordem sem descrição"}{" "}
-                                        <span className="text-xs font-normal text-slate-500">
-                                          (seq. {o.sequenciaCliente})
-                                        </span>
-                                      </div>
-                                      <Badge
-                                        tone={
-                                          o.status === "ATIVA" ? "green" : o.status === "CONCLUIDA" ? "slate" : "amber"
-                                        }
-                                      >
-                                        {o.status}
-                                      </Badge>
-                                    </div>
-
-                                    <div className="mt-1 text-xs text-slate-600">
-                                      {o.tipoContrato ? `${o.tipoContrato} • ` : ""}
-                                      {o.valorTotalPrevisto
-                                        ? `Previsto: ${moneyBRL(o.valorTotalPrevisto)}`
-                                        : "Sem valor previsto"}
-                                    </div>
-
-                                    <div className="mt-1 text-[11px] text-slate-500">Início: {formatDateBR(o.dataInicio)}</div>
-                                  </div>
-                                ))}
-                                {(c.ordens || []).length === 0 && (
-                                  <span className="text-xs text-slate-500">Sem ordens</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {(c.ordens || []).map((o) => (
+                            <div key={o.id} className="rounded-2xl border bg-slate-50 p-3">
+                              <p className="text-sm font-semibold text-slate-900">
+                                #{o.sequenciaCliente} • {o.descricao}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Modelo: {o.modeloPagamento} • Início: {toBRFromISO(o.dataInicio)} • Status: {o.status}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Valor previsto: <span className="font-medium text-slate-700">{moneyBRL(o.valorTotalPrevisto)}</span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">Nenhum registro encontrado.</p>
+                  )}
+                </div>
               </Card>
             </div>
           )}
@@ -1246,31 +1013,31 @@ export default function App() {
             <div className="space-y-6">
               <Card
                 title="Dashboard financeiro"
-                subtitle="Resumo dos cadastros e ordens."
-                right={
-                  <Button variant="secondary" onClick={loadDashboard}>
-                    Atualizar
-                  </Button>
-                }
+                subtitle="Resumo rápido para conferência."
+                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
               >
-                {dashState.loading && <p className="text-sm text-slate-500">Carregando...</p>}
-                {dashState.error && <p className="text-sm text-red-700">{dashState.error}</p>}
-
-                {!dashState.loading && !dashState.error && dashState.data && (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="rounded-2xl border bg-white p-4">
+                {dashState.loading ? (
+                  <p className="text-sm text-slate-500">Carregando…</p>
+                ) : dashState.error ? (
+                  <p className="text-sm text-red-600">{dashState.error}</p>
+                ) : dashState.data ? (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <div className="md:col-span-3 rounded-2xl border bg-white p-4">
                       <p className="text-xs text-slate-500">Clientes</p>
                       <p className="mt-1 text-2xl font-semibold">{dashState.data.totalClients ?? 0}</p>
                     </div>
-                    <div className="rounded-2xl border bg-white p-4">
+
+                    <div className="md:col-span-3 rounded-2xl border bg-white p-4">
                       <p className="text-xs text-slate-500">Ordens</p>
                       <p className="mt-1 text-2xl font-semibold">{dashState.data.totalOrders ?? 0}</p>
                     </div>
-                    <div className="rounded-2xl border bg-white p-4">
+
+                    <div className="md:col-span-3 rounded-2xl border bg-white p-4">
                       <p className="text-xs text-slate-500">Ativas</p>
                       <p className="mt-1 text-2xl font-semibold">{dashState.data.totalAtivas ?? 0}</p>
                     </div>
-                    <div className="rounded-2xl border bg-white p-4">
+
+                    <div className="md:col-span-3 rounded-2xl border bg-white p-4">
                       <p className="text-xs text-slate-500">Concluídas</p>
                       <p className="mt-1 text-2xl font-semibold">{dashState.data.totalConcluidas ?? 0}</p>
                     </div>
@@ -1283,141 +1050,34 @@ export default function App() {
                       </p>
                     </div>
                   </div>
-                )}
+                ) : null}
+              </Card>
+            </div>
+          )}
+
+          {isAuthed && view === "admin_users" && (
+            <div className="space-y-6">
+              <Card
+                title="Usuários (Admin)"
+                subtitle="Gestão de usuários (listar, ativar/desativar e reset de senha) — em construção."
+                right={<Badge tone="amber">Em desenvolvimento</Badge>}
+              >
+                <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-600">
+                  <p className="font-medium text-slate-900">Próximos passos</p>
+                  <ul className="mt-2 list-disc pl-5 space-y-1">
+                    <li>Listar usuários do sistema (ADMIN)</li>
+                    <li>Ativar / desativar usuários</li>
+                    <li>Resetar senha (enviar token por e-mail)</li>
+                  </ul>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Obs.: esta tela existe só para validar as permissões de rota e a navegação por URL.
+                  </p>
+                </div>
               </Card>
             </div>
           )}
         </main>
       </div>
-
-      {/* [TEMP-REST] MODAL — TEMPORÁRIO (REMOVER AO FINAL) */}
-      {restModalOpen && (
-        <div className="fixed inset-0 z-[999] grid place-items-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[min(520px,92vw)] rounded-2xl border bg-white shadow-lg">
-            <div className="border-b px-5 py-4">
-              <h3 className="text-sm font-semibold text-slate-900">Hora de descansar</h3>
-              <p className="mt-1 text-xs text-slate-500">Alerta temporário — remover ao final.</p>
-            </div>
-
-            <div className="px-5 py-4 space-y-4">
-              {restModalStep === "prompt" && (
-                <>
-                  <p className="text-sm text-slate-800">Chegou a hora escolhida. Você deve ir descansar agora.</p>
-
-                  <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    <div className="flex justify-between">
-                      <span>Agora</span>
-                      <span className="font-mono">{clock.time}</span>
-                    </div>
-                    <div className="mt-1 flex justify-between">
-                      <span>Regressivo</span>
-                      <span className="font-mono">{restCountdown}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-900 hover:bg-slate-200"
-                      onClick={() => {
-                        setRestModalStep("postpone");
-                        setRestPostponeTime(restTime || "");
-                      }}
-                    >
-                      Postergar (excepcionalmente)
-                    </button>
-
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
-                      onClick={() => setRestModalStep("goodnight")}
-                    >
-                      Não, vou descansar
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {restModalStep === "postpone" && (
-                <>
-                  {(() => {
-                    const s = saudacaoComIcone(clock.now);
-                    return (
-                      <p className="text-sm text-slate-800">
-                        {s.text} {s.icon}
-                        <br />
-                        Descanse. Depois a gente continua.
-                      </p>
-                    );
-                  })()}
-
-                  <label className="block">
-                    <span className="block text-xs font-medium text-slate-700">Nova hora</span>
-                    <input
-                      type="time"
-                      step="1"
-                      value={restPostponeTime}
-                      onChange={(e) => setRestPostponeTime(e.target.value)}
-                      className={cx(
-                        "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none",
-                        "focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                      )}
-                    />
-                  </label>
-
-                  <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-slate-100 text-slate-900 hover:bg-slate-200"
-                      onClick={() => setRestModalStep("prompt")}
-                    >
-                      Voltar
-                    </button>
-
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
-                      onClick={() => {
-                        const next = buildNextTargetDate(restPostponeTime, new Date());
-                        if (next) {
-                          setRestTime(restPostponeTime);
-                          setRestTarget(next);
-                          setRestFiredAt(null);
-                          setRestModalOpen(false);
-                          setRestModalStep("prompt");
-                        }
-                      }}
-                    >
-                      Confirmar nova hora
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {restModalStep === "goodnight" && (
-                <>
-                  {(() => {
-                    const s = saudacaoComIcone(clock.now);
-                    return (
-                      <p className="text-sm text-slate-800">
-                        {s.text} {s.icon}
-                        <br />
-                        Descanse. Amanhã a gente continua.
-                      </p>
-                    );
-                  })()}
-
-                  <div className="flex justify-end">
-                    <button
-                      className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-blue-900 text-white hover:bg-blue-800"
-                      onClick={() => setRestModalOpen(false)}
-                    >
-                      Retornar
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* [/TEMP-REST] */}
     </div>
   );
 }
