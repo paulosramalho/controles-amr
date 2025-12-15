@@ -13,182 +13,239 @@ function cx(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-function onlyDigits(v = "") {
-  return String(v).replace(/\D/g, "");
+// CPF/CNPJ: máscara + validação simples (crítica)
+function onlyDigits(v) {
+  return (v || "").replace(/\D+/g, "");
 }
 
-// CPF/CNPJ — máscara + validação
-function maskCpfCnpj(value = "") {
-  const d = onlyDigits(value);
-  if (d.length <= 11) {
-    return d
-      .replace(/^(\d{3})(\d)/, "$1.$2")
-      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4")
-      .slice(0, 14);
-  }
-  return d
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5")
-    .slice(0, 18);
-}
-
-function isValidCpf(cpfDigits) {
-  const cpf = onlyDigits(cpfDigits);
+function isValidCPF(raw) {
+  const cpf = onlyDigits(raw);
   if (cpf.length !== 11) return false;
   if (/^(\d)\1{10}$/.test(cpf)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i);
+  let d1 = 11 - (sum % 11);
+  if (d1 >= 10) d1 = 0;
+  if (d1 !== Number(cpf[9])) return false;
 
-  const calc = (base, factor) => {
-    let sum = 0;
-    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (factor - i);
-    const mod = (sum * 10) % 11;
-    return mod === 10 ? 0 : mod;
-  };
-
-  const d1 = calc(cpf.slice(0, 9), 10);
-  const d2 = calc(cpf.slice(0, 10), 11);
-  return d1 === Number(cpf[9]) && d2 === Number(cpf[10]);
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i);
+  let d2 = 11 - (sum % 11);
+  if (d2 >= 10) d2 = 0;
+  return d2 === Number(cpf[10]);
 }
 
-function isValidCnpj(cnpjDigits) {
-  const cnpj = onlyDigits(cnpjDigits);
+function isValidCNPJ(raw) {
+  const cnpj = onlyDigits(raw);
   if (cnpj.length !== 14) return false;
   if (/^(\d)\1{13}$/.test(cnpj)) return false;
 
-  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-
-  const calc = (base, weights) => {
+  const calc = (base) => {
+    let pos = base.length - 7;
     let sum = 0;
-    for (let i = 0; i < weights.length; i++) sum += Number(base[i]) * weights[i];
+    for (let i = base.length; i >= 1; i--) {
+      sum += Number(base[base.length - i]) * pos--;
+      if (pos < 2) pos = 9;
+    }
     const mod = sum % 11;
     return mod < 2 ? 0 : 11 - mod;
   };
 
-  const d1 = calc(cnpj.slice(0, 12), weights1);
-  const d2 = calc(cnpj.slice(0, 13), weights2);
-  return d1 === Number(cnpj[12]) && d2 === Number(cnpj[13]);
+  const base12 = cnpj.slice(0, 12);
+  const d1 = calc(base12);
+  const d2 = calc(base12 + String(d1));
+  return cnpj.endsWith(`${d1}${d2}`);
 }
 
-function isValidCpfCnpj(value = "") {
-  const d = onlyDigits(value);
-  if (d.length === 11) return isValidCpf(d);
-  if (d.length === 14) return isValidCnpj(d);
+function maskCpfCnpj(value) {
+  const v = onlyDigits(value);
+  if (v.length <= 11) {
+    // CPF
+    return v
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})$/, "$1.$2.$3-$4");
+  }
+  // CNPJ
+  return v
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d{1,2})$/, "$1.$2.$3/$4-$5");
+}
+
+function isValidCpfCnpj(value) {
+  const v = onlyDigits(value);
+  if (v.length === 11) return isValidCPF(v);
+  if (v.length === 14) return isValidCNPJ(v);
   return false;
 }
 
-// TELEFONE — máscara (99) 9 9999-9999
-function maskPhone(value = "") {
-  const d = onlyDigits(value).slice(0, 11);
-  const p1 = d.slice(0, 2);
-  const p2 = d.slice(2, 3);
-  const p3 = d.slice(3, 7);
-  const p4 = d.slice(7, 11);
-
-  if (d.length <= 2) return p1 ? `(${p1}` : "";
-  if (d.length <= 3) return `(${p1}) ${p2}`;
-  if (d.length <= 7) return `(${p1}) ${p2} ${p3}`;
-  return `(${p1}) ${p2} ${p3}-${p4}`;
+// Telefone: (99) 9 9999-9999 + validação básica
+function maskPhone(value) {
+  const v = onlyDigits(value).slice(0, 11); // 11 dígitos
+  if (!v) return "";
+  if (v.length <= 2) return `(${v}`;
+  if (v.length <= 3) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
+  if (v.length <= 7) return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3)}`;
+  return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3, 7)}-${v.slice(7)}`;
 }
 
-function isValidPhone(value = "") {
+function isValidPhone(value) {
   return onlyDigits(value).length === 11;
 }
 
-// DATAS — DD/MM/AAAA
-function formatDateBR(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+// Datas DD/MM/AAAA
+function maskDate(value) {
+  const v = onlyDigits(value).slice(0, 8);
+  if (!v) return "";
+  if (v.length <= 2) return v;
+  if (v.length <= 4) return `${v.slice(0, 2)}/${v.slice(2)}`;
+  return `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4)}`;
 }
 
-// HORAS — HH:MM:SS
-function formatTimeBR(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function parseDateBR(ddmmyyyy) {
-  const m = String(ddmmyyyy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+function parseDateDDMMYYYY(value) {
+  const m = (value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
   const dd = Number(m[1]);
   const mm = Number(m[2]);
   const yyyy = Number(m[3]);
-  const dt = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
-  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
-  return dt;
+  if (mm < 1 || mm > 12) return null;
+  if (dd < 1 || dd > 31) return null;
+  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) return null;
+  return d;
 }
 
-// VALORES — máscara moeda digitando 1 => 0,01 (centavos)
-function onlyDigitsToCents(value = "") {
-  const d = onlyDigits(value);
-  return d ? Number(d) : 0;
-}
-function formatBRLFromCents(cents = 0) {
-  const v = (Number(cents) || 0) / 100;
-  return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatDateDDMMYYYY(date) {
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
-function useClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return { now, date: formatDateBR(now), time: formatTimeBR(now) };
+function formatTimeHHMMSS(date) {
+  const d = new Date(date);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+// Valores R$ (digitando 1 => 0,01 etc.)
+function centsFromInputDigits(value) {
+  const v = onlyDigits(value);
+  const n = Number(v || "0");
+  return n; // em centavos
+}
+
+function formatBRLFromCents(cents) {
+  const n = Number(cents || 0) / 100;
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatBRLFromNumber(number) {
+  const n = Number(number || 0);
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** =========================
- *  UI base
+ *  ICONS (minimalistas)
  *  ========================= */
+const Icon = {
+  user: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12Zm0 2.25c-4.2 0-7.5 2.1-7.5 4.5v.75h15v-.75c0-2.4-3.3-4.5-7.5-4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  ),
+  plus: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  list: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  chart: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 16v-6M12 16V8M16 16v-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  shield: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 3 20 7v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V7l8-4Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  ),
+  lock: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+};
 
-function Card({ title, subtitle, right, children }) {
-  return (
-    <div className="rounded-2xl border bg-white shadow-sm p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
-        </div>
-        {right ? <div className="shrink-0">{right}</div> : null}
-      </div>
-      <div className="mt-6">{children}</div>
-    </div>
-  );
-}
-
-function Badge({ tone = "slate", children }) {
-  const tones = {
+/** =========================
+ *  UI COMPONENTS
+ *  ========================= */
+function Badge({ children, tone = "slate" }) {
+  const toneMap = {
     slate: "bg-slate-100 text-slate-700 border-slate-200",
     green: "bg-emerald-50 text-emerald-700 border-emerald-200",
     red: "bg-rose-50 text-rose-700 border-rose-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
   };
   return (
-    <span className={cx("inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold", tones[tone])}>
+    <span className={cx("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border", toneMap[tone])}>
       {children}
     </span>
   );
 }
 
-function Input({ label, value, onChange, placeholder, error, helper, inputMode, maxLength, type = "text" }) {
+function Card({ title, subtitle, children, right }) {
+  return (
+    <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="px-5 py-4 border-b flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, type = "text", error, help, inputMode, maxLength }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-slate-700">{label}</span>
+      <div className="text-xs font-semibold text-slate-700">{label}</div>
       <input
-        type={type}
         className={cx(
-          "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
-          error ? "border-rose-300 focus:ring-rose-200" : "border-slate-200 focus:ring-slate-200"
+          "mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none",
+          error ? "border-rose-300 focus:ring-2 focus:ring-rose-100" : "border-slate-200 focus:ring-2 focus:ring-slate-100"
         )}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        type={type}
         inputMode={inputMode}
         maxLength={maxLength}
       />
-      {helper ? <p className="mt-1 text-[11px] text-slate-500">{helper}</p> : null}
-      {error ? <p className="mt-1 text-[11px] text-rose-600 font-semibold">{error}</p> : null}
+      {help ? <div className="mt-1 text-xs text-slate-500">{help}</div> : null}
+      {error ? <div className="mt-1 text-xs text-rose-600">{error}</div> : null}
     </label>
   );
 }
@@ -196,9 +253,9 @@ function Input({ label, value, onChange, placeholder, error, helper, inputMode, 
 function Select({ label, value, onChange, options }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-slate-700">{label}</span>
+      <div className="text-xs font-semibold text-slate-700">{label}</div>
       <select
-        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-100"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -212,134 +269,24 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
-function PrimaryButton({ children, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cx(
-        "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white",
-        disabled ? "bg-slate-300 cursor-not-allowed" : "bg-amr-navy hover:bg-amr-navy/90"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SecondaryButton({ children, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-    >
-      {children}
-    </button>
-  );
-}
-
-/** =========================
- *  Ícones minimalistas
- *  ========================= */
-const Icon = {
-  plus: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  ),
-  list: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M8 6h13M8 12h13M8 18h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  ),
-  chart: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M8 15V9M12 19V7M16 13V11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  ),
-  user: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M12 13a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  ),
-  lock: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-    </svg>
-  ),
-  logout: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path d="M15 12H3m0 0 3-3M3 12l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  ),
-  shield: () => (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M12 3 20 7v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      <path d="M9 12l2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  ),
-};
-
-/** =========================
- *  PERMISSÕES (Frontend)
- *  ========================= */
-const ROLE = { ADMIN: "ADMIN", USER: "USER" };
-const VIEWS = {
-  LOGIN: "login",
-  CREATE: "create",
-  LIST: "list",
-  DASH: "dashboard",
-  ADMIN_USERS: "admin-users",
-  REPORTS: "reports",
-};
-
-function canAccessView(view, role) {
-  if (!role) return view === VIEWS.LOGIN;
-
-  // Operacional permitido para ambos:
-  if ([VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
-
-  // Relatórios: permitido (mesmo que botão disabled por enquanto)
-  if (view === VIEWS.REPORTS) return true;
-
-  // Cadastro rápido: somente ADMIN
-  if (view === VIEWS.CREATE) return role === ROLE.ADMIN;
-
-  // Admin area: somente ADMIN
-  if (view === VIEWS.ADMIN_USERS) return role === ROLE.ADMIN;
-
-  // fallback seguro
-  return view === VIEWS.DASH;
-}
-
 /** =========================
  *  APP
  *  ========================= */
 
+const VIEWS = {
+  LOGIN: "login",
+  DASH: "dashboard",
+  LIST: "clients-orders",
+  CREATE: "create-client-order",
+  REPORTS: "reports",
+  ADMIN_USERS: "admin-users",
+};
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const clock = useClock();
 
-  const [view, setView] = useState(VIEWS.LOGIN);
-
+  // Auth state (localStorage via api.js)
   const [auth, setAuthState] = useState(() => {
     try {
       const raw = localStorage.getItem("amr_auth");
@@ -349,108 +296,87 @@ export default function App() {
     }
   });
 
+  // View selection (simple; sem router de rotas ainda)
+  const [view, setView] = useState(() => {
+    const p = new URLSearchParams(location.search);
+    return p.get("view") || (auth?.token ? VIEWS.DASH : VIEWS.LOGIN);
+  });
+
+  // Clock (diretriz: DD/MM/AAAA e HH:MM:SS)
+  const [clockNow, setClockNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setClockNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const clock = useMemo(() => {
+    return {
+      date: formatDateDDMMYYYY(clockNow),
+      time: formatTimeHHMMSS(clockNow),
+    };
+  }, [clockNow]);
+
   const isAuthed = Boolean(auth?.token);
-  const role = auth?.user?.role || null;
-  const isAdmin = role === ROLE.ADMIN;
+  const isAdmin = auth?.user?.role === "ADMIN";
 
+  // backend health / module label
   const [backendOk, setBackendOk] = useState("verificando...");
+  const moduleName = useMemo(() => {
+    const map = {
+      [VIEWS.LOGIN]: "Login",
+      [VIEWS.DASH]: "Dashboard",
+      [VIEWS.LIST]: "Clientes & Ordens",
+      [VIEWS.CREATE]: "Cadastro rápido",
+      [VIEWS.REPORTS]: "Relatórios",
+      [VIEWS.ADMIN_USERS]: "Usuários",
+    };
+    return map[view] || "Módulo";
+  }, [view]);
 
-  // Persist auth (fonte única: amr_auth)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        await apiFetch("/api/health", { method: "GET" });
+        if (alive) setBackendOk("ok");
+      } catch {
+        if (alive) setBackendOk("erro");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // persist auth (api.js também mantém helpers)
   useEffect(() => {
     try {
-      if (auth?.token) setAuth(auth);
-      else clearAuth();
+      localStorage.setItem("amr_auth", JSON.stringify(auth));
     } catch {}
   }, [auth]);
 
-  // Health ping (visual)
+  // sync view in querystring (pra facilitar dev)
   useEffect(() => {
-    let alive = true;
-    apiFetch("/health")
-      .then(() => alive && setBackendOk("ok"))
-      .catch(() => alive && setBackendOk("erro"));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // Boot auth: valida token no backend (evita token velho/errado)
-  useEffect(() => {
-    let alive = true;
-
-    async function validateToken() {
-      if (!auth?.token) return;
-
-      try {
-        const me = await apiFetch("/auth/me", {
-          headers: { Authorization: `Bearer ${auth.token}` },
-        });
-        if (!alive) return;
-        setAuthState((prev) => ({ ...prev, user: me?.user || prev.user }));
-      } catch {
-        if (!alive) return;
-        setAuthState({ token: null, user: null });
-        setView(VIEWS.LOGIN);
-        const q = new URLSearchParams(location.search);
-        q.set("view", VIEWS.LOGIN);
-        navigate({ search: q.toString() }, { replace: true });
-      }
+    const p = new URLSearchParams(location.search);
+    if ((p.get("view") || "") !== view) {
+      p.set("view", view);
+      navigate({ search: p.toString() }, { replace: true });
     }
-
-    validateToken();
-    return () => {
-      alive = false;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Sync view from URL, mas com bloqueio por role (impede “forçar URL”)
-  useEffect(() => {
-    const q = new URLSearchParams(location.search);
-    const v = q.get("view");
-    if (!v) return;
-
-    const desired = v;
-    const effectiveRole = isAuthed ? role : null;
-
-    if (!canAccessView(desired, effectiveRole)) {
-      const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
-      setView(fallback);
-      q.set("view", fallback);
-      navigate({ search: q.toString() }, { replace: true });
-      return;
-    }
-
-    setView(desired);
-  }, [location.search, isAuthed, role, navigate]);
+  }, [view]);
 
   function go(nextView) {
-    const effectiveRole = isAuthed ? role : null;
-    const allowed = canAccessView(nextView, effectiveRole);
-
-    if (!allowed) nextView = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
-
     setView(nextView);
-    const q = new URLSearchParams(location.search);
-    q.set("view", nextView);
-    navigate({ search: q.toString() }, { replace: true });
   }
 
   function logout() {
+    clearAuth();
     setAuthState({ token: null, user: null });
-    go(VIEWS.LOGIN);
+    setAuth(null);
+    setView(VIEWS.LOGIN);
   }
 
-  const moduleName = useMemo(() => {
-    if (!isAuthed) return "Login";
-    if (view === VIEWS.CREATE) return "Cadastro rápido";
-    if (view === VIEWS.LIST) return "Listagem";
-    if (view === VIEWS.DASH) return "Dashboard";
-    if (view === VIEWS.REPORTS) return "Relatórios";
-    if (view === VIEWS.ADMIN_USERS) return "Usuários (Admin)";
-    return "—";
-  }, [isAuthed, view]);
-
+  // nav item renderer
   function navItem(key, label, icon, opts = {}) {
     const active = view === key;
     const disabled = Boolean(opts.disabled);
@@ -459,6 +385,7 @@ export default function App() {
         type="button"
         onClick={() => !disabled && go(key)}
         disabled={disabled}
+        title={opts.title || ""}
         className={cx(
           "w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border",
           disabled
@@ -467,7 +394,6 @@ export default function App() {
             ? "bg-amr-navy text-white border-amr-navy"
             : "bg-white text-slate-700 hover:bg-slate-50"
         )}
-        title={opts.title}
       >
         <span className={cx("inline-flex", active ? "text-white" : disabled ? "text-slate-300" : "text-slate-500")}>
           {icon}
@@ -483,20 +409,27 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginSenha, setLoginSenha] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
   async function doLogin() {
     setLoginError("");
+    setLoginLoading(true);
     try {
-      const data = await apiFetch("/auth/login", {
+      const data = await apiFetch("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email: loginEmail, senha: loginSenha }),
+        body: { email: loginEmail, senha: loginSenha },
       });
 
+      // esperado: { token, user: { id, nome, email, role } }
       const nextAuth = { token: data.token, user: data.user };
       setAuthState(nextAuth);
-      go(VIEWS.DASH);
+      setAuth(nextAuth);
+
+      setView(VIEWS.DASH);
     } catch (e) {
-      setLoginError(e.message || "Erro no login");
+      setLoginError(e?.message || "Erro no login");
+    } finally {
+      setLoginLoading(false);
     }
   }
 
@@ -507,218 +440,238 @@ export default function App() {
   const [nomeRazaoSocial, setNomeRazaoSocial] = useState("");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [ordemDescricao, setOrdemDescricao] = useState("");
+  const [ordemTipoContrato, setOrdemTipoContrato] = useState("");
+  const [ordemValor, setOrdemValor] = useState(""); // digitado
+  const [ordemModelo, setOrdemModelo] = useState("AVISTA");
+  const [ordemDataInicio, setOrdemDataInicio] = useState("");
 
-  const [descricao, setDescricao] = useState("");
-  const [tipoContrato, setTipoContrato] = useState("");
-  const [valorPrevistoRaw, setValorPrevistoRaw] = useState("");
-  const [modeloPagamento, setModeloPagamento] = useState("AVISTA");
-  const [dataInicio, setDataInicio] = useState("");
+  const [createOk, setCreateOk] = useState("");
+  const [createErr, setCreateErr] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
 
-  const cpfCnpjMasked = useMemo(() => maskCpfCnpj(cpfCnpj), [cpfCnpj]);
-  const cpfCnpjValid = useMemo(() => (cpfCnpjMasked ? isValidCpfCnpj(cpfCnpjMasked) : false), [cpfCnpjMasked]);
+  async function createClientAndOrder() {
+    setCreateOk("");
+    setCreateErr("");
 
-  const telefoneMasked = useMemo(() => maskPhone(telefone), [telefone]);
-  const telefoneValid = useMemo(() => (!telefoneMasked ? true : isValidPhone(telefoneMasked)), [telefoneMasked]);
+    const cpfCnpjMasked = maskCpfCnpj(cpfCnpj);
+    const isCpfCnpjOk = isValidCpfCnpj(cpfCnpjMasked);
 
-  const valorCents = useMemo(() => onlyDigitsToCents(valorPrevistoRaw), [valorPrevistoRaw]);
-  const valorDisplay = useMemo(() => formatBRLFromCents(valorCents), [valorCents]);
-
-  const dataInicioOk = useMemo(() => (dataInicio ? Boolean(parseDateBR(dataInicio)) : false), [dataInicio]);
-
-  const [saveMsg, setSaveMsg] = useState("");
-
-  async function saveClientAndOrder() {
-    setSaveMsg("");
-
-    // Defesa extra: USER não cadastra
-    if (!isAdmin) {
-      setSaveMsg("Acesso negado: apenas ADMIN pode cadastrar (Cadastro rápido).");
+    if (!isCpfCnpjOk) {
+      setCreateErr("CPF/CNPJ inválido.");
+      return;
+    }
+    if (!nomeRazaoSocial.trim()) {
+      setCreateErr("Nome/Razão Social é obrigatório.");
+      return;
+    }
+    if (telefone && !isValidPhone(telefone)) {
+      setCreateErr("Telefone inválido.");
+      return;
+    }
+    const d = parseDateDDMMYYYY(ordemDataInicio);
+    if (!d) {
+      setCreateErr("Data de início inválida (DD/MM/AAAA).");
       return;
     }
 
+    const cents = centsFromInputDigits(ordemValor);
+
+    setCreateLoading(true);
     try {
-      const body = {
+      const payload = {
         cliente: {
-          cpfCnpj: onlyDigits(cpfCnpj),
-          nomeRazaoSocial,
-          email: email || null,
-          telefone: onlyDigits(telefone),
+          cpfCnpj: onlyDigits(cpfCnpjMasked),
+          nomeRazaoSocial: nomeRazaoSocial.trim(),
+          email: email.trim() || null,
+          telefone: onlyDigits(telefone) || null,
         },
         ordem: {
-          descricao,
-          tipoContrato: tipoContrato || null,
-          valorTotalPrevisto: valorCents ? String(valorCents / 100) : null,
-          modeloPagamento,
-          dataInicio,
+          descricao: ordemDescricao.trim() || null,
+          tipoContrato: ordemTipoContrato.trim() || null,
+          valorTotalPrevisto: cents ? String(Number(cents) / 100) : null, // backend guarda Decimal
+          modeloPagamento: ordemModelo,
+          dataInicio: d.toISOString(),
         },
       };
 
-      await apiFetch("/clients-and-orders", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      await apiFetch("/api/clients-and-orders", { method: "POST", body: payload });
 
-      setSaveMsg("Salvo com sucesso ✅");
-      setDescricao("");
-      setTipoContrato("");
-      setValorPrevistoRaw("");
-      setModeloPagamento("AVISTA");
-      setDataInicio("");
+      setCreateOk("Cliente + Ordem salvos com sucesso.");
+      // limpeza mínima
+      setCpfCnpj("");
+      setNomeRazaoSocial("");
+      setEmail("");
+      setTelefone("");
+      setOrdemDescricao("");
+      setOrdemTipoContrato("");
+      setOrdemValor("");
+      setOrdemModelo("AVISTA");
+      setOrdemDataInicio("");
     } catch (e) {
-      setSaveMsg(e.message || "Erro ao salvar");
+      setCreateErr(e?.message || "Erro ao salvar");
+    } finally {
+      setCreateLoading(false);
     }
   }
 
   /** =========================
-   *  LISTAGEM / DASH
+   *  LISTAGEM (Clientes + Ordens)
    *  ========================= */
-  const [listData, setListData] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
   const [listErr, setListErr] = useState("");
+  const [clientsWithOrders, setClientsWithOrders] = useState([]);
 
-  async function loadList() {
+  async function loadClientsWithOrders() {
     setListErr("");
+    setListLoading(true);
     try {
-      const data = await apiFetch("/clients-with-orders");
-      setListData(Array.isArray(data) ? data : []);
+      const data = await apiFetch("/api/clients-with-orders", { method: "GET" });
+      setClientsWithOrders(data || []);
     } catch (e) {
-      setListErr(e.message || "Erro ao carregar listagem");
-    }
-  }
-
-  const [dash, setDash] = useState(null);
-  const [dashErr, setDashErr] = useState("");
-
-  async function loadDash() {
-    setDashErr("");
-    try {
-      const data = await apiFetch("/dashboard/summary");
-      setDash(data);
-    } catch (e) {
-      setDashErr(e.message || "Erro ao carregar dashboard");
+      setListErr(e?.message || "Erro ao listar clientes + ordens");
+    } finally {
+      setListLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!isAuthed) return;
-    if (view === VIEWS.LIST) loadList();
-    if (view === VIEWS.DASH) loadDash();
+    if (isAuthed && view === VIEWS.LIST) loadClientsWithOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, isAuthed]);
+  }, [isAuthed, view]);
 
-  const apiLabel = useMemo(() => {
-    const raw = (import.meta.env.VITE_API_URL || "").trim();
-    if (!raw) return "API /api";
-    return `API ${raw.replace(/^https?:\/\//, "")}`;
-  }, []);
+  /** =========================
+   *  DASHBOARD
+   *  ========================= */
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashErr, setDashErr] = useState("");
+  const [dash, setDash] = useState(null);
+
+  async function loadDash() {
+    setDashErr("");
+    setDashLoading(true);
+    try {
+      const data = await apiFetch("/api/dashboard/summary", { method: "GET" });
+      setDash(data);
+    } catch (e) {
+      setDashErr(e?.message || "Erro ao carregar dashboard");
+    } finally {
+      setDashLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isAuthed && view === VIEWS.DASH) loadDash();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed, view]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 lg:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">AMR Advogados</p>
-              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
-            </div>
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar fixa (layout Sidebar 2) */}
+      <aside className="fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col">
+        {/* Marca */}
+        <div className="px-6 pt-6 pb-4 flex flex-col items-center">
+          <div className="rounded-2xl bg-white/95 p-3 shadow-sm">
+            <img src={logoSrc} alt="AMR" className="h-12 w-auto" />
           </div>
-
-          <div className="flex items-center gap-3">
-            <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>{moduleName}</Badge>
-
-            {isAuthed ? (
-              <button
-                type="button"
-                onClick={logout}
-                className="ml-2 inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                title="Sair"
-              >
-                <Icon.logout />
-                Sair
-              </button>
-            ) : null}
-          </div>
+          <p className="mt-3 text-sm font-semibold tracking-wide text-white">AMR Advogados</p>
         </div>
-      </header>
 
-      {/* Body */}
-      <div className="mx-auto max-w-7xl px-4 lg:px-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
-        {/* Sidebar */}
-        <aside className="pl-0 lg:pl-0">
-          <div className="sticky top-[92px]">
-            <div className="ml-4 lg:ml-4 rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-140px)]">
-              <div className="mb-3">
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Operacional</p>
-              </div>
+        {/* Navegação */}
+        <div className="px-4 flex-1 overflow-hidden flex flex-col">
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Operacional</p>
+          </div>
 
-              <div className="space-y-2 flex-1">
-                {!isAuthed ? (
-                  navItem(VIEWS.LOGIN, "Login", <Icon.user />)
-                ) : (
+          <div className="space-y-2 flex-1 overflow-hidden">
+            {!isAuthed ? (
+              navItem(VIEWS.LOGIN, "Login", <Icon.user />)
+            ) : (
+              <>
+                {/* ✅ PERMISSÃO: Cadastro rápido só para ADMIN */}
+                {isAdmin ? navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />) : null}
+
+                {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
+                {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
+                {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
+                  disabled: true,
+                  title: "Em breve",
+                })}
+
+                {/* ✅ Admin section só para ADMIN */}
+                {isAdmin ? (
                   <>
-                    {/* ✅ PERMISSÃO: Cadastro rápido só para ADMIN */}
-                    {isAdmin ? navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />) : null}
+                    <div className="pt-4">
+                      <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Administrativo</p>
+                    </div>
 
-                    {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
-                    {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
-
-                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
+                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, {
                       disabled: true,
                       title: "Em breve",
                     })}
 
-                    {/* ✅ Admin section só para ADMIN */}
-                    {isAdmin ? (
-                      <>
-                        <div className="pt-4">
-                          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                            Administrativo
-                          </p>
-                        </div>
-
-                        {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, {
-                          disabled: true,
-                          title: "Entrará na etapa 4 (Gestão de usuários)",
-                        })}
-
-                        {navItem("calc-models", "Modelos de cálculo", <Icon.lock />, {
-                          disabled: true,
-                          title: "Em breve",
-                        })}
-
-                        {navItem("access-control", "Controle de acesso", <Icon.lock />, {
-                          disabled: true,
-                          title: "Em breve",
-                        })}
-                      </>
-                    ) : null}
+                    {navItem("access-control", "Controle de acesso", <Icon.lock />, {
+                      disabled: true,
+                      title: "Em breve",
+                    })}
                   </>
-                )}
-              </div>
-
-              {/* TEMP: Descanso / Repouso (mantém!) */}
-              <div className="mt-3">
-                <RestTimer />
-              </div>
-
-              {/* Rodapé sidebar: Data/Hora + Usuário */}
-              <div className="pt-3 border-t flex items-center justify-between text-xs text-slate-500">
-                <span className="font-mono">{clock.date}</span>
-                <span className="font-mono">{clock.time}</span>
-              </div>
-              <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-                <span>{isAuthed ? "Usuário logado" : "Em desenvolvimento"}</span>
-                <span className="font-medium">
-                  {isAuthed ? `${auth.user?.nome || "—"} (${auth.user?.role || "—"})` : "—"}
-                </span>
-              </div>
-            </div>
+                ) : null}
+              </>
+            )}
           </div>
-        </aside>
 
-        {/* Main */}
-        <main className="space-y-6">
+          {/* Espaçador para manter o rodapé sempre visível */}
+          <div className="flex-1" />
+        </div>
+
+        {/* Rodapé da sidebar: Descanso + usuário + data/hora + sair */}
+        <div className="px-4 pb-4 space-y-3">
+          {/* TEMP: Descanso / Repouso (mantém!) */}
+          <RestTimer />
+
+          {/* Nome + role */}
+          <div className="text-xs text-white/80 flex items-center justify-between">
+            <span className="truncate max-w-[170px]">
+              {auth.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}
+            </span>
+            <span className="font-semibold">{auth.user?.role || (isAuthed ? "—" : "—")}</span>
+          </div>
+
+          {/* Data + hora */}
+          <div className="text-xs text-white/70 flex items-center justify-between font-mono">
+            <span>{clock.date}</span>
+            <span>{clock.time}</span>
+          </div>
+
+          {/* Sair */}
+          <button
+            type="button"
+            onClick={logout}
+            className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15"
+          >
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* Conteúdo */}
+      <main className="ml-[280px] flex-1 min-h-screen overflow-y-auto">
+        <div className="px-6 lg:px-8 py-6 space-y-6">
+          {/* Cabeçalho interno (sem topo fixo) */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{moduleName}</p>
+              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
+            </div>
+            <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>
+              {backendOk === "ok"
+                ? "Backend: ok"
+                : backendOk === "erro"
+                ? "Backend: erro"
+                : "Backend: verificando..."}
+            </Badge>
+          </div>
+
           {!isAuthed && view === VIEWS.LOGIN && (
             <Card title="Login" subtitle="Entre com seu usuário e senha para acessar o sistema.">
               <div className="grid grid-cols-1 gap-4">
@@ -730,115 +683,130 @@ export default function App() {
                   placeholder="••••••••"
                   type="password"
                 />
-                {loginError ? (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {loginError}
-                  </div>
-                ) : null}
-                <div className="flex items-center gap-2">
-                  <PrimaryButton onClick={doLogin}>Entrar</PrimaryButton>
-                </div>
+
+                {loginError ? <div className="text-sm text-rose-600">{loginError}</div> : null}
+
+                <button
+                  type="button"
+                  onClick={doLogin}
+                  disabled={loginLoading}
+                  className={cx(
+                    "rounded-xl bg-amr-navy text-white px-4 py-2 text-sm font-semibold",
+                    loginLoading ? "opacity-70 cursor-not-allowed" : "hover:opacity-95"
+                  )}
+                >
+                  {loginLoading ? "Entrando..." : "Entrar"}
+                </button>
               </div>
             </Card>
           )}
 
-          {/* CREATE (apenas ADMIN; USER é redirecionado no guard) */}
           {isAuthed && view === VIEWS.CREATE && (
             <Card
               title="Cadastro rápido: Cliente + Ordem"
               subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-              right={<Badge tone="slate">{apiLabel}</Badge>}
+              right={<Badge tone="blue">{import.meta.env.VITE_API_URL ? "API externa" : "API /api"}</Badge>}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-900">Dados do cliente</h4>
-                    <p className="text-xs text-slate-500">Dados principais para identificação e contato.</p>
-                  </div>
+                <div className="rounded-2xl border bg-white p-4">
+                  <p className="text-sm font-semibold text-slate-900">Cliente</p>
+                  <p className="text-xs text-slate-500">Dados principais para identificação e contato.</p>
 
-                  <Input
-                    label="CPF/CNPJ"
-                    value={cpfCnpjMasked}
-                    onChange={setCpfCnpj}
-                    placeholder="Ex.: 111.222.333-44"
-                    inputMode="numeric"
-                    maxLength={18}
-                    error={cpfCnpjMasked && !cpfCnpjValid ? "CPF/CNPJ inválido" : ""}
-                    helper="Com máscara e validação."
-                  />
-                  <Input
-                    label="Nome / Razão Social"
-                    value={nomeRazaoSocial}
-                    onChange={setNomeRazaoSocial}
-                    placeholder="Ex.: Empresa X Ltda."
-                  />
-                  <Input label="E-mail" value={email} onChange={setEmail} placeholder="financeiro@empresa.com" />
-                  <Input
-                    label="Telefone"
-                    value={telefoneMasked}
-                    onChange={setTelefone}
-                    placeholder="(99) 9 9999-9999"
-                    inputMode="numeric"
-                    error={!telefoneValid ? "Telefone inválido" : ""}
-                    helper="Formato obrigatório: (99) 9 9999-9999"
-                    maxLength={16}
-                  />
+                  <div className="mt-4 space-y-3">
+                    <Input
+                      label="CPF/CNPJ"
+                      value={maskCpfCnpj(cpfCnpj)}
+                      onChange={setCpfCnpj}
+                      placeholder="Ex.: 111.222.333-44"
+                      error={cpfCnpj && !isValidCpfCnpj(cpfCnpj) ? "CPF/CNPJ inválido" : ""}
+                    />
+                    <Input
+                      label="Nome / Razão Social"
+                      value={nomeRazaoSocial}
+                      onChange={setNomeRazaoSocial}
+                      placeholder="Ex.: Empresa X Ltda."
+                    />
+                    <Input
+                      label="E-mail"
+                      value={email}
+                      onChange={setEmail}
+                      placeholder="financeiro@empresa.com"
+                      type="email"
+                    />
+                    <Input
+                      label="Telefone"
+                      value={maskPhone(telefone)}
+                      onChange={setTelefone}
+                      placeholder="(99) 9 9999-9999"
+                      error={telefone && !isValidPhone(telefone) ? "Telefone inválido" : ""}
+                      inputMode="tel"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-900">Ordem de Pagamento</h4>
-                    <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
+                <div className="rounded-2xl border bg-white p-4">
+                  <p className="text-sm font-semibold text-slate-900">Ordem de Pagamento</p>
+                  <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
+
+                  <div className="mt-4 space-y-3">
+                    <Input
+                      label="Descrição / Objeto"
+                      value={ordemDescricao}
+                      onChange={setOrdemDescricao}
+                      placeholder="Ex.: Contrato consultivo mensal"
+                    />
+                    <Input
+                      label="Tipo de contrato"
+                      value={ordemTipoContrato}
+                      onChange={setOrdemTipoContrato}
+                      placeholder="Ex.: esporádico, recorrente..."
+                    />
+
+                    <Input
+                      label="Valor total previsto"
+                      value={formatBRLFromCents(centsFromInputDigits(ordemValor))}
+                      onChange={setOrdemValor}
+                      placeholder="Ex.: 10000"
+                      help="(R$) Digitando 1 = 0,01; 12 = 0,12; 123 = 1,23; 123456 = 1.234,56"
+                      inputMode="numeric"
+                    />
+
+                    <Select
+                      label="Modelo de pagamento"
+                      value={ordemModelo}
+                      onChange={setOrdemModelo}
+                      options={[
+                        { value: "AVISTA", label: "À vista" },
+                        { value: "ENTRADA_E_PARCELAS", label: "Entrada + parcelas" },
+                        { value: "PARCELADO", label: "Parcelado" },
+                      ]}
+                    />
+
+                    <Input
+                      label="Data de início"
+                      value={maskDate(ordemDataInicio)}
+                      onChange={setOrdemDataInicio}
+                      placeholder="dd/mm/aaaa"
+                      error={ordemDataInicio && !parseDateDDMMYYYY(maskDate(ordemDataInicio)) ? "Data inválida" : ""}
+                      inputMode="numeric"
+                      maxLength={10}
+                    />
                   </div>
 
-                  <Input
-                    label="Descrição / Objeto"
-                    value={descricao}
-                    onChange={setDescricao}
-                    placeholder="Ex.: Contrato consultivo mensal"
-                  />
-                  <Input
-                    label="Tipo de contrato"
-                    value={tipoContrato}
-                    onChange={setTipoContrato}
-                    placeholder="Ex.: esporádico, recorrente..."
-                  />
-                  <Input
-                    label="Valor total previsto"
-                    value={valorDisplay}
-                    onChange={setValorPrevistoRaw}
-                    placeholder="Ex.: 10000"
-                    inputMode="numeric"
-                    helper="Digitando: 1→0,01 | 12→0,12 | 123→1,23 | 123456→1.234,56"
-                  />
-                  <Select
-                    label="Modelo de pagamento"
-                    value={modeloPagamento}
-                    onChange={setModeloPagamento}
-                    options={[
-                      { value: "AVISTA", label: "À vista" },
-                      { value: "ENTRADA_E_PARCELAS", label: "Entrada + parcelas" },
-                      { value: "PARCELADO", label: "Parcelado" },
-                    ]}
-                  />
-                  <Input
-                    label="Data de início"
-                    value={dataInicio}
-                    onChange={setDataInicio}
-                    placeholder="dd/mm/aaaa"
-                    error={dataInicio && !dataInicioOk ? "Data inválida (DD/MM/AAAA)" : ""}
-                    helper="Obrigatório: DD/MM/AAAA"
-                  />
+                  {createErr ? <div className="mt-3 text-sm text-rose-600">{createErr}</div> : null}
+                  {createOk ? <div className="mt-3 text-sm text-emerald-700">{createOk}</div> : null}
 
-                  <div className="flex items-center gap-2 pt-2">
-                    <PrimaryButton
-                      onClick={saveClientAndOrder}
-                      disabled={!cpfCnpjValid || !nomeRazaoSocial || !descricao || !dataInicioOk}
-                    >
-                      Salvar cliente + ordem
-                    </PrimaryButton>
-                    {saveMsg ? <span className="text-sm font-semibold text-slate-700">{saveMsg}</span> : null}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={createClientAndOrder}
+                    disabled={createLoading}
+                    className={cx(
+                      "mt-4 w-full rounded-xl bg-amr-navy text-white px-4 py-2 text-sm font-semibold",
+                      createLoading ? "opacity-70 cursor-not-allowed" : "hover:opacity-95"
+                    )}
+                  >
+                    {createLoading ? "Salvando..." : "Salvar cliente + ordem"}
+                  </button>
                 </div>
               </div>
             </Card>
@@ -847,76 +815,66 @@ export default function App() {
           {isAuthed && view === VIEWS.LIST && (
             <Card
               title="Listagem (Clientes & Ordens)"
-              subtitle="Valide rapidamente os cadastros feitos no Cadastro rápido."
-              right={<SecondaryButton onClick={loadList}>Atualizar</SecondaryButton>}
+              subtitle="Use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido."
+              right={
+                <button
+                  type="button"
+                  onClick={loadClientsWithOrders}
+                  className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Atualizar
+                </button>
+              }
             >
-              {listErr ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {listErr}
-                </div>
-              ) : null}
+              {listLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
+              {listErr ? <p className="text-sm text-rose-600">{listErr}</p> : null}
 
-              <div className="mt-4 space-y-3">
-                {listData.length === 0 ? (
-                  <p className="text-sm text-slate-500">Nenhum registro.</p>
-                ) : (
-                  listData.map((c) => (
-                    <div key={c.id} className="rounded-2xl border bg-white p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{c.nomeRazaoSocial}</p>
-                          <p className="text-xs text-slate-500">
-                            {maskCpfCnpj(c.cpfCnpj)} • {c.email || "—"} • {maskPhone(c.telefone || "") || "—"}
-                          </p>
-                        </div>
-                        <Badge tone="slate">{(c.ordens || []).length} ordem(ns)</Badge>
-                      </div>
-
-                      <div className="mt-3 space-y-2">
-                        {(c.ordens || []).map((o) => (
-                          <div key={o.id} className="rounded-xl bg-slate-50 border px-3 py-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-semibold text-slate-900">
-                                #{o.sequenciaCliente} • {o.descricao}
-                              </p>
-                              <span className="text-xs font-semibold text-slate-600">{o.status}</span>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Modelo: {o.modeloPagamento} • Início:{" "}
-                              {o.dataInicio ? formatDateBR(new Date(o.dataInicio)) : "—"} • Valor previsto:{" "}
-                              {o.valorTotalPrevisto != null
-                                ? `R$ ${Number(o.valorTotalPrevisto).toLocaleString("pt-BR", {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}`
-                                : "—"}
-                            </p>
+              {!listLoading && !listErr && (
+                <div className="space-y-4">
+                  {clientsWithOrders.length === 0 ? (
+                    <p className="text-sm text-slate-500">Sem dados ainda.</p>
+                  ) : (
+                    clientsWithOrders.map((c) => (
+                      <div key={c.id} className="rounded-2xl border bg-white p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{c.nomeRazaoSocial}</p>
+                            <p className="text-xs text-slate-500">{maskCpfCnpj(c.cpfCnpj)}</p>
                           </div>
-                        ))}
+                          <Badge tone={c.ativo ? "green" : "red"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {(c.ordens || []).map((o) => (
+                            <div key={o.id} className="rounded-2xl border bg-slate-50 p-3">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {o.descricao || "Ordem sem descrição"}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                Seq.: {o.sequenciaCliente} • Status: {o.status}
+                              </p>
+                              <p className="mt-2 text-sm text-slate-700">
+                                Valor previsto: R$ {formatBRLFromNumber(o.valorTotalPrevisto)}
+                              </p>
+                              <p className="text-xs text-slate-500">Início: {formatDateDDMMYYYY(o.dataInicio)}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              )}
             </Card>
           )}
 
           {isAuthed && view === VIEWS.DASH && (
-            <Card
-              title="Dashboard financeiro"
-              subtitle="Visão geral inicial (protótipo)."
-              right={<SecondaryButton onClick={loadDash}>Atualizar</SecondaryButton>}
-            >
-              {dashErr ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {dashErr}
-                </div>
-              ) : null}
+            <Card title="Dashboard financeiro" subtitle="Resumo geral (provisório).">
+              {dashLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
+              {dashErr ? <p className="text-sm text-rose-600">{dashErr}</p> : null}
 
-              {!dash ? (
-                <p className="text-sm text-slate-500">Carregando...</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {!dashLoading && !dashErr && dash && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="rounded-2xl border bg-white p-4">
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Clientes</p>
                     <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalClients}</p>
@@ -939,8 +897,8 @@ export default function App() {
               )}
             </Card>
           )}
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
