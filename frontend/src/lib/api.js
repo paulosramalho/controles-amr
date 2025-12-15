@@ -1,108 +1,119 @@
 // frontend/src/lib/api.js
-// Helper central de API com:
-// - Authorization: Bearer <token>
-// - Auto-logout em 401
-// - Proteção contra resposta HTML (<!DOCTYPE ...), comum quando API_BASE está errado em produção
-//
-// IMPORTANTE:
-// Em produção (Vercel), configure:
-// VITE_API_URL=https://controles-amr-backend.onrender.com
-// (sem /api no final)
+// API helper centralizado (Bearer + baseURL inteligente + 401 => logout)
+// Diretriz: manter simples (sem libs) e fácil de remover/alterar.
 
-const RAW_BASE =
-  (import.meta?.env?.VITE_API_URL || "").trim() ||
-  (import.meta?.env?.VITE_API_BASE || "").trim() ||
-  "";
+const TOKEN_KEY = "amr_token";
 
-// Se RAW_BASE vier vazio, cai em "/api" (funciona em DEV com proxy do Vite)
-const API_BASE = RAW_BASE
-  ? RAW_BASE.replace(/\/+$/, "") + "/api"
-  : "/api";
-
-const BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
-
-const AUTH_KEY = "amr_auth";
-
-function readAuth() {
+export function getToken() {
   try {
-    return JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
-  } catch {
-    return null;
-  }
-}
-
-export function logoutLocal() {
-  localStorage.removeItem(AUTH_KEY);
-  // sinaliza para o app reagir (listener no App.jsx)
-  window.dispatchEvent(new Event("amr:logout"));
-}
-
-async function safeReadText(res) {
-  try {
-    return await res.text();
+    return localStorage.getItem(TOKEN_KEY) || "";
   } catch {
     return "";
   }
 }
 
-fetch(`${BASE_URL}${path}`, ...)
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+  } catch {}
+}
 
-function looksLikeHTML(text) {
-  const t = (text || "").trim().toLowerCase();
-  return t.startsWith("<!doctype") || t.startsWith("<html");
+export function clearToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+  // avisa o app (caso esteja aberto em outra aba também)
+  try {
+    window.dispatchEvent(new Event("amr:logout"));
+  } catch {}
+}
+
+/**
+ * Base URL:
+ * - Dev: usa "/api" (com proxy do Vite)
+ * - Prod (Vercel): aponta direto para o backend no Render
+ * - Se existir VITE_API_BASE, ele manda.
+ */
+function resolveBaseUrl() {
+  const envBase = import.meta?.env?.VITE_API_BASE;
+  if (envBase && typeof envBase === "string" && envBase.trim()) return envBase.trim();
+
+  // Em produção (Vercel), não existe /api; precisamos ir pro backend.
+  if (typeof window !== "undefined") {
+    const host = window.location?.hostname || "";
+    if (host.includes("vercel.app")) {
+      return "https://controles-amr-backend.onrender.com";
+    }
+  }
+
+  // Dev padrão
+  return "/api";
+}
+
+const BASE_URL = resolveBaseUrl();
+
+async function parseResponse(res) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return await res.json();
+  return await res.text();
 }
 
 export async function apiFetch(path, options = {}) {
-  const auth = readAuth();
-  const token = auth?.token;
+  const url = path.startsWith("http") ? path : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
 
   const headers = new Headers(options.headers || {});
   headers.set("Accept", "application/json");
-  if (!headers.has("Content-Type") && options.body) {
-    headers.set("Content-Type", "application/json");
-  }
+
+  const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  // JSON helper
+  if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+    options.body = JSON.stringify(options.body);
+  }
 
   const res = await fetch(url, { ...options, headers });
 
-  // 401 -> derruba sessão local
+  // 401: derruba sessão local
   if (res.status === 401) {
-    logoutLocal();
-    throw new Error("Sessão expirada ou não autenticado. Faça login novamente.");
-  }
-
-  // tenta ler como texto primeiro para detectar HTML
-  const text = await safeReadText(res);
-
-  // Resposta HTML = geralmente API_BASE errado em produção
-  if (looksLikeHTML(text)) {
-    throw new Error(
-      "A API respondeu com HTML (não JSON). Verifique VITE_API_URL no Vercel (deve apontar para o backend)."
-    );
-  }
-
-  // se veio vazio
-  if (!text) {
-    if (!res.ok) throw new Error("Erro na requisição.");
-    return null;
-  }
-
-  // parse JSON
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error("Resposta inválida da API (JSON malformado).");
+    clearToken();
+    const data = await parseResponse(res).catch(() => null);
+    const msg =
+      (data && typeof data === "object" && data.message) ? data.message :
+      "Não autenticado.";
+    const err = new Error(msg);
+    err.status = 401;
+    err.data = data;
+    throw err;
   }
 
   if (!res.ok) {
-    // tenta padronizar msg de erro
-    const msg = data?.message || data?.error || "Erro na requisição.";
-    throw new Error(msg);
+    const data = await parseResponse(res).catch(() => null);
+    const msg =
+      (data && typeof data === "object" && data.message) ? data.message :
+      `Erro HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
 
+  return await parseResponse(res);
+}
+
+export async function login(email, senha) {
+  const data = await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: { email, senha },
+  });
+
+  // backend tende a responder { token, user? }
+  if (data?.token) setToken(data.token);
+
   return data;
+}
+
+export async function me() {
+  return await apiFetch("/api/auth/me", { method: "GET" });
 }

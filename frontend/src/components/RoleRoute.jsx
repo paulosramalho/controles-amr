@@ -1,39 +1,119 @@
-// frontend/src/components/RoleRoute.jsx
-// Gate de permissão por ROLE.
-// Uso:
-// <RoleRoute allow={["ADMIN"]}><AdminPage/></RoleRoute>
-//
-// Não altera layout "aprovado": é estrutural e de segurança.
+// frontend/src/lib/api.js
+// API helper centralizado (Bearer + baseURL inteligente + 401 => logout)
+// Diretriz: manter simples (sem libs) e fácil de remover/alterar.
 
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+const TOKEN_KEY = "amr_token";
 
-export default function RoleRoute({ allow = [], role, redirectTo = "/dashboard", children }) {
-  const navigate = useNavigate();
-  const isAllowed = allow.length === 0 ? true : allow.includes(role);
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
 
-  useEffect(() => {
-    if (isAllowed) return;
-    const t = setTimeout(() => navigate(redirectTo, { replace: true }), 5000);
-    return () => clearTimeout(t);
-  }, [isAllowed, navigate, redirectTo]);
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+  } catch {}
+}
 
-  if (isAllowed) return children;
+export function clearToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+  // avisa o app (caso esteja aberto em outra aba também)
+  try {
+    window.dispatchEvent(new Event("amr:logout"));
+  } catch {}
+}
 
-  return (
-    <div className="min-h-[60vh] flex items-center justify-center px-6">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Acesso não autorizado</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Você não tem permissão para acessar esta área. Vamos te levar de volta ao Dashboard em 5 segundos.
-        </p>
-        <button
-          className="mt-4 inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:opacity-90"
-          onClick={() => navigate(redirectTo, { replace: true })}
-        >
-          Ir agora
-        </button>
-      </div>
-    </div>
-  );
+/**
+ * Base URL:
+ * - Dev: usa "/api" (com proxy do Vite)
+ * - Prod (Vercel): aponta direto para o backend no Render
+ * - Se existir VITE_API_BASE, ele manda.
+ */
+function resolveBaseUrl() {
+  const envBase = import.meta?.env?.VITE_API_BASE;
+  if (envBase && typeof envBase === "string" && envBase.trim()) return envBase.trim();
+
+  // Em produção (Vercel), não existe /api; precisamos ir pro backend.
+  if (typeof window !== "undefined") {
+    const host = window.location?.hostname || "";
+    if (host.includes("vercel.app")) {
+      return "https://controles-amr-backend.onrender.com";
+    }
+  }
+
+  // Dev padrão
+  return "/api";
+}
+
+const BASE_URL = resolveBaseUrl();
+
+async function parseResponse(res) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return await res.json();
+  return await res.text();
+}
+
+export async function apiFetch(path, options = {}) {
+  const url = path.startsWith("http") ? path : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Accept", "application/json");
+
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  // JSON helper
+  if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+    options.body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(url, { ...options, headers });
+
+  // 401: derruba sessão local
+  if (res.status === 401) {
+    clearToken();
+    const data = await parseResponse(res).catch(() => null);
+    const msg =
+      (data && typeof data === "object" && data.message) ? data.message :
+      "Não autenticado.";
+    const err = new Error(msg);
+    err.status = 401;
+    err.data = data;
+    throw err;
+  }
+
+  if (!res.ok) {
+    const data = await parseResponse(res).catch(() => null);
+    const msg =
+      (data && typeof data === "object" && data.message) ? data.message :
+      `Erro HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+
+  return await parseResponse(res);
+}
+
+export async function login(email, senha) {
+  const data = await apiFetch("/api/auth/login", {
+    method: "POST",
+    body: { email, senha },
+  });
+
+  // backend tende a responder { token, user? }
+  if (data?.token) setToken(data.token);
+
+  return data;
+}
+
+export async function me() {
+  return await apiFetch("/api/auth/me", { method: "GET" });
 }
