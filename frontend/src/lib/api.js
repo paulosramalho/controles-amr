@@ -1,119 +1,101 @@
-// frontend/src/lib/api.js
-// API helper centralizado (Bearer + baseURL inteligente + 401 => logout)
-// Diretriz: manter simples (sem libs) e fácil de remover/alterar.
+/**
+ * ============================================================
+ * API FETCH – CONTROLES AMR
+ * ------------------------------------------------------------
+ * - Centraliza chamadas ao backend
+ * - Injeta automaticamente Authorization: Bearer <token>
+ * - Trata erro 401 (token inválido/expirado)
+ * - Evita crash "Unexpected token <" (HTML no lugar de JSON)
+ *
+ * Fonte única do token:
+ * - localStorage "amr_auth" (JSON: { token, user })
+ *
+ * ⚠️ TEMPORÁRIO:
+ * Este helper poderá ser removido/substituído futuramente
+ * quando evoluirmos para refresh token / cookies httpOnly.
+ * ============================================================
+ */
 
-const TOKEN_KEY = "amr_token";
+const RAW_BASE = (import.meta.env.VITE_API_URL || "").trim();
+
+// Garante que a API base SEMPRE termine em /api
+const API_BASE = RAW_BASE
+  ? RAW_BASE.endsWith("/api")
+    ? RAW_BASE
+    : `${RAW_BASE}/api`
+  : "/api"; // fallback para proxy do Vite em dev
+
+function readAuth() {
+  try {
+    const raw = localStorage.getItem("amr_auth");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function getToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || "";
-  } catch {
-    return "";
-  }
+  const auth = readAuth();
+  return auth?.token || null;
 }
 
-export function setToken(token) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-  } catch {}
+export function setAuth(authObj) {
+  localStorage.setItem("amr_auth", JSON.stringify(authObj));
 }
 
-export function clearToken() {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {}
-  // avisa o app (caso esteja aberto em outra aba também)
-  try {
-    window.dispatchEvent(new Event("amr:logout"));
-  } catch {}
-}
-
-/**
- * Base URL:
- * - Dev: usa "/api" (com proxy do Vite)
- * - Prod (Vercel): aponta direto para o backend no Render
- * - Se existir VITE_API_BASE, ele manda.
- */
-function resolveBaseUrl() {
-  const envBase = import.meta?.env?.VITE_API_BASE;
-  if (envBase && typeof envBase === "string" && envBase.trim()) return envBase.trim();
-
-  // Em produção (Vercel), não existe /api; precisamos ir pro backend.
-  if (typeof window !== "undefined") {
-    const host = window.location?.hostname || "";
-    if (host.includes("vercel.app")) {
-      return "https://controles-amr-backend.onrender.com";
-    }
-  }
-
-  // Dev padrão
-  return "/api";
-}
-
-const BASE_URL = resolveBaseUrl();
-
-async function parseResponse(res) {
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return await res.json();
-  return await res.text();
+export function clearAuth() {
+  localStorage.removeItem("amr_auth");
 }
 
 export async function apiFetch(path, options = {}) {
-  const url = path.startsWith("http") ? path : `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-
-  const headers = new Headers(options.headers || {});
-  headers.set("Accept", "application/json");
-
   const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  // JSON helper
-  if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-    options.body = JSON.stringify(options.body);
+  const headers = {
+    ...(options.headers || {}),
+  };
+
+  // Só seta Content-Type se não for FormData
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!isFormData && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(url, { ...options, headers });
-
-  // 401: derruba sessão local
-  if (res.status === 401) {
-    clearToken();
-    const data = await parseResponse(res).catch(() => null);
-    const msg =
-      (data && typeof data === "object" && data.message) ? data.message :
-      "Não autenticado.";
-    const err = new Error(msg);
-    err.status = 401;
-    err.data = data;
-    throw err;
+  // Não sobrescreve Authorization se já veio explicitamente
+  if (!headers.Authorization && token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
-  if (!res.ok) {
-    const data = await parseResponse(res).catch(() => null);
-    const msg =
-      (data && typeof data === "object" && data.message) ? data.message :
-      `Erro HTTP ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.data = data;
-    throw err;
+  const url = `${API_BASE}${path}`;
+  const response = await fetch(url, { ...options, headers });
+
+  const contentType = response.headers.get("content-type") || "";
+  const rawText = await response.text();
+
+  // 401 => derruba sessão
+  if (response.status === 401) {
+    clearAuth();
+    throw new Error("Sessão expirada. Faça login novamente.");
   }
 
-  return await parseResponse(res);
-}
+  // Se não for JSON, não tenta parsear (evita Unexpected token "<")
+  if (!contentType.includes("application/json")) {
+    const snippet = (rawText || "").slice(0, 160).replace(/\s+/g, " ").trim();
+    throw new Error(
+      `Resposta inválida do servidor (${response.status}). Esperado JSON, recebido: ${snippet || "(vazio)"}`
+    );
+  }
 
-export async function login(email, senha) {
-  const data = await apiFetch("/api/auth/login", {
-    method: "POST",
-    body: { email, senha },
-  });
+  let data = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    const snippet = (rawText || "").slice(0, 160).replace(/\s+/g, " ").trim();
+    throw new Error(`JSON inválido do servidor (${response.status}): ${snippet || "(vazio)"}`);
+  }
 
-  // backend tende a responder { token, user? }
-  if (data?.token) setToken(data.token);
+  if (!response.ok) {
+    throw new Error(data?.message || "Erro na requisição");
+  }
 
   return data;
-}
-
-export async function me() {
-  return await apiFetch("/api/auth/me", { method: "GET" });
 }
