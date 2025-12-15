@@ -19,14 +19,12 @@ function onlyDigits(v = "") {
 function maskCpfCnpj(value = "") {
   const d = onlyDigits(value);
   if (d.length <= 11) {
-    // CPF: 000.000.000-00
     return d
       .replace(/^(\d{3})(\d)/, "$1.$2")
       .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
       .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4")
       .slice(0, 14);
   }
-  // CNPJ: 00.000.000/0000-00
   return d
     .replace(/^(\d{2})(\d)/, "$1.$2")
     .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
@@ -94,7 +92,7 @@ function maskPhone(value = "") {
 }
 
 function isValidPhone(value = "") {
-  return onlyDigits(value).length === 11; // (DD) 9 XXXX-XXXX
+  return onlyDigits(value).length === 11;
 }
 
 // DATAS — DD/MM/AAAA
@@ -129,9 +127,6 @@ function formatBRLFromCents(cents = 0) {
   const v = (Number(cents) || 0) / 100;
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function formatBRLWithSymbolFromCents(cents = 0) {
-  return `R$ ${formatBRLFromCents(cents)}`;
-}
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -139,36 +134,34 @@ function useClock() {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
-  return {
-    now,
-    date: formatDateBR(now),
-    time: formatTimeBR(now),
-  };
+  return { now, date: formatDateBR(now), time: formatTimeBR(now) };
 }
 
 /** =========================
- *  API helper (simples)
+ *  API helper
  *  ========================= */
 
-const API_BASE =
-  import.meta.env.VITE_API_URL?.trim() || "/api"; // em dev, pode cair no proxy do Vite
+const API_BASE = import.meta.env.VITE_API_URL?.trim() || "/api";
 
 async function apiFetch(path, { method = "GET", body, token } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
+
   if (!res.ok) throw new Error(data?.message || "Erro na requisição");
   return data;
 }
 
 /** =========================
- *  UI componentes base
+ *  UI base
  *  ========================= */
 
 function Card({ title, subtitle, right, children }) {
@@ -189,7 +182,6 @@ function Card({ title, subtitle, right, children }) {
 function Badge({ tone = "slate", children }) {
   const tones = {
     slate: "bg-slate-100 text-slate-700 border-slate-200",
-    navy: "bg-amr-navy/10 text-amr-navy border-amr-navy/20",
     green: "bg-emerald-50 text-emerald-700 border-emerald-200",
     red: "bg-rose-50 text-rose-700 border-rose-200",
   };
@@ -200,11 +192,12 @@ function Badge({ tone = "slate", children }) {
   );
 }
 
-function Input({ label, value, onChange, placeholder, error, helper, inputMode, maxLength }) {
+function Input({ label, value, onChange, placeholder, error, helper, inputMode, maxLength, type = "text" }) {
   return (
     <label className="block">
       <span className="text-xs font-semibold text-slate-700">{label}</span>
       <input
+        type={type}
         className={cx(
           "mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
           error ? "border-rose-300 focus:ring-rose-200" : "border-slate-200 focus:ring-slate-200"
@@ -271,7 +264,6 @@ function SecondaryButton({ children, onClick }) {
 /** =========================
  *  Ícones minimalistas
  *  ========================= */
-
 const Icon = {
   plus: () => (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
@@ -292,33 +284,14 @@ const Icon = {
   ),
   user: () => (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M20 21a8 8 0 1 0-16 0"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M12 13a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M20 21a8 8 0 1 0-16 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M12 13a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" stroke="currentColor" strokeWidth="2" />
     </svg>
   ),
   lock: () => (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M7 11V8a5 5 0 0 1 10 0v3"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6 11h12v10H6V11Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
+      <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   ),
   logout: () => (
@@ -337,7 +310,57 @@ const Icon = {
       />
     </svg>
   ),
+  shield: () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path
+        d="M12 3 20 7v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path d="M9 12l2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ),
 };
+
+/** =========================
+ *  PERMISSÕES (Frontend)
+ *  =========================
+ * - Admin: vê tudo
+ * - User: só módulos operacionais + relatórios (quando existir)
+ *
+ * IMPORTANTE:
+ * Mesmo escondendo botões, bloqueamos também via URL (?view=...)
+ */
+const ROLE = {
+  ADMIN: "ADMIN",
+  USER: "USER",
+};
+
+const VIEWS = {
+  LOGIN: "login",
+  CREATE: "create",
+  LIST: "list",
+  DASH: "dashboard",
+  ADMIN_USERS: "admin-users", // (vai existir na etapa 4)
+  REPORTS: "reports", // (vai existir na etapa 3)
+};
+
+function canAccessView(view, role) {
+  if (!role) return view === VIEWS.LOGIN;
+
+  // Operacional: ambos
+  if ([VIEWS.CREATE, VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
+
+  // Relatórios: ambos (na prática USER first, mas ambos terão)
+  if (view === VIEWS.REPORTS) return true;
+
+  // Administrativo: apenas ADMIN
+  if (view === VIEWS.ADMIN_USERS) return role === ROLE.ADMIN;
+
+  // Default safe
+  return view === VIEWS.DASH;
+}
 
 /** =========================
  *  APP
@@ -348,10 +371,8 @@ export default function App() {
   const location = useLocation();
   const clock = useClock();
 
-  // views internas
-  const [view, setView] = useState("login"); // login | create | list | dashboard
+  const [view, setView] = useState(VIEWS.LOGIN);
 
-  // auth
   const [auth, setAuth] = useState(() => {
     try {
       const raw = localStorage.getItem("amr_auth");
@@ -362,18 +383,20 @@ export default function App() {
   });
 
   const isAuthed = Boolean(auth?.token);
-
-  // header: módulo no lugar do “Backend: ok”
-  const moduleName = useMemo(() => {
-    if (!isAuthed) return "Login";
-    if (view === "create") return "Cadastro rápido";
-    if (view === "list") return "Listagem";
-    if (view === "dashboard") return "Dashboard";
-    return "—";
-  }, [isAuthed, view]);
+  const role = auth?.user?.role || null;
 
   const [backendOk, setBackendOk] = useState("verificando...");
 
+  // Persist auth
+  useEffect(() => {
+    try {
+      localStorage.setItem("amr_auth", JSON.stringify(auth));
+    } catch {
+      // ignore
+    }
+  }, [auth]);
+
+  // Health ping (visual)
   useEffect(() => {
     let alive = true;
     apiFetch("/health")
@@ -384,47 +407,110 @@ export default function App() {
     };
   }, []);
 
-  // persist auth
+  // ✅ Boot auth: valida token no backend (evita token velho/errado)
   useEffect(() => {
-    try {
-      localStorage.setItem("amr_auth", JSON.stringify(auth));
-    } catch {
-      // ignore
-    }
-  }, [auth]);
+    let alive = true;
 
-  // sync route-ish (mantido simples)
+    async function validateToken() {
+      if (!auth?.token) return;
+
+      try {
+        const me = await apiFetch("/auth/me", { token: auth.token });
+        if (!alive) return;
+        // Mantém token e atualiza usuário do backend (role inclusive)
+        setAuth((prev) => ({ ...prev, user: me?.user || prev.user }));
+      } catch {
+        if (!alive) return;
+        // Token inválido/expirado: derruba sessão local
+        setAuth({ token: null, user: null });
+        setView(VIEWS.LOGIN);
+        const q = new URLSearchParams(location.search);
+        q.set("view", VIEWS.LOGIN);
+        navigate({ search: q.toString() }, { replace: true });
+      }
+    }
+
+    validateToken();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync view from URL, mas com bloqueio por role
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     const v = q.get("view");
-    if (v) setView(v);
-  }, [location.search]);
+    if (!v) return;
 
-  function go(v) {
-    setView(v);
+    const desired = v;
+    const effectiveRole = isAuthed ? role : null;
+
+    if (!canAccessView(desired, effectiveRole)) {
+      // Bloqueia URL forçada
+      const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
+      setView(fallback);
+      q.set("view", fallback);
+      navigate({ search: q.toString() }, { replace: true });
+      return;
+    }
+
+    setView(desired);
+  }, [location.search, isAuthed, role, navigate]);
+
+  function go(nextView) {
+    const effectiveRole = isAuthed ? role : null;
+    const allowed = canAccessView(nextView, effectiveRole);
+
+    if (!allowed) {
+      // Silencioso e elegante: não deixa trocar
+      const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
+      nextView = fallback;
+    }
+
+    setView(nextView);
     const q = new URLSearchParams(location.search);
-    q.set("view", v);
+    q.set("view", nextView);
     navigate({ search: q.toString() }, { replace: true });
   }
 
   function logout() {
     setAuth({ token: null, user: null });
-    go("login");
+    go(VIEWS.LOGIN);
   }
 
-  function navItem(key, label, icon) {
+  // Header: módulo (mantido)
+  const moduleName = useMemo(() => {
+    if (!isAuthed) return "Login";
+    if (view === VIEWS.CREATE) return "Cadastro rápido";
+    if (view === VIEWS.LIST) return "Listagem";
+    if (view === VIEWS.DASH) return "Dashboard";
+    if (view === VIEWS.REPORTS) return "Relatórios";
+    if (view === VIEWS.ADMIN_USERS) return "Usuários (Admin)";
+    return "—";
+  }, [isAuthed, view]);
+
+  function navItem(key, label, icon, opts = {}) {
     const active = view === key;
+    const disabled = Boolean(opts.disabled);
     return (
       <button
-        key={key}
         type="button"
-        onClick={() => go(key)}
+        onClick={() => !disabled && go(key)}
+        disabled={disabled}
         className={cx(
           "w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border",
-          active ? "bg-amr-navy text-white border-amr-navy" : "bg-white text-slate-700 hover:bg-slate-50"
+          disabled
+            ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+            : active
+            ? "bg-amr-navy text-white border-amr-navy"
+            : "bg-white text-slate-700 hover:bg-slate-50"
         )}
+        title={opts.title}
       >
-        <span className={cx("inline-flex", active ? "text-white" : "text-slate-500")}>{icon}</span>
+        <span className={cx("inline-flex", active ? "text-white" : disabled ? "text-slate-300" : "text-slate-500")}>
+          {icon}
+        </span>
         {label}
       </button>
     );
@@ -444,8 +530,12 @@ export default function App() {
         method: "POST",
         body: { email: loginEmail, senha: loginSenha },
       });
+
+      // data.user deve vir com role
       setAuth({ token: data.token, user: data.user });
-      go("dashboard");
+
+      // Se USER, já cai em dashboard (evita “admin views” por padrão)
+      go(VIEWS.DASH);
     } catch (e) {
       setLoginError(e.message || "Erro no login");
     }
@@ -491,14 +581,13 @@ export default function App() {
         ordem: {
           descricao,
           tipoContrato: tipoContrato || null,
-          valorTotalPrevisto: valorCents ? String(valorCents / 100) : null, // backend grava Decimal
+          valorTotalPrevisto: valorCents ? String(valorCents / 100) : null,
           modeloPagamento,
-          dataInicio, // DD/MM/AAAA -> backend converte
+          dataInicio,
         },
       };
       await apiFetch("/clients-and-orders", { method: "POST", body, token: auth.token });
       setSaveMsg("Salvo com sucesso ✅");
-      // reset parcial (mantém cliente pra agilizar)
       setDescricao("");
       setTipoContrato("");
       setValorPrevistoRaw("");
@@ -510,7 +599,7 @@ export default function App() {
   }
 
   /** =========================
-   *  LISTAGEM / DASH (mantidos)
+   *  LISTAGEM / DASH
    *  ========================= */
   const [listData, setListData] = useState([]);
   const [listErr, setListErr] = useState("");
@@ -540,10 +629,13 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthed) return;
-    if (view === "list") loadList();
-    if (view === "dashboard") loadDash();
+    if (view === VIEWS.LIST) loadList();
+    if (view === VIEWS.DASH) loadDash();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, isAuthed]);
+
+  // ✅ Sidebar: se USER, esconde Administrativo
+  const isAdmin = role === ROLE.ADMIN;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -554,7 +646,9 @@ export default function App() {
             <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
             <div>
               <p className="text-sm font-semibold text-slate-900">AMR Advogados</p>
-              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
+              <p className="text-xs text-slate-500">
+                Controle de recebimentos, repasses e obrigações internas
+              </p>
             </div>
           </div>
 
@@ -580,7 +674,7 @@ export default function App() {
 
       {/* Body */}
       <div className="mx-auto max-w-7xl px-4 lg:px-6 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 py-6">
-        {/* Sidebar (layout aprovado: mantido) */}
+        {/* Sidebar */}
         <aside className="pl-0 lg:pl-0">
           <div className="sticky top-[92px]">
             <div className="ml-4 lg:ml-4 rounded-2xl border bg-white shadow-sm p-4 flex flex-col h-[calc(100vh-140px)]">
@@ -590,53 +684,63 @@ export default function App() {
 
               <div className="space-y-2 flex-1">
                 {!isAuthed ? (
-                  navItem("login", "Login", <Icon.user />)
+                  navItem(VIEWS.LOGIN, "Login", <Icon.user />)
                 ) : (
                   <>
-                    {navItem("create", "Cadastro rápido", <Icon.plus />)}
-                    {navItem("list", "Listagem (Clientes & Ordens)", <Icon.list />)}
-                    {navItem("dashboard", "Dashboard financeiro", <Icon.chart />)}
+                    {navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />)}
+                    {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
+                    {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
 
-                    <div className="pt-4">
-                      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                        Administrativo
-                      </p>
-                    </div>
+                    {/* Relatórios (entra na etapa 3, mas já deixo o slot) */}
+                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
+                      disabled: true,
+                      title: "Em breve",
+                    })}
 
-                    <button
-                      disabled
-                      className="w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-                      title="Em breve"
-                    >
-                      <Icon.lock />
-                      Modelos de cálculo
-                    </button>
+                    {/* Administrativo: só aparece para ADMIN */}
+                    {isAdmin ? (
+                      <>
+                        <div className="pt-4">
+                          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                            Administrativo
+                          </p>
+                        </div>
 
-                    <button
-                      disabled
-                      className="w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border bg-slate-50 text-slate-400 cursor-not-allowed"
-                      title="Em breve"
-                    >
-                      <Icon.lock />
-                      Controle de acesso
-                    </button>
+                        {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, {
+                          disabled: true,
+                          title: "Entrará na etapa 4 (Gestão de usuários)",
+                        })}
+
+                        {navItem("calc-models", "Modelos de cálculo", <Icon.lock />, {
+                          disabled: true,
+                          title: "Em breve",
+                        })}
+
+                        {navItem("access-control", "Controle de acesso", <Icon.lock />, {
+                          disabled: true,
+                          title: "Em breve",
+                        })}
+                      </>
+                    ) : null}
                   </>
                 )}
               </div>
 
-              {/* TEMP: Descanso / Repouso (remover ao final) */}
+              {/* TEMP: Descanso / Repouso */}
               <div className="mt-3">
                 <RestTimer />
               </div>
 
-              {/* Rodapé sidebar: Data/Hora + “Usuário” */}
+              {/* Rodapé sidebar: Data/Hora + Usuário */}
               <div className="pt-3 border-t flex items-center justify-between text-xs text-slate-500">
                 <span className="font-mono">{clock.date}</span>
                 <span className="font-mono">{clock.time}</span>
               </div>
               <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
                 <span>{isAuthed ? "Usuário logado" : "Em desenvolvimento"}</span>
-                <span className="font-medium">{isAuthed ? auth.user?.nome || "—" : "—"}</span>
+                <span className="font-medium">
+                  {isAuthed ? `${auth.user?.nome || "—"} (${auth.user?.role || "—"})` : "—"}
+                </span>
               </div>
             </div>
           </div>
@@ -644,7 +748,7 @@ export default function App() {
 
         {/* Main */}
         <main className="space-y-6">
-          {!isAuthed && view === "login" && (
+          {!isAuthed && view === VIEWS.LOGIN && (
             <Card title="Login" subtitle="Entre com seu usuário e senha para acessar o sistema.">
               <div className="grid grid-cols-1 gap-4">
                 <Input label="E-mail" value={loginEmail} onChange={setLoginEmail} placeholder="seu@email.com" />
@@ -653,6 +757,7 @@ export default function App() {
                   value={loginSenha}
                   onChange={setLoginSenha}
                   placeholder="••••••••"
+                  type="password"
                 />
                 {loginError ? (
                   <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -666,113 +771,108 @@ export default function App() {
             </Card>
           )}
 
-          {/* MÓDULOS (só authed) */}
-          {isAuthed && view === "create" && (
-            <div className="space-y-6">
-              <Card
-                title="Cadastro rápido: Cliente + Ordem"
-                subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-                right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
-              >
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900">Dados do cliente</h4>
-                      <p className="text-xs text-slate-500">Dados principais para identificação e contato.</p>
-                    </div>
-
-                    <Input
-                      label="CPF/CNPJ"
-                      value={cpfCnpjMasked}
-                      onChange={setCpfCnpj}
-                      placeholder="Ex.: 111.222.333-44"
-                      inputMode="numeric"
-                      maxLength={18}
-                      error={cpfCnpjMasked && !cpfCnpjValid ? "CPF/CNPJ inválido" : ""}
-                      helper="Com máscara e validação."
-                    />
-                    <Input
-                      label="Nome / Razão Social"
-                      value={nomeRazaoSocial}
-                      onChange={setNomeRazaoSocial}
-                      placeholder="Ex.: Empresa X Ltda."
-                    />
-                    <Input label="E-mail" value={email} onChange={setEmail} placeholder="financeiro@empresa.com" />
-                    <Input
-                      label="Telefone"
-                      value={telefoneMasked}
-                      onChange={setTelefone}
-                      placeholder="(99) 9 9999-9999"
-                      inputMode="numeric"
-                      error={!telefoneValid ? "Telefone inválido" : ""}
-                      helper="Formato obrigatório: (99) 9 9999-9999"
-                      maxLength={16}
-                    />
+          {isAuthed && view === VIEWS.CREATE && (
+            <Card
+              title="Cadastro rápido: Cliente + Ordem"
+              subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
+              right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Dados do cliente</h4>
+                    <p className="text-xs text-slate-500">Dados principais para identificação e contato.</p>
                   </div>
 
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-900">Ordem de Pagamento</h4>
-                      <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
-                    </div>
+                  <Input
+                    label="CPF/CNPJ"
+                    value={cpfCnpjMasked}
+                    onChange={setCpfCnpj}
+                    placeholder="Ex.: 111.222.333-44"
+                    inputMode="numeric"
+                    maxLength={18}
+                    error={cpfCnpjMasked && !cpfCnpjValid ? "CPF/CNPJ inválido" : ""}
+                    helper="Com máscara e validação."
+                  />
+                  <Input
+                    label="Nome / Razão Social"
+                    value={nomeRazaoSocial}
+                    onChange={setNomeRazaoSocial}
+                    placeholder="Ex.: Empresa X Ltda."
+                  />
+                  <Input label="E-mail" value={email} onChange={setEmail} placeholder="financeiro@empresa.com" />
+                  <Input
+                    label="Telefone"
+                    value={telefoneMasked}
+                    onChange={setTelefone}
+                    placeholder="(99) 9 9999-9999"
+                    inputMode="numeric"
+                    error={!telefoneValid ? "Telefone inválido" : ""}
+                    helper="Formato obrigatório: (99) 9 9999-9999"
+                    maxLength={16}
+                  />
+                </div>
 
-                    <Input
-                      label="Descrição / Objeto"
-                      value={descricao}
-                      onChange={setDescricao}
-                      placeholder="Ex.: Contrato consultivo mensal"
-                    />
-                    <Input
-                      label="Tipo de contrato"
-                      value={tipoContrato}
-                      onChange={setTipoContrato}
-                      placeholder="Ex.: esporádico, recorrente..."
-                    />
-                    <Input
-                      label="Valor total previsto"
-                      value={valorDisplay}
-                      onChange={setValorPrevistoRaw}
-                      placeholder="Ex.: 10000"
-                      inputMode="numeric"
-                      helper="Digitando: 1→0,01 | 12→0,12 | 123→1,23 | 123456→1.234,56"
-                    />
-                    <Select
-                      label="Modelo de pagamento"
-                      value={modeloPagamento}
-                      onChange={setModeloPagamento}
-                      options={[
-                        { value: "AVISTA", label: "À vista" },
-                        { value: "ENTRADA_E_PARCELAS", label: "Entrada + parcelas" },
-                        { value: "PARCELADO", label: "Parcelado" },
-                      ]}
-                    />
-                    <Input
-                      label="Data de início"
-                      value={dataInicio}
-                      onChange={setDataInicio}
-                      placeholder="dd/mm/aaaa"
-                      error={dataInicio && !dataInicioOk ? "Data inválida (DD/MM/AAAA)" : ""}
-                      helper="Obrigatório: DD/MM/AAAA"
-                    />
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Ordem de Pagamento</h4>
+                    <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
+                  </div>
 
-                    <div className="flex items-center gap-2 pt-2">
-                      <PrimaryButton
-                        onClick={saveClientAndOrder}
-                        disabled={!cpfCnpjValid || !nomeRazaoSocial || !descricao || !dataInicioOk}
-                      >
-                        Salvar cliente + ordem
-                      </PrimaryButton>
-                      {saveMsg ? (
-                        <span className="text-sm font-semibold text-slate-700">{saveMsg}</span>
-                      ) : null}
-                    </div>
+                  <Input
+                    label="Descrição / Objeto"
+                    value={descricao}
+                    onChange={setDescricao}
+                    placeholder="Ex.: Contrato consultivo mensal"
+                  />
+                  <Input
+                    label="Tipo de contrato"
+                    value={tipoContrato}
+                    onChange={setTipoContrato}
+                    placeholder="Ex.: esporádico, recorrente..."
+                  />
+                  <Input
+                    label="Valor total previsto"
+                    value={valorDisplay}
+                    onChange={setValorPrevistoRaw}
+                    placeholder="Ex.: 10000"
+                    inputMode="numeric"
+                    helper="Digitando: 1→0,01 | 12→0,12 | 123→1,23 | 123456→1.234,56"
+                  />
+                  <Select
+                    label="Modelo de pagamento"
+                    value={modeloPagamento}
+                    onChange={setModeloPagamento}
+                    options={[
+                      { value: "AVISTA", label: "À vista" },
+                      { value: "ENTRADA_E_PARCELAS", label: "Entrada + parcelas" },
+                      { value: "PARCELADO", label: "Parcelado" },
+                    ]}
+                  />
+                  <Input
+                    label="Data de início"
+                    value={dataInicio}
+                    onChange={setDataInicio}
+                    placeholder="dd/mm/aaaa"
+                    error={dataInicio && !dataInicioOk ? "Data inválida (DD/MM/AAAA)" : ""}
+                    helper="Obrigatório: DD/MM/AAAA"
+                  />
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <PrimaryButton
+                      onClick={saveClientAndOrder}
+                      disabled={!cpfCnpjValid || !nomeRazaoSocial || !descricao || !dataInicioOk}
+                    >
+                      Salvar cliente + ordem
+                    </PrimaryButton>
+                    {saveMsg ? <span className="text-sm font-semibold text-slate-700">{saveMsg}</span> : null}
                   </div>
                 </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
           )}
 
-          {isAuthed && view === "list" && (
+          {isAuthed && view === VIEWS.LIST && (
             <Card
               title="Listagem (Clientes & Ordens)"
               subtitle="Valide rapidamente os cadastros feitos no Cadastro rápido."
@@ -807,9 +907,7 @@ export default function App() {
                               <p className="text-sm font-semibold text-slate-900">
                                 #{o.sequenciaCliente} • {o.descricao}
                               </p>
-                              <span className="text-xs font-semibold text-slate-600">
-                                {o.status}
-                              </span>
+                              <span className="text-xs font-semibold text-slate-600">{o.status}</span>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
                               Modelo: {o.modeloPagamento} • Início:{" "}
@@ -831,7 +929,7 @@ export default function App() {
             </Card>
           )}
 
-          {isAuthed && view === "dashboard" && (
+          {isAuthed && view === VIEWS.DASH && (
             <Card
               title="Dashboard financeiro"
               subtitle="Visão geral inicial (protótipo)."
