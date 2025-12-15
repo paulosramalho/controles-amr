@@ -3,7 +3,7 @@ import RestTimer from "./components/RestTimer";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 
-import { apiFetch, setAuth, clearAuth } from "./lib/api";
+import { apiFetch, setAuth, clearAuth, getToken, getUser } from "./lib/api";
 
 /** =========================
  *  HELPERS — DIRETRIZES
@@ -83,14 +83,13 @@ function isValidCpfCnpj(value) {
 
 // Telefone: (99) 9 9999-9999 + validação básica
 function maskPhone(value) {
-  const v = onlyDigits(value).slice(0, 11); // 11 dígitos
+  const v = onlyDigits(value).slice(0, 11);
   if (!v) return "";
   if (v.length <= 2) return `(${v}`;
   if (v.length <= 3) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
   if (v.length <= 7) return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3)}`;
   return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3, 7)}-${v.slice(7)}`;
 }
-
 function isValidPhone(value) {
   return onlyDigits(value).length === 11;
 }
@@ -137,14 +136,12 @@ function formatTimeHHMMSS(date) {
 function centsFromInputDigits(value) {
   const v = onlyDigits(value);
   const n = Number(v || "0");
-  return n; // em centavos
+  return n; // centavos
 }
-
 function formatBRLFromCents(cents) {
   const n = Number(cents || 0) / 100;
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
 function formatBRLFromNumber(number) {
   const n = Number(number || 0);
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -286,23 +283,22 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Auth state (localStorage via api.js)
-  const [auth, setAuthState] = useState(() => {
-    try {
-      const raw = localStorage.getItem("amr_auth");
-      return raw ? JSON.parse(raw) : { token: null, user: null };
-    } catch {
-      return { token: null, user: null };
-    }
-  });
+  // Auth state (SINGLE SOURCE: api.js localStorage keys)
+  const [auth, setAuthState] = useState(() => ({
+    token: getToken(),
+    user: getUser(),
+  }));
 
-  // View selection (simple; sem router de rotas ainda)
+  const isAuthed = Boolean(auth?.token);
+  const isAdmin = auth?.user?.role === "ADMIN";
+
+  // View selection
   const [view, setView] = useState(() => {
     const p = new URLSearchParams(location.search);
-    return p.get("view") || (auth?.token ? VIEWS.DASH : VIEWS.LOGIN);
+    return p.get("view") || (isAuthed ? VIEWS.DASH : VIEWS.LOGIN);
   });
 
-  // Clock (diretriz: DD/MM/AAAA e HH:MM:SS)
+  // Clock
   const [clockNow, setClockNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setClockNow(new Date()), 1000);
@@ -315,9 +311,6 @@ export default function App() {
       time: formatTimeHHMMSS(clockNow),
     };
   }, [clockNow]);
-
-  const isAuthed = Boolean(auth?.token);
-  const isAdmin = auth?.user?.role === "ADMIN";
 
   // backend health / module label
   const [backendOk, setBackendOk] = useState("verificando...");
@@ -337,7 +330,8 @@ export default function App() {
     let alive = true;
     (async () => {
       try {
-        await apiFetch("/api/health", { method: "GET" });
+        // ✅ SEM /api duplicado: se VITE_API_URL já tem /api, aqui é só "/health"
+        await apiFetch("/health", { method: "GET" });
         if (alive) setBackendOk("ok");
       } catch {
         if (alive) setBackendOk("erro");
@@ -347,13 +341,6 @@ export default function App() {
       alive = false;
     };
   }, []);
-
-  // persist auth (api.js também mantém helpers)
-  useEffect(() => {
-    try {
-      localStorage.setItem("amr_auth", JSON.stringify(auth));
-    } catch {}
-  }, [auth]);
 
   // sync view in querystring (pra facilitar dev)
   useEffect(() => {
@@ -372,7 +359,6 @@ export default function App() {
   function logout() {
     clearAuth();
     setAuthState({ token: null, user: null });
-    setAuth(null);
     setView(VIEWS.LOGIN);
   }
 
@@ -415,15 +401,15 @@ export default function App() {
     setLoginError("");
     setLoginLoading(true);
     try {
-      const data = await apiFetch("/api/auth/login", {
+      // ✅ SEM /api duplicado
+      const data = await apiFetch("/auth/login", {
         method: "POST",
         body: { email: loginEmail, senha: loginSenha },
       });
 
       // esperado: { token, user: { id, nome, email, role } }
-      const nextAuth = { token: data.token, user: data.user };
-      setAuthState(nextAuth);
-      setAuth(nextAuth);
+      setAuth(data.token, data.user);
+      setAuthState({ token: data.token, user: data.user });
 
       setView(VIEWS.DASH);
     } catch (e) {
@@ -457,23 +443,12 @@ export default function App() {
     const cpfCnpjMasked = maskCpfCnpj(cpfCnpj);
     const isCpfCnpjOk = isValidCpfCnpj(cpfCnpjMasked);
 
-    if (!isCpfCnpjOk) {
-      setCreateErr("CPF/CNPJ inválido.");
-      return;
-    }
-    if (!nomeRazaoSocial.trim()) {
-      setCreateErr("Nome/Razão Social é obrigatório.");
-      return;
-    }
-    if (telefone && !isValidPhone(telefone)) {
-      setCreateErr("Telefone inválido.");
-      return;
-    }
+    if (!isCpfCnpjOk) return setCreateErr("CPF/CNPJ inválido.");
+    if (!nomeRazaoSocial.trim()) return setCreateErr("Nome/Razão Social é obrigatório.");
+    if (telefone && !isValidPhone(telefone)) return setCreateErr("Telefone inválido.");
+
     const d = parseDateDDMMYYYY(ordemDataInicio);
-    if (!d) {
-      setCreateErr("Data de início inválida (DD/MM/AAAA).");
-      return;
-    }
+    if (!d) return setCreateErr("Data de início inválida (DD/MM/AAAA).");
 
     const cents = centsFromInputDigits(ordemValor);
 
@@ -489,16 +464,16 @@ export default function App() {
         ordem: {
           descricao: ordemDescricao.trim() || null,
           tipoContrato: ordemTipoContrato.trim() || null,
-          valorTotalPrevisto: cents ? String(Number(cents) / 100) : null, // backend guarda Decimal
+          valorTotalPrevisto: cents ? String(Number(cents) / 100) : null,
           modeloPagamento: ordemModelo,
           dataInicio: d.toISOString(),
         },
       };
 
-      await apiFetch("/api/clients-and-orders", { method: "POST", body: payload });
+      // ✅ SEM /api duplicado
+      await apiFetch("/clients-and-orders", { method: "POST", body: payload });
 
       setCreateOk("Cliente + Ordem salvos com sucesso.");
-      // limpeza mínima
       setCpfCnpj("");
       setNomeRazaoSocial("");
       setEmail("");
@@ -526,7 +501,8 @@ export default function App() {
     setListErr("");
     setListLoading(true);
     try {
-      const data = await apiFetch("/api/clients-with-orders", { method: "GET" });
+      // ✅ SEM /api duplicado
+      const data = await apiFetch("/clients-with-orders", { method: "GET" });
       setClientsWithOrders(data || []);
     } catch (e) {
       setListErr(e?.message || "Erro ao listar clientes + ordens");
@@ -551,7 +527,8 @@ export default function App() {
     setDashErr("");
     setDashLoading(true);
     try {
-      const data = await apiFetch("/api/dashboard/summary", { method: "GET" });
+      // ✅ SEM /api duplicado
+      const data = await apiFetch("/dashboard/summary", { method: "GET" });
       setDash(data);
     } catch (e) {
       setDashErr(e?.message || "Erro ao carregar dashboard");
@@ -564,6 +541,12 @@ export default function App() {
     if (isAuthed && view === VIEWS.DASH) loadDash();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, view]);
+
+  // Se deslogar, força view login
+  useEffect(() => {
+    if (!isAuthed && view !== VIEWS.LOGIN) setView(VIEWS.LOGIN);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -588,11 +571,12 @@ export default function App() {
               navItem(VIEWS.LOGIN, "Login", <Icon.user />)
             ) : (
               <>
-                {/* ✅ PERMISSÃO: Cadastro rápido só para ADMIN */}
+                {/* ✅ Cadastro rápido só para ADMIN */}
                 {isAdmin ? navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />) : null}
 
                 {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
                 {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
+
                 {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
                   disabled: true,
                   title: "Em breve",
@@ -605,36 +589,28 @@ export default function App() {
                       <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Administrativo</p>
                     </div>
 
-                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, {
-                      disabled: true,
-                      title: "Em breve",
-                    })}
-
-                    {navItem("access-control", "Controle de acesso", <Icon.lock />, {
-                      disabled: true,
-                      title: "Em breve",
-                    })}
+                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, { disabled: true, title: "Em breve" })}
+                    {navItem("access-control", "Controle de acesso", <Icon.lock />, { disabled: true, title: "Em breve" })}
                   </>
                 ) : null}
               </>
             )}
           </div>
 
-          {/* Espaçador para manter o rodapé sempre visível */}
           <div className="flex-1" />
         </div>
 
         {/* Rodapé da sidebar: Descanso + usuário + data/hora + sair */}
         <div className="px-4 pb-4 space-y-3">
-          {/* TEMP: Descanso / Repouso (mantém!) */}
+          {/* Descanso (mantém!) */}
           <RestTimer />
 
           {/* Nome + role */}
           <div className="text-xs text-white/80 flex items-center justify-between">
             <span className="truncate max-w-[170px]">
-              {auth.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}
+              {auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}
             </span>
-            <span className="font-semibold">{auth.user?.role || (isAuthed ? "—" : "—")}</span>
+            <span className="font-semibold">{auth?.user?.role || (isAuthed ? "—" : "—")}</span>
           </div>
 
           {/* Data + hora */}
@@ -664,11 +640,7 @@ export default function App() {
               <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
             </div>
             <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>
-              {backendOk === "ok"
-                ? "Backend: ok"
-                : backendOk === "erro"
-                ? "Backend: erro"
-                : "Backend: verificando..."}
+              {backendOk === "ok" ? "Backend: ok" : backendOk === "erro" ? "Backend: erro" : "Backend: verificando..."}
             </Badge>
           </div>
 
@@ -705,7 +677,7 @@ export default function App() {
             <Card
               title="Cadastro rápido: Cliente + Ordem"
               subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-              right={<Badge tone="blue">{import.meta.env.VITE_API_URL ? "API externa" : "API /api"}</Badge>}
+              right={<Badge tone="blue">API: {import.meta.env.VITE_API_URL || "—"}</Badge>}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="rounded-2xl border bg-white p-4">
@@ -726,13 +698,7 @@ export default function App() {
                       onChange={setNomeRazaoSocial}
                       placeholder="Ex.: Empresa X Ltda."
                     />
-                    <Input
-                      label="E-mail"
-                      value={email}
-                      onChange={setEmail}
-                      placeholder="financeiro@empresa.com"
-                      type="email"
-                    />
+                    <Input label="E-mail" value={email} onChange={setEmail} placeholder="financeiro@empresa.com" type="email" />
                     <Input
                       label="Telefone"
                       value={maskPhone(telefone)}
@@ -847,9 +813,7 @@ export default function App() {
                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                           {(c.ordens || []).map((o) => (
                             <div key={o.id} className="rounded-2xl border bg-slate-50 p-3">
-                              <p className="text-sm font-semibold text-slate-900">
-                                {o.descricao || "Ordem sem descrição"}
-                              </p>
+                              <p className="text-sm font-semibold text-slate-900">{o.descricao || "Ordem sem descrição"}</p>
                               <p className="text-xs text-slate-500">
                                 Seq.: {o.sequenciaCliente} • Status: {o.status}
                               </p>
