@@ -3,6 +3,9 @@ import RestTimer from "./components/RestTimer";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 
+// ✅ Usa o helper correto (robusto) — NÃO usar apiFetch interno
+import { apiFetch } from "./lib/api";
+
 /** =========================
  *  HELPERS — DIRETRIZES
  *  ========================= */
@@ -135,29 +138,6 @@ function useClock() {
     return () => clearInterval(id);
   }, []);
   return { now, date: formatDateBR(now), time: formatTimeBR(now) };
-}
-
-/** =========================
- *  API helper
- *  ========================= */
-
-const API_BASE = import.meta.env.VITE_API_URL?.trim() || "/api";
-
-async function apiFetch(path, { method = "GET", body, token } = {}) {
-  const headers = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!res.ok) throw new Error(data?.message || "Erro na requisição");
-  return data;
 }
 
 /** =========================
@@ -302,12 +282,7 @@ const Icon = {
         strokeWidth="2"
         strokeLinecap="round"
       />
-      <path
-        d="M15 12H3m0 0 3-3M3 12l3 3"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+      <path d="M15 12H3m0 0 3-3M3 12l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   ),
   shield: () => (
@@ -325,40 +300,22 @@ const Icon = {
 
 /** =========================
  *  PERMISSÕES (Frontend)
- *  =========================
- * - Admin: vê tudo
- * - User: só módulos operacionais + relatórios (quando existir)
- *
- * IMPORTANTE:
- * Mesmo escondendo botões, bloqueamos também via URL (?view=...)
- */
-const ROLE = {
-  ADMIN: "ADMIN",
-  USER: "USER",
-};
-
+ *  ========================= */
+const ROLE = { ADMIN: "ADMIN", USER: "USER" };
 const VIEWS = {
   LOGIN: "login",
   CREATE: "create",
   LIST: "list",
   DASH: "dashboard",
-  ADMIN_USERS: "admin-users", // (vai existir na etapa 4)
-  REPORTS: "reports", // (vai existir na etapa 3)
+  ADMIN_USERS: "admin-users",
+  REPORTS: "reports",
 };
 
 function canAccessView(view, role) {
   if (!role) return view === VIEWS.LOGIN;
-
-  // Operacional: ambos
   if ([VIEWS.CREATE, VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
-
-  // Relatórios: ambos (na prática USER first, mas ambos terão)
   if (view === VIEWS.REPORTS) return true;
-
-  // Administrativo: apenas ADMIN
   if (view === VIEWS.ADMIN_USERS) return role === ROLE.ADMIN;
-
-  // Default safe
   return view === VIEWS.DASH;
 }
 
@@ -391,9 +348,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem("amr_auth", JSON.stringify(auth));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [auth]);
 
   // Health ping (visual)
@@ -415,13 +370,13 @@ export default function App() {
       if (!auth?.token) return;
 
       try {
-        const me = await apiFetch("/auth/me", { token: auth.token });
+        const me = await apiFetch("/auth/me", {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
         if (!alive) return;
-        // Mantém token e atualiza usuário do backend (role inclusive)
         setAuth((prev) => ({ ...prev, user: me?.user || prev.user }));
       } catch {
         if (!alive) return;
-        // Token inválido/expirado: derruba sessão local
         setAuth({ token: null, user: null });
         setView(VIEWS.LOGIN);
         const q = new URLSearchParams(location.search);
@@ -447,7 +402,6 @@ export default function App() {
     const effectiveRole = isAuthed ? role : null;
 
     if (!canAccessView(desired, effectiveRole)) {
-      // Bloqueia URL forçada
       const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
       setView(fallback);
       q.set("view", fallback);
@@ -463,7 +417,6 @@ export default function App() {
     const allowed = canAccessView(nextView, effectiveRole);
 
     if (!allowed) {
-      // Silencioso e elegante: não deixa trocar
       const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
       nextView = fallback;
     }
@@ -479,7 +432,6 @@ export default function App() {
     go(VIEWS.LOGIN);
   }
 
-  // Header: módulo (mantido)
   const moduleName = useMemo(() => {
     if (!isAuthed) return "Login";
     if (view === VIEWS.CREATE) return "Cadastro rápido";
@@ -528,13 +480,10 @@ export default function App() {
     try {
       const data = await apiFetch("/auth/login", {
         method: "POST",
-        body: { email: loginEmail, senha: loginSenha },
+        body: JSON.stringify({ email: loginEmail, senha: loginSenha }),
       });
 
-      // data.user deve vir com role
       setAuth({ token: data.token, user: data.user });
-
-      // Se USER, já cai em dashboard (evita “admin views” por padrão)
       go(VIEWS.DASH);
     } catch (e) {
       setLoginError(e.message || "Erro no login");
@@ -586,7 +535,13 @@ export default function App() {
           dataInicio,
         },
       };
-      await apiFetch("/clients-and-orders", { method: "POST", body, token: auth.token });
+
+      await apiFetch("/clients-and-orders", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify(body),
+      });
+
       setSaveMsg("Salvo com sucesso ✅");
       setDescricao("");
       setTipoContrato("");
@@ -607,7 +562,9 @@ export default function App() {
   async function loadList() {
     setListErr("");
     try {
-      const data = await apiFetch("/clients-with-orders", { token: auth.token });
+      const data = await apiFetch("/clients-with-orders", {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
       setListData(Array.isArray(data) ? data : []);
     } catch (e) {
       setListErr(e.message || "Erro ao carregar listagem");
@@ -620,7 +577,9 @@ export default function App() {
   async function loadDash() {
     setDashErr("");
     try {
-      const data = await apiFetch("/dashboard/summary", { token: auth.token });
+      const data = await apiFetch("/dashboard/summary", {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
       setDash(data);
     } catch (e) {
       setDashErr(e.message || "Erro ao carregar dashboard");
@@ -634,8 +593,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, isAuthed]);
 
-  // ✅ Sidebar: se USER, esconde Administrativo
   const isAdmin = role === ROLE.ADMIN;
+
+  const apiLabel = useMemo(() => {
+    const raw = (import.meta.env.VITE_API_URL || "").trim();
+    if (!raw) return "API /api";
+    return `API ${raw.replace(/^https?:\/\//, "")}`;
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -646,16 +610,12 @@ export default function App() {
             <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
             <div>
               <p className="text-sm font-semibold text-slate-900">AMR Advogados</p>
-              <p className="text-xs text-slate-500">
-                Controle de recebimentos, repasses e obrigações internas
-              </p>
+              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>
-              {moduleName}
-            </Badge>
+            <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>{moduleName}</Badge>
 
             {isAuthed ? (
               <button
@@ -691,13 +651,11 @@ export default function App() {
                     {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
                     {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
 
-                    {/* Relatórios (entra na etapa 3, mas já deixo o slot) */}
                     {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
                       disabled: true,
                       title: "Em breve",
                     })}
 
-                    {/* Administrativo: só aparece para ADMIN */}
                     {isAdmin ? (
                       <>
                         <div className="pt-4">
@@ -775,7 +733,7 @@ export default function App() {
             <Card
               title="Cadastro rápido: Cliente + Ordem"
               subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-              right={<Badge tone="slate">API {API_BASE.replace(/^https?:\/\//, "")}</Badge>}
+              right={<Badge tone="slate">{apiLabel}</Badge>}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
