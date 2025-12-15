@@ -3,8 +3,7 @@ import RestTimer from "./components/RestTimer";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 
-// ✅ Usa o helper correto (robusto) — NÃO usar apiFetch interno
-import { apiFetch } from "./lib/api";
+import { apiFetch, setAuth, clearAuth } from "./lib/api";
 
 /** =========================
  *  HELPERS — DIRETRIZES
@@ -311,18 +310,13 @@ const VIEWS = {
   REPORTS: "reports",
 };
 
-// 🔒 Regras (Frontend):
-// - LOGIN: público
-// - ADMIN: tudo operacional + administrativo
-// - USER: pode ver LIST/DASH/REPORTS (quando habilitar), mas NÃO cria (CREATE) e NÃO acessa admin.
-// Observação: a segurança real é no backend; aqui é UX/rota.
 function canAccessView(view, role) {
   if (!role) return view === VIEWS.LOGIN;
 
   // Operacional permitido para ambos:
   if ([VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
 
-  // Relatórios: deixamos permitido para ambos (mesmo que o botão esteja disabled por enquanto)
+  // Relatórios: permitido (mesmo que botão disabled por enquanto)
   if (view === VIEWS.REPORTS) return true;
 
   // Cadastro rápido: somente ADMIN
@@ -346,7 +340,7 @@ export default function App() {
 
   const [view, setView] = useState(VIEWS.LOGIN);
 
-  const [auth, setAuth] = useState(() => {
+  const [auth, setAuthState] = useState(() => {
     try {
       const raw = localStorage.getItem("amr_auth");
       return raw ? JSON.parse(raw) : { token: null, user: null };
@@ -361,10 +355,11 @@ export default function App() {
 
   const [backendOk, setBackendOk] = useState("verificando...");
 
-  // Persist auth
+  // Persist auth (fonte única: amr_auth)
   useEffect(() => {
     try {
-      localStorage.setItem("amr_auth", JSON.stringify(auth));
+      if (auth?.token) setAuth(auth);
+      else clearAuth();
     } catch {}
   }, [auth]);
 
@@ -379,7 +374,7 @@ export default function App() {
     };
   }, []);
 
-  // ✅ Boot auth: valida token no backend (evita token velho/errado)
+  // Boot auth: valida token no backend (evita token velho/errado)
   useEffect(() => {
     let alive = true;
 
@@ -391,10 +386,10 @@ export default function App() {
           headers: { Authorization: `Bearer ${auth.token}` },
         });
         if (!alive) return;
-        setAuth((prev) => ({ ...prev, user: me?.user || prev.user }));
+        setAuthState((prev) => ({ ...prev, user: me?.user || prev.user }));
       } catch {
         if (!alive) return;
-        setAuth({ token: null, user: null });
+        setAuthState({ token: null, user: null });
         setView(VIEWS.LOGIN);
         const q = new URLSearchParams(location.search);
         q.set("view", VIEWS.LOGIN);
@@ -442,7 +437,7 @@ export default function App() {
   }
 
   function logout() {
-    setAuth({ token: null, user: null });
+    setAuthState({ token: null, user: null });
     go(VIEWS.LOGIN);
   }
 
@@ -497,7 +492,8 @@ export default function App() {
         body: JSON.stringify({ email: loginEmail, senha: loginSenha }),
       });
 
-      setAuth({ token: data.token, user: data.user });
+      const nextAuth = { token: data.token, user: data.user };
+      setAuthState(nextAuth);
       go(VIEWS.DASH);
     } catch (e) {
       setLoginError(e.message || "Erro no login");
@@ -534,7 +530,7 @@ export default function App() {
   async function saveClientAndOrder() {
     setSaveMsg("");
 
-    // 🧱 Defesa extra no frontend (mesmo que tente acessar via URL): USER não pode criar.
+    // Defesa extra: USER não cadastra
     if (!isAdmin) {
       setSaveMsg("Acesso negado: apenas ADMIN pode cadastrar (Cadastro rápido).");
       return;
@@ -559,7 +555,6 @@ export default function App() {
 
       await apiFetch("/clients-and-orders", {
         method: "POST",
-        headers: { Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify(body),
       });
 
@@ -583,9 +578,7 @@ export default function App() {
   async function loadList() {
     setListErr("");
     try {
-      const data = await apiFetch("/clients-with-orders", {
-        headers: { Authorization: `Bearer ${auth.token}` },
-      });
+      const data = await apiFetch("/clients-with-orders");
       setListData(Array.isArray(data) ? data : []);
     } catch (e) {
       setListErr(e.message || "Erro ao carregar listagem");
@@ -598,9 +591,7 @@ export default function App() {
   async function loadDash() {
     setDashErr("");
     try {
-      const data = await apiFetch("/dashboard/summary", {
-        headers: { Authorization: `Bearer ${auth.token}` },
-      });
+      const data = await apiFetch("/dashboard/summary");
       setDash(data);
     } catch (e) {
       setDashErr(e.message || "Erro ao carregar dashboard");
@@ -751,8 +742,7 @@ export default function App() {
             </Card>
           )}
 
-          {/* ✅ Mesmo que forcem URL para view=create, o useEffect já redireciona USER pro dashboard.
-              Mas mantemos o bloco aqui igual (layout aprovado) */}
+          {/* CREATE (apenas ADMIN; USER é redirecionado no guard) */}
           {isAuthed && view === VIEWS.CREATE && (
             <Card
               title="Cadastro rápido: Cliente + Ordem"
