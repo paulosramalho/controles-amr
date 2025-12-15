@@ -311,11 +311,27 @@ const VIEWS = {
   REPORTS: "reports",
 };
 
+// 🔒 Regras (Frontend):
+// - LOGIN: público
+// - ADMIN: tudo operacional + administrativo
+// - USER: pode ver LIST/DASH/REPORTS (quando habilitar), mas NÃO cria (CREATE) e NÃO acessa admin.
+// Observação: a segurança real é no backend; aqui é UX/rota.
 function canAccessView(view, role) {
   if (!role) return view === VIEWS.LOGIN;
-  if ([VIEWS.CREATE, VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
+
+  // Operacional permitido para ambos:
+  if ([VIEWS.LIST, VIEWS.DASH].includes(view)) return true;
+
+  // Relatórios: deixamos permitido para ambos (mesmo que o botão esteja disabled por enquanto)
   if (view === VIEWS.REPORTS) return true;
+
+  // Cadastro rápido: somente ADMIN
+  if (view === VIEWS.CREATE) return role === ROLE.ADMIN;
+
+  // Admin area: somente ADMIN
   if (view === VIEWS.ADMIN_USERS) return role === ROLE.ADMIN;
+
+  // fallback seguro
   return view === VIEWS.DASH;
 }
 
@@ -341,6 +357,7 @@ export default function App() {
 
   const isAuthed = Boolean(auth?.token);
   const role = auth?.user?.role || null;
+  const isAdmin = role === ROLE.ADMIN;
 
   const [backendOk, setBackendOk] = useState("verificando...");
 
@@ -392,7 +409,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync view from URL, mas com bloqueio por role
+  // Sync view from URL, mas com bloqueio por role (impede “forçar URL”)
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     const v = q.get("view");
@@ -416,10 +433,7 @@ export default function App() {
     const effectiveRole = isAuthed ? role : null;
     const allowed = canAccessView(nextView, effectiveRole);
 
-    if (!allowed) {
-      const fallback = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
-      nextView = fallback;
-    }
+    if (!allowed) nextView = isAuthed ? VIEWS.DASH : VIEWS.LOGIN;
 
     setView(nextView);
     const q = new URLSearchParams(location.search);
@@ -519,6 +533,13 @@ export default function App() {
 
   async function saveClientAndOrder() {
     setSaveMsg("");
+
+    // 🧱 Defesa extra no frontend (mesmo que tente acessar via URL): USER não pode criar.
+    if (!isAdmin) {
+      setSaveMsg("Acesso negado: apenas ADMIN pode cadastrar (Cadastro rápido).");
+      return;
+    }
+
     try {
       const body = {
         cliente: {
@@ -593,8 +614,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, isAuthed]);
 
-  const isAdmin = role === ROLE.ADMIN;
-
   const apiLabel = useMemo(() => {
     const raw = (import.meta.env.VITE_API_URL || "").trim();
     if (!raw) return "API /api";
@@ -647,7 +666,9 @@ export default function App() {
                   navItem(VIEWS.LOGIN, "Login", <Icon.user />)
                 ) : (
                   <>
-                    {navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />)}
+                    {/* ✅ PERMISSÃO: Cadastro rápido só para ADMIN */}
+                    {isAdmin ? navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />) : null}
+
                     {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
                     {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
 
@@ -656,6 +677,7 @@ export default function App() {
                       title: "Em breve",
                     })}
 
+                    {/* ✅ Admin section só para ADMIN */}
                     {isAdmin ? (
                       <>
                         <div className="pt-4">
@@ -684,7 +706,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* TEMP: Descanso / Repouso */}
+              {/* TEMP: Descanso / Repouso (mantém!) */}
               <div className="mt-3">
                 <RestTimer />
               </div>
@@ -729,6 +751,8 @@ export default function App() {
             </Card>
           )}
 
+          {/* ✅ Mesmo que forcem URL para view=create, o useEffect já redireciona USER pro dashboard.
+              Mas mantemos o bloco aqui igual (layout aprovado) */}
           {isAuthed && view === VIEWS.CREATE && (
             <Card
               title="Cadastro rápido: Cliente + Ordem"
