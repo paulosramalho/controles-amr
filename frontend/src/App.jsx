@@ -1,451 +1,585 @@
-// frontend/src/App.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { apiFetch, setAuth, clearAuth, getToken } from "./lib/api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  NavLink,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { api } from "./lib/api";
 
-import logoSrc from "./assets/logo.png"; // /src/assets/logo.png
-
-/**
- * DIRETRIZES DO PROJETO (armário)
- * 1) CPF/CNPJ: máscara + validação em todos os lugares que apareçam/solicitem
- * 2) Datas: DD/MM/AAAA em todos os lugares
- * 3) Horas: HH:MM:SS em todos os lugares
- * 4) Valores R$: máscara moeda digitando 1→0,01 ... exibindo no mesmo padrão, em todos os lugares
- * 5) Layout aprovado é imutável (exceto quando liberado/validado previamente) — liberado aqui para sidebar nova.
- * 6) Novas diretrizes entram por solicitação do cara.
- * 7) Telefone: máscara (99) 9 9999-9999 em todos os lugares
- */
-
-/* ------------------ utils de data/hora ------------------ */
-const pad2 = (n) => String(n).padStart(2, "0");
-function fmtDateBR(d) {
-  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-function fmtTimeBR(d) {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-function isNight(hour) {
-  return hour >= 18 || hour < 5;
-}
-function greetingForHour(hour) {
-  return isNight(hour) ? "Boa noite" : "Bom descanso";
+// ===== Logo (se existir em src/assets/logo.png) =====
+let logoSrc = null;
+try {
+  logoSrc = new URL("./assets/logo.png", import.meta.url).href;
+} catch {
+  logoSrc = null;
 }
 
-/* ------------------ auth storage helpers ------------------ */
+// ===== Utils: clock + format =====
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const pad = (n) => String(n).padStart(2, "0");
+  const d = now;
+  return {
+    date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+    hour: d.getHours(),
+  };
+}
+
+// ===== Auth storage =====
+const LS_TOKEN = "amr_token";
+const LS_ROLE = "amr_role";
+const LS_USER = "amr_user"; // string (nome/email) por enquanto
+
 function readAuth() {
-  try {
-    const raw = localStorage.getItem("amr_auth");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  const token = localStorage.getItem(LS_TOKEN) || "";
+  const role = localStorage.getItem(LS_ROLE) || "";
+  const user = localStorage.getItem(LS_USER) || "";
+  return { token, role, user };
+}
+function writeAuth({ token, role, user }) {
+  if (token) localStorage.setItem(LS_TOKEN, token);
+  if (role) localStorage.setItem(LS_ROLE, role);
+  if (user) localStorage.setItem(LS_USER, user);
+}
+function clearAuth() {
+  localStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_ROLE);
+  localStorage.removeItem(LS_USER);
 }
 
-/* ------------------ components: gates ------------------ */
-function Protected({ token, children }) {
-  if (!token) return <Navigate to="/login" replace />;
+// ===== Role helpers =====
+const ROLE = {
+  ADMIN: "ADMIN",
+  USER: "USER",
+};
+function hasRole(currentRole, allowed) {
+  if (!allowed || allowed.length === 0) return true;
+  return allowed.includes(currentRole);
+}
+
+// ===== ProtectedRoute (se você já usa um componente externo, pode trocar) =====
+function ProtectedRoute({ children }) {
+  const auth = readAuth();
+  const loc = useLocation();
+  if (!auth.token) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   return children;
 }
 
-function AccessDenied({ seconds = 5, to = "/dashboard" }) {
+// ===== RoleRoute (novo gate) =====
+function RoleRoute({ allowedRoles, children }) {
+  const auth = readAuth();
+  const loc = useLocation();
+  if (!auth.token) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
+
+  if (!hasRole(auth.role, allowedRoles)) {
+    return <Navigate to="/nao-autorizado" replace state={{ from: loc.pathname }} />;
+  }
+  return children;
+}
+
+// ===== Acesso não autorizado (mostra 5s e volta) =====
+function AcessoNaoAutorizado() {
   const nav = useNavigate();
-  const [left, setLeft] = useState(seconds);
-
+  const { state } = useLocation();
+  const from = state?.from || "rota";
   useEffect(() => {
-    setLeft(seconds);
-    const t = setInterval(() => setLeft((v) => v - 1), 1000);
-    return () => clearInterval(t);
-  }, [seconds]);
-
-  useEffect(() => {
-    if (left <= 0) nav(to, { replace: true });
-  }, [left, nav, to]);
-
+    const t = setTimeout(() => nav("/dashboard", { replace: true }), 5000);
+    return () => clearTimeout(t);
+  }, [nav]);
   return (
-    <div className="p-6">
-      <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="text-sm text-slate-500">Acesso não autorizado</div>
-        <div className="mt-1 text-lg font-semibold text-slate-900">
-          Você não tem permissão para acessar esta área.
-        </div>
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white/80 backdrop-blur shadow-sm p-6">
+        <div className="text-lg font-semibold text-slate-900">Acesso não autorizado</div>
         <div className="mt-2 text-sm text-slate-600">
-          Redirecionando para o Dashboard em <span className="font-semibold">{Math.max(left, 0)}s</span>…
+          Você não tem permissão para acessar <span className="font-medium">{from}</span>.
+          <br />
+          Voltando para o Dashboard em <span className="font-medium">5s</span>…
         </div>
-
         <button
-          onClick={() => nav(to, { replace: true })}
-          className="mt-4 inline-flex items-center justify-center rounded-xl bg-amr-navy px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          className="mt-5 w-full rounded-xl bg-slate-900 text-white py-2.5 text-sm font-medium hover:bg-slate-800"
+          onClick={() => nav("/dashboard", { replace: true })}
         >
-          Voltar agora
+          Ir agora
         </button>
       </div>
     </div>
   );
 }
 
-function RequireRole({ role, allow = [], children }) {
-  if (!allow.includes(role)) return <AccessDenied />;
-  return children;
-}
+// ===== Descanso (TEMPORÁRIO – remover ao final) =====
+function DescansoWidget() {
+  // Tudo aqui é temporário e será removido ao final.
+  // Objetivo: input com "hora de descansar" e contador regressivo, com modal ao chegar.
+  const { date, time, hour } = useClock();
+  const [restTime, setRestTime] = useState(() => localStorage.getItem("amr_rest_time") || "");
+  const [showModal, setShowModal] = useState(false);
+  const [postpone, setPostpone] = useState(false);
+  const [newTime, setNewTime] = useState("");
 
-/* ------------------ icons (minimalistas) ------------------ */
-function Icon({ children }) {
-  return (
-    <span className="inline-flex h-5 w-5 items-center justify-center text-slate-200/90">
-      {children}
-    </span>
-  );
-}
-function IconDashboard() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M4 13.5V20a1 1 0 0 0 1 1h5v-7.5H5a1 1 0 0 0-1 1Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M14 3h5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-5V3Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M4 4a1 1 0 0 1 1-1h5v7.5H5a1 1 0 0 1-1-1V4Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M14 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5v-7Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-      </svg>
-    </Icon>
-  );
-}
-function IconPayments() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M4 8.5A2.5 2.5 0 0 1 6.5 6h11A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-7Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path d="M4 10h16" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M7.5 15h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    </Icon>
-  );
-}
-function IconRepasses() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M7 7h10M7 17h10"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-        <path
-          d="M9 5 7 7l2 2M15 19l2-2-2-2"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </Icon>
-  );
-}
-function IconUsers() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M4.5 20a7.5 7.5 0 0 1 15 0"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
-    </Icon>
-  );
-}
-function IconClients() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M7 20h10a2 2 0 0 0 2-2V9l-5-5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path d="M14 4v5h5" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    </Icon>
-  );
-}
-function IconHistory() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M12 8v5l3 2"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M3 12a9 9 0 1 0 3-6.7"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-        <path
-          d="M3 4v5h5"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </Icon>
-  );
-}
-function IconReports() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M8 13h8M8 17h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    </Icon>
-  );
-}
-function IconGear() {
-  return (
-    <Icon>
-      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-        <path
-          d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path
-          d="M19.4 15a7.8 7.8 0 0 0 .1-6l-2.1-.7a6.7 6.7 0 0 0-1.1-1.9l1-2a7.9 7.9 0 0 0-5.9-1.6L10.6 5a6.8 6.8 0 0 0-2.2.8L6.3 4.5A7.9 7.9 0 0 0 3.6 9l2.1.7a6.7 6.7 0 0 0 0 2.6L3.6 13a7.9 7.9 0 0 0 2.7 4.5l2.1-1.3c.7.4 1.4.7 2.2.8l.8 2.2a7.9 7.9 0 0 0 5.9-1.6l-1-2c.5-.6.9-1.2 1.1-1.9l2-.7Z"
-          stroke="currentColor"
-          strokeWidth="1.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.9"
-        />
-      </svg>
-    </Icon>
-  );
-}
-function IconMoonSun({ hour }) {
-  return (
-    <Icon>
-      {isNight(hour) ? (
-        <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-          <path
-            d="M21 14.5A7.5 7.5 0 0 1 9.5 3.2 6.5 6.5 0 1 0 21 14.5Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-          <path
-            d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          />
-          <path
-            d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-      )}
-    </Icon>
-  );
-}
+  const now = useMemo(() => new Date(), [time]); // recalcula a cada tick
+  const target = useMemo(() => {
+    if (!restTime) return null;
+    const [hh, mm] = restTime.split(":").map((x) => parseInt(x, 10));
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  }, [restTime]);
 
-/* ------------------ pages (placeholders por enquanto) ------------------ */
-function PageShell({ title, children }) {
+  const diffMs = useMemo(() => {
+    if (!target) return null;
+    return target.getTime() - now.getTime();
+  }, [target, now]);
+
+  const countdown = useMemo(() => {
+    if (diffMs == null) return "";
+    const ms = Math.max(0, diffMs);
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }, [diffMs]);
+
+  // Ícone: lua de noite / sol de dia (só UI)
+  const isNight = hour >= 18 || hour < 6;
+
+  useEffect(() => {
+    if (!restTime || !target) return;
+    localStorage.setItem("amr_rest_time", restTime);
+
+    // disparo do modal quando chegar
+    if (diffMs != null && diffMs <= 0) setShowModal(true);
+  }, [restTime, target, diffMs]);
+
+  function applyPostpone() {
+    if (!newTime) return;
+    setRestTime(newTime);
+    setNewTime("");
+    setPostpone(false);
+    setShowModal(false);
+  }
+
+  const greeting = isNight ? "Boa noite" : "Hora de dar uma pausa";
+
   return (
-    <div className="p-6">
-      <div className="mb-4">
-        <div className="text-sm text-slate-500">{title}</div>
-        <div className="text-xl font-semibold text-slate-900">Em desenvolvimento</div>
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 backdrop-blur p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{isNight ? "🌙" : "☀️"}</span>
+          <div className="text-sm font-semibold text-slate-900">Descanso</div>
+        </div>
+        <div className="text-xs text-slate-500">
+          {date} · {time}
+        </div>
       </div>
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">{children}</div>
+
+      <label className="mt-3 block text-xs font-medium text-slate-600">Hora de descansar</label>
+      <input
+        type="time"
+        value={restTime}
+        onChange={(e) => setRestTime(e.target.value)}
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900/10"
+      />
+
+      <div className="mt-3 text-sm text-slate-700">
+        <div>
+          <span className="text-slate-500">Hora escolhida:</span>{" "}
+          <span className="font-medium">{restTime || "—"}</span>
+        </div>
+        <div className="mt-1">
+          <span className="text-slate-500">Contagem regressiva:</span>{" "}
+          <span className="font-semibold tabular-nums">{restTime ? countdown : "—"}</span>
+        </div>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => {}} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 p-6">
+            <div className="text-lg font-semibold text-slate-900">{greeting}!</div>
+            <div className="mt-2 text-sm text-slate-600">
+              Chegou a hora escolhida. Você deve ir descansar agora.
+            </div>
+
+            {!postpone ? (
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  className="rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium hover:bg-slate-50"
+                  onClick={() => setPostpone(true)}
+                >
+                  Postergar
+                </button>
+                <button
+                  className="rounded-xl bg-slate-900 text-white py-2.5 text-sm font-medium hover:bg-slate-800"
+                  onClick={() => setShowModal(false)}
+                >
+                  Vou descansar
+                </button>
+              </div>
+            ) : (
+              <div className="mt-5">
+                <label className="block text-xs font-medium text-slate-600">Nova hora</label>
+                <input
+                  type="time"
+                  value={newTime}
+                  onChange={(e) => setNewTime(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900/10"
+                />
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <button
+                    className="rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium hover:bg-slate-50"
+                    onClick={() => {
+                      setPostpone(false);
+                      setNewTime("");
+                      setShowModal(true); // volta para o modal principal
+                    }}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    className="rounded-xl bg-slate-900 text-white py-2.5 text-sm font-medium hover:bg-slate-800"
+                    onClick={applyPostpone}
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-2 text-sm hover:bg-slate-50"
+              onClick={() => setShowModal(false)}
+            >
+              Retornar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// ===== Layout / Sidebar =====
+function Sidebar({ current, role, onLogout }) {
+  const clock = useClock();
+  const isAdmin = role === ROLE.ADMIN;
+
+  // Sidebar "assim" (referência que você mandou) – e por role:
+  const linksAdmin = [
+    { to: "/dashboard", label: "Dashboard", icon: "🏠" },
+    { to: "/pagamentos", label: "Pagamentos", icon: "💳" },
+    { to: "/repasses", label: "Repasses", icon: "🔁" },
+    { to: "/advogados", label: "Advogados", icon: "👩‍⚖️" },
+    { to: "/clientes", label: "Clientes", icon: "👥" },
+    { to: "/historico", label: "Histórico", icon: "🗂️" },
+    { to: "/relatorios", label: "Relatórios", icon: "📄" },
+    { to: "/configuracoes", label: "Configurações", icon: "⚙️" },
+  ];
+
+  const linksUser = [
+    { to: "/dashboard", label: "Dashboard", icon: "🏠" },
+    { to: "/repasses", label: "Repasses", icon: "🔁" },
+    { to: "/historico", label: "Histórico", icon: "🗂️" },
+    { to: "/relatorios", label: "Relatórios", icon: "📄" },
+  ];
+
+  const links = isAdmin ? linksAdmin : linksUser;
+
+  return (
+    <aside className="w-[280px] shrink-0 h-screen sticky top-0 bg-slate-950 text-slate-100 border-r border-white/10 flex flex-col">
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden">
+            {logoSrc ? (
+              <img src={logoSrc} alt="AMR" className="h-10 w-auto object-contain" />
+            ) : (
+              <span className="text-sm font-semibold">AMR</span>
+            )}
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold">AMR Advogados</div>
+            <div className="text-xs text-slate-300">Controles</div>
+          </div>
+        </div>
+      </div>
+
+      <nav className="px-3 py-2 flex-1">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400 px-3 mb-2">
+          {isAdmin ? "Operacional / Administrativo" : "Operacional"}
+        </div>
+
+        <div className="space-y-1">
+          {links.map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              className={({ isActive }) =>
+                [
+                  "flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition",
+                  isActive ? "bg-white/10 text-white" : "text-slate-200 hover:bg-white/5",
+                ].join(" ")
+              }
+            >
+              <span className="w-5 text-center">{l.icon}</span>
+              <span className="truncate">{l.label}</span>
+            </NavLink>
+          ))}
+        </div>
+
+        {/* Descanso – TEMP */}
+        <DescansoWidget />
+      </nav>
+
+      <div className="px-4 py-4 border-t border-white/10">
+        <div className="text-xs text-slate-300">
+          <div className="flex items-center justify-between">
+            <span>{clock.date}</span>
+            <span className="tabular-nums">{clock.time}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-slate-400">Usuário</span>
+            <span className="font-medium text-slate-100">Em desenvolvimento</span>
+          </div>
+        </div>
+
+        <button
+          className="mt-3 w-full rounded-xl bg-red-600/20 text-red-100 border border-red-500/30 py-2 text-sm hover:bg-red-600/25"
+          onClick={onLogout}
+        >
+          Sair
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function Shell({ title, children }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="px-8 pt-7 pb-3">
+        <div className="text-xl font-semibold text-slate-900">{title}</div>
+      </div>
+      <div className="px-8 pb-10">{children}</div>
+    </div>
+  );
+}
+
+// ===== Pages (placeholders) =====
 function Dashboard() {
   return (
-    <PageShell title="Dashboard">
-      <div className="text-slate-700">Aqui entra o resumo do mês/competência (Admin vê tudo, User só os próprios dados).</div>
-    </PageShell>
+    <Shell title="Dashboard">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5">
+        <div className="text-sm text-slate-700">
+          Em desenvolvimento. (Admin vê tudo / User verá apenas seus dados.)
+        </div>
+      </div>
+    </Shell>
   );
 }
 function Pagamentos() {
   return (
-    <PageShell title="Pagamentos">
-      <div className="text-slate-700">Cadastro/listagem de pagamentos efetuados por clientes.</div>
-    </PageShell>
+    <Shell title="Pagamentos">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Repasses() {
   return (
-    <PageShell title="Repasses">
-      <div className="text-slate-700">Repasses calculados/lançados (User vê apenas os próprios).</div>
-    </PageShell>
+    <Shell title="Repasses">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Advogados() {
   return (
-    <PageShell title="Advogados">
-      <div className="text-slate-700">Cadastro de advogados (Admin).</div>
-    </PageShell>
+    <Shell title="Advogados">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Clientes() {
   return (
-    <PageShell title="Clientes">
-      <div className="text-slate-700">Cadastro/listagem de clientes (Admin).</div>
-    </PageShell>
+    <Shell title="Clientes">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Historico() {
   return (
-    <PageShell title="Histórico">
-      <div className="text-slate-700">Ainda a definir (mantido).</div>
-    </PageShell>
+    <Shell title="Histórico">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Relatorios() {
   return (
-    <PageShell title="Relatórios">
-      <div className="text-slate-700">Relatórios (User vê apenas os próprios dados; Admin vê tudo).</div>
-    </PageShell>
+    <Shell title="Relatórios">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 function Configuracoes() {
   return (
-    <PageShell title="Configurações">
-      <div className="text-slate-700">Gestão de usuários, modelos, parâmetros (Admin).</div>
-    </PageShell>
+    <Shell title="Configurações">
+      <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+        Em desenvolvimento.
+      </div>
+    </Shell>
   );
 }
 
-/* ------------------ login ------------------ */
-function Login({ onLogged }) {
+// ===== Login (ajuste principal aqui) =====
+function safeErrorMessage(e) {
+  // normaliza qualquer erro pra string amigável (mata o [object Object])
+  if (!e) return "Erro no login.";
+  if (typeof e === "string") return e;
+
+  if (typeof e === "object") {
+    const msg =
+      e.message ||
+      e.error ||
+      e.detail ||
+      (e.response && (e.response.message || e.response.error)) ||
+      null;
+
+    if (msg && typeof msg === "string") return msg;
+
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return "Erro no login.";
+    }
+  }
+  return String(e);
+}
+
+function Login() {
+  const nav = useNavigate();
+  const loc = useLocation();
+  const from = loc.state?.from || "/dashboard";
+
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
-  async function handleSubmit(e) {
+  async function onSubmit(e) {
     e.preventDefault();
     setErr("");
     setLoading(true);
-    try {
-      // ⚠️ IMPORTANTE: apiFetch já prefixa /api, então aqui é SÓ "/auth/login"
-      const resp = await apiFetch("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, senha }),
-      });
 
-      // esperado: { token, user }
-      setAuth({ token: resp.token, user: resp.user });
-      onLogged?.(resp);
+    try {
+      const resp = await api.post("/api/auth/login", { email, senha });
+
+      // esperado: { token, role, user? }
+      const token = resp?.token;
+      const role = resp?.role || resp?.user?.role;
+      const user = resp?.user?.nome || resp?.user?.email || email;
+
+      if (!token || !role) throw new Error("Resposta de login inválida.");
+      writeAuth({ token, role, user });
+
+      nav(from, { replace: true });
     } catch (e2) {
-      setErr(e2?.message || "Erro no login");
+      setErr(safeErrorMessage(e2));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex min-h-screen max-w-5xl items-start justify-center px-6 pt-16">
-        <div className="w-full max-w-md">
-          <div className="mb-6 flex items-center gap-3">
-            <img src={logoSrc} alt="AMR Advogados" className="h-9 w-auto" />
-            <div className="text-lg font-semibold text-slate-900">AMR Advogados</div>
+    <div className="min-h-screen bg-slate-100">
+      {/* Header topo com logo + AMR Advogados centralizados */}
+      <div className="px-6 pt-10">
+        <div className="mx-auto max-w-5xl flex flex-col items-center">
+          <div className="flex items-center justify-center">
+            {logoSrc ? (
+              <img src={logoSrc} alt="AMR Advogados" className="h-10 w-auto object-contain" />
+            ) : (
+              <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-semibold">
+                AMR
+              </div>
+            )}
+          </div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">AMR Advogados</div>
+        </div>
+      </div>
+
+      {/* Card login */}
+      <div className="flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white/80 backdrop-blur shadow-sm p-6">
+          <div className="text-lg font-semibold text-slate-900">Login</div>
+          <div className="mt-1 text-sm text-slate-600">
+            Entre com seu usuário e senha para acessar o sistema.
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-xl font-semibold text-slate-900">Login</div>
-            <div className="mt-1 text-sm text-slate-600">
-              Entre com seu usuário e senha para acessar o sistema.
+          <form className="mt-5 space-y-4" onSubmit={onSubmit}>
+            <div>
+              <label className="block text-xs font-medium text-slate-600">E-mail</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900/10"
+                placeholder="seuemail@amradvogados.com"
+                autoComplete="email"
+                required
+              />
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600">E-mail</label>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  autoComplete="username"
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-amr-navy"
-                  placeholder="seuemail@amradvogados.com"
-                  required
-                />
+            <div>
+              <label className="block text-xs font-medium text-slate-600">Senha</label>
+              <input
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900/10"
+                placeholder="••••••••••••••"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            {err && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {err}
               </div>
+            )}
 
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Senha</label>
-                <input
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  type="password"
-                  autoComplete="current-password"
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-amr-navy"
-                  placeholder="••••••••••••••"
-                  required
-                />
-              </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-slate-900 text-white py-2.5 text-sm font-medium hover:bg-slate-800 disabled:opacity-60"
+            >
+              {loading ? "Entrando..." : "Entrar"}
+            </button>
+          </form>
 
-              {err ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {err}
-                </div>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex w-full items-center justify-center rounded-xl bg-amr-navy px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-              >
-                {loading ? "Entrando..." : "Entrar"}
-              </button>
-            </form>
-          </div>
-
-          <div className="mt-4 text-xs text-slate-500">
-            Token via <span className="font-semibold">Authorization: Bearer</span> (temporário).
+          <div className="mt-6 text-xs text-slate-500">
+            Token via Authorization: Bearer (temporário).
           </div>
         </div>
       </div>
@@ -453,467 +587,144 @@ function Login({ onLogged }) {
   );
 }
 
-/* ------------------ main app ------------------ */
-export default function App() {
+// ===== App Root =====
+function AuthedApp() {
+  const [auth, setAuth] = useState(() => readAuth());
   const location = useLocation();
   const nav = useNavigate();
 
-  const [now, setNow] = useState(() => new Date());
-
-  // auth state
-  const [authObj, setAuthObj] = useState(() => readAuth());
-  const token = authObj?.token || null;
-  const role = authObj?.user?.role || ""; // "ADMIN" | "USER"
-  const userName = authObj?.user?.nome || "Em desenvolvimento";
-
-  // descanso
-  const [restTime, setRestTime] = useState(""); // "HH:MM"
-  const [restActive, setRestActive] = useState(false);
-  const [restModalOpen, setRestModalOpen] = useState(false);
-  const [postponeMode, setPostponeMode] = useState(false);
-  const [postponeTime, setPostponeTime] = useState("");
-
-  // relógio tempo real
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // tenta “hidratar” sessão (se tiver token)
-  useEffect(() => {
-    const t = getToken();
-    if (!t) return;
-
-    // se já tem authObj com user, ok
-    if (authObj?.user) return;
-
-    (async () => {
-      try {
-        const me = await apiFetch("/auth/me", { method: "GET" });
-        const current = readAuth();
-        setAuth({ token: current?.token || t, user: me.user });
-        setAuthObj({ token: current?.token || t, user: me.user });
-      } catch {
-        clearAuth();
-        setAuthObj(null);
-        if (!location.pathname.startsWith("/login")) nav("/login", { replace: true });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const moduleTitle = useMemo(() => {
-    const p = location.pathname;
-
-    const map = {
-      "/dashboard": "Dashboard",
-      "/pagamentos": "Pagamentos",
-      "/repasses": "Repasses",
-      "/advogados": "Advogados",
-      "/clientes": "Clientes",
-      "/historico": "Histórico",
-      "/relatorios": "Relatórios",
-      "/configuracoes": "Configurações",
-    };
-
-    if (p.startsWith("/login")) return "Login";
-    return map[p] || "AMR Advogados";
-  }, [location.pathname]);
-
-  const menu = useMemo(() => {
-    // USER: só os itens que você definiu
-    if (role === "USER") {
-      return {
-        operacional: [
-          { label: "Dashboard", path: "/dashboard", icon: IconDashboard },
-          { label: "Repasses", path: "/repasses", icon: IconRepasses },
-          { label: "Histórico", path: "/historico", icon: IconHistory },
-          { label: "Relatórios", path: "/relatorios", icon: IconReports },
-        ],
-        administrativo: [],
-      };
-    }
-
-    // ADMIN: visão total
-    return {
-      operacional: [
-        { label: "Dashboard", path: "/dashboard", icon: IconDashboard },
-        { label: "Pagamentos", path: "/pagamentos", icon: IconPayments },
-        { label: "Repasses", path: "/repasses", icon: IconRepasses },
-        { label: "Histórico", path: "/historico", icon: IconHistory },
-        { label: "Relatórios", path: "/relatorios", icon: IconReports },
-      ],
-      administrativo: [
-        { label: "Advogados", path: "/advogados", icon: IconUsers },
-        { label: "Clientes", path: "/clientes", icon: IconClients },
-        { label: "Configurações", path: "/configuracoes", icon: IconGear },
-      ],
-    };
-  }, [role]);
-
-  /* ------------ descanso: cálculo + disparo modal ------------ */
-  const restTarget = useMemo(() => {
-    if (!restTime) return null;
-    const [hh, mm] = restTime.split(":").map((x) => parseInt(x, 10));
-    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-
-    const d = new Date(now);
-    d.setHours(hh, mm, 0, 0);
-    // se horário já passou hoje, entende como “próxima ocorrência” (amanhã)
-    if (d.getTime() <= now.getTime()) {
-      d.setDate(d.getDate() + 1);
-    }
-    return d;
-  }, [restTime, now]);
-
-  const restCountdown = useMemo(() => {
-    if (!restTarget) return null;
-    const diff = restTarget.getTime() - now.getTime();
-    const total = Math.max(0, diff);
-    const hh = Math.floor(total / 3600000);
-    const mm = Math.floor((total % 3600000) / 60000);
-    const ss = Math.floor((total % 60000) / 1000);
-    return { diff: total, text: `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}` };
-  }, [restTarget, now]);
-
-  useEffect(() => {
-    if (!restActive) return;
-    if (!restTarget) return;
-
-    // chegou a hora -> abre modal
-    if (restCountdown && restCountdown.diff <= 0) {
-      setRestModalOpen(true);
-      setPostponeMode(false);
-      setPostponeTime("");
-    }
-  }, [restActive, restTarget, restCountdown]);
-
-  function startRest() {
-    if (!restTime) return;
-    setRestActive(true);
-    setRestModalOpen(false);
-    setPostponeMode(false);
-    setPostponeTime("");
-  }
-
-  function stopRest() {
-    setRestActive(false);
-    setRestModalOpen(false);
-    setPostponeMode(false);
-    setPostponeTime("");
-  }
-
-  function confirmPostpone() {
-    if (!postponeTime) return;
-    setRestTime(postponeTime);
-    setRestActive(true);
-    setRestModalOpen(false);
-    setPostponeMode(false);
-    setPostponeTime("");
-  }
-
-  function doLogout() {
+  function logout() {
     clearAuth();
-    setAuthObj(null);
+    setAuth(readAuth());
     nav("/login", { replace: true });
   }
 
-  // se logou, direciona
-  function onLogged() {
-    const next = readAuth();
-    setAuthObj(next);
-    nav("/dashboard", { replace: true });
-  }
+  // Atualiza auth se mudar no localStorage (ex.: logout automático)
+  useEffect(() => {
+    const onStorage = () => setAuth(readAuth());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
-  /* ------------------ layout chrome (sidebar + header) ------------------ */
-  const showChrome = !location.pathname.startsWith("/login");
-
-  if (!showChrome) {
-    return <Login onLogged={onLogged} />;
-  }
+  // Título do módulo no header (topo do conteúdo)
+  const moduleTitle = useMemo(() => {
+    const p = location.pathname;
+    if (p.startsWith("/dashboard")) return "Dashboard";
+    if (p.startsWith("/pagamentos")) return "Pagamentos";
+    if (p.startsWith("/repasses")) return "Repasses";
+    if (p.startsWith("/advogados")) return "Advogados";
+    if (p.startsWith("/clientes")) return "Clientes";
+    if (p.startsWith("/historico")) return "Histórico";
+    if (p.startsWith("/relatorios")) return "Relatórios";
+    if (p.startsWith("/configuracoes")) return "Configurações";
+    return "AMR Advogados";
+  }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="flex min-h-screen">
-        {/* SIDEBAR */}
-        <aside className="w-[270px] shrink-0 bg-gradient-to-b from-slate-950 to-amr-navy text-white">
-          <div className="flex items-center gap-3 px-5 pt-5">
-            <div className="flex items-center gap-3">
-              <img src={logoSrc} alt="AMR Advogados" className="h-8 w-auto opacity-95" />
-              <div className="leading-tight">
-                <div className="text-sm font-semibold tracking-wide">AMR Advogados</div>
-                <div className="text-[11px] text-white/60">Controles • Repasses</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 px-3">
-            <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-white/50">
-              Operacional
-            </div>
-            <nav className="mt-2 space-y-1">
-              {menu.operacional.map((item) => {
-                const Ico = item.icon;
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={({ isActive }) =>
-                      [
-                        "flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
-                        isActive
-                          ? "bg-white/10 text-white"
-                          : "text-white/80 hover:bg-white/5 hover:text-white",
-                      ].join(" ")
-                    }
-                  >
-                    <Ico />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </nav>
-
-            {menu.administrativo.length > 0 ? (
-              <>
-                <div className="mt-5 px-3 text-[11px] font-semibold uppercase tracking-wider text-white/50">
-                  Administrativo
-                </div>
-                <nav className="mt-2 space-y-1">
-                  {menu.administrativo.map((item) => {
-                    const Ico = item.icon;
-                    return (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          [
-                            "flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
-                            isActive
-                              ? "bg-white/10 text-white"
-                              : "text-white/80 hover:bg-white/5 hover:text-white",
-                          ].join(" ")
-                        }
-                      >
-                        <Ico />
-                        <span>{item.label}</span>
-                      </NavLink>
-                    );
-                  })}
-                </nav>
-              </>
-            ) : null}
-          </div>
-
-          {/* Descanso (TEMPORÁRIO) */}
-          <div className="mt-6 px-4">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-white/80">Descanso (temp)</div>
-                <IconMoonSun hour={now.getHours()} />
-              </div>
-
-              <label className="mt-3 block text-[11px] font-semibold text-white/60">Hora de descansar</label>
-              <input
-                type="time"
-                value={restTime}
-                onChange={(e) => setRestTime(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white outline-none focus:border-white/25"
-              />
-
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={startRest}
-                  disabled={!restTime}
-                  className="inline-flex flex-1 items-center justify-center rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
-                >
-                  Ativar
-                </button>
-                <button
-                  onClick={stopRest}
-                  className="inline-flex flex-1 items-center justify-center rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/15"
-                >
-                  Parar
-                </button>
-              </div>
-
-              <div className="mt-3 text-[11px] text-white/70">
-                <div className="flex items-center justify-between">
-                  <span>Escolhida:</span>
-                  <span className="font-semibold">{restTime || "--:--"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Contagem:</span>
-                  <span className="font-semibold">{restActive && restCountdown ? restCountdown.text : "--:--:--"}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer sidebar: data/hora + usuário + sair */}
-          <div className="mt-auto px-4 pb-4 pt-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between text-[11px] text-white/70">
-                <span>{fmtDateBR(now)}</span>
-                <span>{fmtTimeBR(now)}</span>
-              </div>
-
-              <div className="mt-2 text-[11px] text-white/60">Usuário</div>
-              <div className="text-sm font-semibold text-white/85">{userName}</div>
-              <div className="text-[11px] text-white/50">{role || "Em desenvolvimento"}</div>
-
-              <button
-                onClick={doLogout}
-                className="mt-3 w-full rounded-xl bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/25"
-              >
-                Sair
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* MAIN */}
-        <main className="min-w-0 flex-1">
-          {/* header */}
-          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur">
-            <div className="flex items-center justify-between px-6 py-4">
-              <div>
-                <div className="text-xs text-slate-500">Módulo</div>
-                <div className="text-lg font-semibold text-slate-900">{moduleTitle}</div>
-              </div>
-
-              <div className="text-xs text-slate-500">
-                {token ? "Sessão ativa" : "Sessão ausente"}
-              </div>
-            </div>
-          </header>
-
-          {/* routes */}
-          <Protected token={token}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/repasses" element={<Repasses />} />
-              <Route path="/historico" element={<Historico />} />
-              <Route path="/relatorios" element={<Relatorios />} />
-
-              {/* ADMIN only */}
-              <Route
-                path="/pagamentos"
-                element={
-                  <RequireRole role={role} allow={["ADMIN"]}>
-                    <Pagamentos />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/advogados"
-                element={
-                  <RequireRole role={role} allow={["ADMIN"]}>
-                    <Advogados />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/clientes"
-                element={
-                  <RequireRole role={role} allow={["ADMIN"]}>
-                    <Clientes />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/configuracoes"
-                element={
-                  <RequireRole role={role} allow={["ADMIN"]}>
-                    <Configuracoes />
-                  </RequireRole>
-                }
-              />
-
-              {/* legacy (se vier link antigo) */}
-              <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </Protected>
-        </main>
-      </div>
-
-      {/* MODAL descanso */}
-      {restModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="text-sm text-slate-500">Alerta de descanso</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">
-              Chegou a hora escolhida. Você deve ir descansar agora.
-            </div>
-            <div className="mt-2 text-sm text-slate-600">
-              {greetingForHour(now.getHours())} 😄
-            </div>
-
-            <div className="mt-5 flex gap-2">
-              <button
-                onClick={() => {
-                  setPostponeMode(true);
-                  setPostponeTime("");
-                }}
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-              >
-                Postergar
-              </button>
-              <button
-                onClick={() => {
-                  // não postergar => para o timer, mantém modal até “retornar”
-                  setPostponeMode(false);
-                  setRestActive(false);
-                }}
-                className="flex-1 rounded-xl bg-amr-navy px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-              >
-                Não, vou descansar
-              </button>
-            </div>
-
-            {postponeMode ? (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold text-slate-600">Nova hora</div>
-                <input
-                  type="time"
-                  value={postponeTime}
-                  onChange={(e) => setPostponeTime(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-amr-navy"
-                />
-
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={confirmPostpone}
-                    disabled={!postponeTime}
-                    className="flex-1 rounded-xl bg-amr-navy px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                  >
-                    Confirmar
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPostponeMode(false);
-                      setPostponeTime("");
-                    }}
-                    className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <button
-              onClick={() => setRestModalOpen(false)}
-              className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-            >
-              Retornar
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-100 flex">
+      <Sidebar current={location.pathname} role={auth.role} onLogout={logout} />
+      <div className="flex-1 min-w-0">
+        <div className="h-14 px-8 flex items-center justify-between border-b border-slate-200 bg-white/70 backdrop-blur">
+          <div className="text-sm font-semibold text-slate-900">{moduleTitle}</div>
+          <div className="text-xs text-slate-500">Backend: ok</div>
         </div>
-      ) : null}
+
+        <Routes>
+          {/* Base */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Rotas compartilhadas */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repasses"
+            element={
+              <ProtectedRoute>
+                <Repasses />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/historico"
+            element={
+              <ProtectedRoute>
+                <Historico />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/relatorios"
+            element={
+              <ProtectedRoute>
+                <Relatorios />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin-only */}
+          <Route
+            path="/pagamentos"
+            element={
+              <RoleRoute allowedRoles={[ROLE.ADMIN]}>
+                <Pagamentos />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/advogados"
+            element={
+              <RoleRoute allowedRoles={[ROLE.ADMIN]}>
+                <Advogados />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/clientes"
+            element={
+              <RoleRoute allowedRoles={[ROLE.ADMIN]}>
+                <Clientes />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/configuracoes"
+            element={
+              <RoleRoute allowedRoles={[ROLE.ADMIN]}>
+                <Configuracoes />
+              </RoleRoute>
+            }
+          />
+
+          <Route path="/nao-autorizado" element={<AcessoNaoAutorizado />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </div>
     </div>
+  );
+}
+
+export default function App() {
+  const auth = readAuth();
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        {/* se já logado, não deixa ficar no login */}
+        <Route
+          path="/"
+          element={auth.token ? <AuthedApp /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/*"
+          element={auth.token ? <AuthedApp /> : <Navigate to="/login" replace />}
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
