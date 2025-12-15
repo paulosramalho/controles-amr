@@ -8,6 +8,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  ADMIN
+  USER
+}
+
 enum ModeloPagamento {
   AVISTA
   ENTRADA_E_PARCELAS
@@ -21,9 +26,16 @@ enum StatusOrdem {
   CANCELADA
 }
 
-enum PerfilUsuario {
-  ADMIN
-  USER
+enum StatusPagamento {
+  PREVISTO
+  PAGO
+  ATRASADO
+  CANCELADO
+}
+
+enum TipoAdvogado {
+  SOCIO
+  ASSOCIADO
 }
 
 model Usuario {
@@ -31,81 +43,171 @@ model Usuario {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  nome     String
-  email    String        @unique
-  telefone String?
-  perfil   PerfilUsuario @default(USER)
+  nome      String
+  email     String   @unique
+  senhaHash String
 
-  // auth (placeholder real)
-  senhaHash String?
-  ativo     Boolean @default(true)
+  role      UserRole @default(USER)
+  ativo     Boolean  @default(true)
 
-  @@index([perfil])
+  // Vínculo opcional com Advogado (para escopo do USER no futuro)
+  advogadoId Int?     @unique
+  advogado   Advogado? @relation(fields: [advogadoId], references: [id])
+
+  @@index([role])
   @@index([ativo])
 }
 
 model Cliente {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  cpfCnpj         String  @unique
+  cpfCnpj         String
   nomeRazaoSocial String
   email           String?
   telefone        String?
   observacoes     String?
-  ativo           Boolean @default(true)
+  ativo           Boolean  @default(true)
 
-  ordens OrdemPagamento[]
+  ordens          OrdemPagamento[]
 
+  @@unique([cpfCnpj])
   @@index([nomeRazaoSocial])
-  @@index([ativo])
+  @@index([email])
 }
 
 model OrdemPagamento {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               Int            @id @default(autoincrement())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  clienteId Int
-  cliente   Cliente @relation(fields: [clienteId], references: [id])
+  clienteId        Int
+  cliente          Cliente        @relation(fields: [clienteId], references: [id])
 
-  // Sequência de ocorrência (ordem) dentro do cliente
-  sequenciaCliente   Int
-  codigoInterno      String?
-  descricao          String?
-  tipoContrato       String?
+  sequenciaCliente Int
+  codigoInterno    String?
+  descricao        String?
+  tipoContrato     String?
   valorTotalPrevisto Decimal?
+  modeloPagamento  ModeloPagamento
+  dataInicio       DateTime
+  dataFimPrevista  DateTime?
+  status           StatusOrdem
 
-  modeloPagamento ModeloPagamento
-  dataInicio      DateTime
-  dataFimPrevista DateTime?
-  status          StatusOrdem     @default(ATIVA)
+  // para dashboards por mês
+  anoMesInicio     String?
+
+  pagamentos       Pagamento[]
+  repasses         Repasse[]
 
   @@unique([clienteId, sequenciaCliente])
   @@index([clienteId])
   @@index([status])
-  @@index([dataInicio])
+  @@index([anoMesInicio])
 }
 
-model ModeloDistribuicao {
+model Pagamento {
+  id             Int            @id @default(autoincrement())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  ordemId        Int
+  ordem          OrdemPagamento  @relation(fields: [ordemId], references: [id])
+
+  dataPrevista   DateTime?
+  dataPagamento  DateTime?
+  valorPrevisto  Decimal?
+  valorPago      Decimal?
+  status         StatusPagamento @default(PREVISTO)
+
+  @@index([ordemId])
+  @@index([status])
+}
+
+model Advogado {
+  id               Int          @id @default(autoincrement())
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  nome             String
+  cpf              String?
+  email            String?
+  telefone         String?
+  tipo             TipoAdvogado
+  possuiFixoMensal Boolean      @default(false)
+  valorFixoMensal  Decimal?
+  ativo            Boolean      @default(true)
+
+  repasses         Repasse[]
+  usuario          Usuario?
+
+  @@index([nome])
+  @@index([email])
+}
+
+model Repasse {
+  id           Int          @id @default(autoincrement())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  advogadoId   Int
+  advogado     Advogado     @relation(fields: [advogadoId], references: [id])
+
+  ordemId      Int?
+  ordem        OrdemPagamento? @relation(fields: [ordemId], references: [id])
+
+  valor        Decimal?
+  referenciaAnoMes String?  // ex: "2025-12" (mês de referência)
+  pagoEm       DateTime?
+
+  @@index([advogadoId])
+  @@index([ordemId])
+  @@index([referenciaAnoMes])
+}
+
+model Estagiario {
+  id            Int      @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  nome          String
+  email         String?
+  telefone      String?
+
+  auxTransporte Decimal?
+  auxEstagio    Decimal?
+  ativo         Boolean  @default(true)
+
+  @@index([nome])
+}
+
+model PrestadorServico {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // A, B, C... (linhas separadas por destinatário/percentual)
-  codigo String
+  nome      String
+  email     String?
+  telefone  String?
+  descricao String?
 
-  // "ESCRITÓRIO", "SÓCIO", "DISTRIBUIÇÃO DE LUCRO (FUNDO DE RESERVA)", ...
-  origem String
+  valorMensal Decimal?
+  ativo     Boolean  @default(true)
 
-  // "INCIDENTAL", "MENSAL/RECORRENTE", "SEMESTRAL", ...
-  tipo String
+  @@index([nome])
+}
 
-  percentual Decimal
+model ModeloDistribuicao {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  // "FUNDO DE RESERVA", "SÓCIO", "ESCRITÓRIO", "INDICAÇÃO", ...
-  destinatario String
+  codigo       String   // A, B, C, ...
+  origem       String   // "ESCRITÓRIO", "SÓCIO", ...
+  tipo         String   // "INCIDENTAL", "MENSAL/RECORRENTE", "SEMESTRAL"
+  percentual   Decimal
+  destinatario String   // "FUNDO DE RESERVA", "SÓCIO", ...
 
   @@index([codigo])
   @@index([origem])

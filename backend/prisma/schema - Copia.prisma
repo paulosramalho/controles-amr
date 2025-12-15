@@ -1,0 +1,113 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ModeloPagamento {
+  AVISTA
+  ENTRADA_E_PARCELAS
+  PARCELAS
+  APENAS_PARCELAS
+}
+
+enum StatusOrdem {
+  ATIVA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum PerfilUsuario {
+  ADMIN
+  USER
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nome     String
+  email    String        @unique
+  telefone String?
+  perfil   PerfilUsuario @default(USER)
+
+  // auth (placeholder real)
+  senhaHash String?
+  ativo     Boolean @default(true)
+
+  @@index([perfil])
+  @@index([ativo])
+}
+
+model Cliente {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cpfCnpj         String  @unique
+  nomeRazaoSocial String
+  email           String?
+  telefone        String?
+  observacoes     String?
+  ativo           Boolean @default(true)
+
+  ordens OrdemPagamento[]
+
+  @@index([nomeRazaoSocial])
+  @@index([ativo])
+}
+
+model OrdemPagamento {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clienteId Int
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  // Sequência de ocorrência (ordem) dentro do cliente
+  sequenciaCliente   Int
+  codigoInterno      String?
+  descricao          String?
+  tipoContrato       String?
+  valorTotalPrevisto Decimal?
+
+  modeloPagamento ModeloPagamento
+  dataInicio      DateTime
+  dataFimPrevista DateTime?
+  status          StatusOrdem     @default(ATIVA)
+
+  @@unique([clienteId, sequenciaCliente])
+  @@index([clienteId])
+  @@index([status])
+  @@index([dataInicio])
+}
+
+model ModeloDistribuicao {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A, B, C... (linhas separadas por destinatário/percentual)
+  codigo String
+
+  // "ESCRITÓRIO", "SÓCIO", "DISTRIBUIÇÃO DE LUCRO (FUNDO DE RESERVA)", ...
+  origem String
+
+  // "INCIDENTAL", "MENSAL/RECORRENTE", "SEMESTRAL", ...
+  tipo String
+
+  percentual Decimal
+
+  // "FUNDO DE RESERVA", "SÓCIO", "ESCRITÓRIO", "INDICAÇÃO", ...
+  destinatario String
+
+  @@index([codigo])
+  @@index([origem])
+  @@index([tipo])
+}
