@@ -5,7 +5,6 @@
  * - Centraliza chamadas ao backend
  * - Injeta automaticamente Authorization: Bearer <token>
  * - Trata erro 401 (token inválido/expirado)
- * - Evita erro "Unexpected token <" (HTML no lugar de JSON)
  *
  * ⚠️ TEMPORÁRIO:
  * Este helper será removido/substituído futuramente
@@ -13,16 +12,8 @@
  * ============================================================
  */
 
-// Normaliza a base da API
-// 👉 Nunca incluir "/api" no .env
-const RAW_BASE = (import.meta.env.VITE_API_URL || "").trim();
-
-// Garante que a API base SEMPRE termine em /api
-const API_BASE = RAW_BASE
-  ? RAW_BASE.endsWith("/api")
-    ? RAW_BASE
-    : `${RAW_BASE}/api`
-  : "/api"; // fallback para proxy do Vite em dev
+const API_BASE =
+  import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export function getToken() {
   return localStorage.getItem("amr_token");
@@ -53,24 +44,18 @@ export async function apiFetch(path, options = {}) {
     headers,
   });
 
-  const contentType = response.headers.get("content-type") || "";
-  const rawText = await response.text();
-
   // Token inválido / expirado
   if (response.status === 401) {
     clearToken();
     throw new Error("Sessão expirada. Faça login novamente.");
   }
 
-  // Se não for JSON, evita crash e mostra erro real
-  if (!contentType.includes("application/json")) {
-    throw new Error(
-      `Resposta inválida do servidor (${response.status}). ` +
-      `Esperado JSON, recebido: ${rawText.slice(0, 120)}`
-    );
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    // resposta sem body
   }
-
-  const data = rawText ? JSON.parse(rawText) : null;
 
   if (!response.ok) {
     throw new Error(data?.message || "Erro na requisição");
