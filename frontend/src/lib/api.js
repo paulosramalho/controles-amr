@@ -19,6 +19,9 @@ const API_BASE = RAW_BASE
   ? RAW_BASE.replace(/\/+$/, "") + "/api"
   : "/api";
 
+const BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+
 const AUTH_KEY = "amr_auth";
 
 function readAuth() {
@@ -42,6 +45,8 @@ async function safeReadText(res) {
     return "";
   }
 }
+
+fetch(`${BASE_URL}${path}`, ...)
 
 function looksLikeHTML(text) {
   const t = (text || "").trim().toLowerCase();
