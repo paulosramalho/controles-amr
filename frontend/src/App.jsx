@@ -1,121 +1,19 @@
+// frontend/src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import RestTimer from "./components/RestTimer";
 import { useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 
+import RestTimer from "./components/RestTimer";
 import { apiFetch, setAuth, clearAuth, getToken, getUser } from "./lib/api";
 
 /** =========================
  *  HELPERS — DIRETRIZES
  *  ========================= */
-
 function cx(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-// CPF/CNPJ: máscara + validação simples (crítica)
-function onlyDigits(v) {
-  return (v || "").replace(/\D+/g, "");
-}
-
-function isValidCPF(raw) {
-  const cpf = onlyDigits(raw);
-  if (cpf.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(cpf)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i);
-  let d1 = 11 - (sum % 11);
-  if (d1 >= 10) d1 = 0;
-  if (d1 !== Number(cpf[9])) return false;
-
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i);
-  let d2 = 11 - (sum % 11);
-  if (d2 >= 10) d2 = 0;
-  return d2 === Number(cpf[10]);
-}
-
-function isValidCNPJ(raw) {
-  const cnpj = onlyDigits(raw);
-  if (cnpj.length !== 14) return false;
-  if (/^(\d)\1{13}$/.test(cnpj)) return false;
-
-  const calc = (base) => {
-    let pos = base.length - 7;
-    let sum = 0;
-    for (let i = base.length; i >= 1; i--) {
-      sum += Number(base[base.length - i]) * pos--;
-      if (pos < 2) pos = 9;
-    }
-    const mod = sum % 11;
-    return mod < 2 ? 0 : 11 - mod;
-  };
-
-  const base12 = cnpj.slice(0, 12);
-  const d1 = calc(base12);
-  const d2 = calc(base12 + String(d1));
-  return cnpj.endsWith(`${d1}${d2}`);
-}
-
-function maskCpfCnpj(value) {
-  const v = onlyDigits(value);
-  if (v.length <= 11) {
-    // CPF
-    return v
-      .replace(/^(\d{3})(\d)/, "$1.$2")
-      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})$/, "$1.$2.$3-$4");
-  }
-  // CNPJ
-  return v
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
-    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d{1,2})$/, "$1.$2.$3/$4-$5");
-}
-
-function isValidCpfCnpj(value) {
-  const v = onlyDigits(value);
-  if (v.length === 11) return isValidCPF(v);
-  if (v.length === 14) return isValidCNPJ(v);
-  return false;
-}
-
-// Telefone: (99) 9 9999-9999 + validação básica
-function maskPhone(value) {
-  const v = onlyDigits(value).slice(0, 11);
-  if (!v) return "";
-  if (v.length <= 2) return `(${v}`;
-  if (v.length <= 3) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
-  if (v.length <= 7) return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3)}`;
-  return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3, 7)}-${v.slice(7)}`;
-}
-function isValidPhone(value) {
-  return onlyDigits(value).length === 11;
-}
-
 // Datas DD/MM/AAAA
-function maskDate(value) {
-  const v = onlyDigits(value).slice(0, 8);
-  if (!v) return "";
-  if (v.length <= 2) return v;
-  if (v.length <= 4) return `${v.slice(0, 2)}/${v.slice(2)}`;
-  return `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4)}`;
-}
-
-function parseDateDDMMYYYY(value) {
-  const m = (value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-  if (mm < 1 || mm > 12) return null;
-  if (dd < 1 || dd > 31) return null;
-  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
-  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) return null;
-  return d;
-}
-
 function formatDateDDMMYYYY(date) {
   const d = new Date(date);
   const dd = String(d.getDate()).padStart(2, "0");
@@ -124,27 +22,13 @@ function formatDateDDMMYYYY(date) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+// Horas HH:MM:SS
 function formatTimeHHMMSS(date) {
   const d = new Date(date);
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
-}
-
-// Valores R$ (digitando 1 => 0,01 etc.)
-function centsFromInputDigits(value) {
-  const v = onlyDigits(value);
-  const n = Number(v || "0");
-  return n; // centavos
-}
-function formatBRLFromCents(cents) {
-  const n = Number(cents || 0) / 100;
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function formatBRLFromNumber(number) {
-  const n = Number(number || 0);
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** =========================
@@ -225,9 +109,6 @@ const Icon = {
   ),
 };
 
-/** =========================
- *  UI COMPONENTS
- *  ========================= */
 function Badge({ children, tone = "slate" }) {
   const toneMap = {
     slate: "bg-slate-100 text-slate-700 border-slate-200",
@@ -257,7 +138,7 @@ function Card({ title, subtitle, children, right }) {
   );
 }
 
-function Input({ label, value, onChange, placeholder, type = "text", error, help, inputMode, maxLength }) {
+function Input({ label, value, onChange, placeholder, type = "text", error }) {
   return (
     <label className="block">
       <div className="text-xs font-semibold text-slate-700">{label}</div>
@@ -270,53 +151,21 @@ function Input({ label, value, onChange, placeholder, type = "text", error, help
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         type={type}
-        inputMode={inputMode}
-        maxLength={maxLength}
       />
-      {help ? <div className="mt-1 text-xs text-slate-500">{help}</div> : null}
       {error ? <div className="mt-1 text-xs text-rose-600">{error}</div> : null}
     </label>
   );
 }
 
-function Select({ label, value, onChange, options }) {
-  return (
-    <label className="block">
-      <div className="text-xs font-semibold text-slate-700">{label}</div>
-      <select
-        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-100"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** =========================
- *  APP
- *  ========================= */
-
 const VIEWS = {
   LOGIN: "login",
   DASH: "dashboard",
-
-  // Admin-only
   PAGAMENTOS: "pagamentos",
   REPASSES: "repasses",
   ADVOGADOS: "advogados",
   CLIENTES: "clientes",
-
-  // Both
   HISTORICO: "historico",
   REPORTS: "reports",
-
-  // Admin-only
   SETTINGS: "settings",
 };
 
@@ -488,26 +337,34 @@ export default function App() {
       <aside
         className={cx(
           "fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col",
-          // ✅ Ajuste #5: cantos arredondados "como botões" (sem deslocar da esquerda)
           "rounded-r-2xl"
         )}
       >
         {/* Marca */}
         <div className="px-6 pt-6 pb-4 flex flex-col items-center">
           <div className="rounded-2xl bg-white/95 p-3 shadow-sm">
-            {/* ✅ Ajuste #1 (LOGO):
-                - mude a classe abaixo (h-7/h-8/h-9...) para testar a altura ideal.
-                - Ex.: "h-7" menor; "h-10" maior.
+            {/* ✅ LOGO:
+                - mude a classe abaixo (h-5/h-6/h-7/h-8...) para testar a altura ideal.
+                - Ex.: "h-5" menor; "h-8" maior.
             */}
             <img src={logoSrc} alt="AMR" className="h-5 w-auto" />
           </div>
 
-          {/* ✅ Ajuste #4 (AMR Advogados): maior */}
+          {/* (COMENTADO) "AMR Advogados" abaixo da logo — como você pediu */}
+          {/*
+          <p className="mt-3 text-lg font-semibold tracking-wide text-white">
+            AMR Advogados
+          </p>
+          */}
+
           <p className="mt-3 text-base font-semibold tracking-wide text-white">Pagamentos e Repasses</p>
         </div>
 
-        {/* Navegação (sem headers Operacional/Administrativo) */}
-        <div className="px-4 flex-1 overflow-hidden flex flex-col">
+        {/* Navegação
+           - Sidebar fica fixa (não rola com a página)
+           - Se a altura da tela for pequena, SOMENTE esta área pode rolar internamente (melhor que sumir menu)
+        */}
+        <div className="px-4 flex-1 overflow-y-auto overflow-x-hidden pb-2">
           <div className="space-y-2">
             {!isAuthed ? (
               navItem(VIEWS.LOGIN, "Login", <Icon.user />)
@@ -532,22 +389,24 @@ export default function App() {
             )}
           </div>
 
-          {/* espaço elástico para empurrar o rodapé e garantir sidebar sempre toda visível */}
-          <div className="flex-1" />
+          {/* Descanso — mantido no código, mas comentado para não “comer” espaço.
+              Quando você quiser reinserir, eu compacto o RestTimer também. */}
+          {/*
+          <div className="mt-3">
+            <RestTimer />
+          </div>
+          */}
         </div>
 
-        {/* Rodapé da sidebar: Descanso + usuário + data/hora + sair */}
+        {/* Rodapé da sidebar: usuário + data/hora + sair */}
         <div className="px-4 pb-4 space-y-3">
-          {/* Descanso (mantém!) */}
-          {/* <RestTimer /> */}
-
-          {/* ✅ Ajuste #3a: +2 pts (text-sm) */}
+          {/* +2 pts */}
           <div className="text-sm text-white/80 flex items-center justify-between">
             <span className="truncate max-w-[170px]">{auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}</span>
             <span className="font-semibold">{auth?.user?.role || (isAuthed ? "—" : "—")}</span>
           </div>
 
-          {/* ✅ Ajuste #3b: +2 pts (text-sm) */}
+          {/* +2 pts */}
           <div className="text-sm text-white/70 flex items-center justify-between font-mono">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
@@ -566,7 +425,7 @@ export default function App() {
       {/* Conteúdo */}
       <main className="ml-[280px] flex-1 min-h-screen overflow-y-auto">
         <div className="px-6 lg:px-8 py-6 space-y-6">
-          {/* Cabeçalho interno */}
+          {/* Cabeçalho interno (do conteúdo) */}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-900">{moduleName}</p>
@@ -615,7 +474,9 @@ export default function App() {
             <DevPlaceholder title="Repasses" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus repasses."} />
           )}
 
-          {isAuthed && view === VIEWS.ADVOGADOS && <DevPlaceholder title="Advogados" subtitle="Cadastro e gestão dos advogados do escritório." />}
+          {isAuthed && view === VIEWS.ADVOGADOS && (
+            <DevPlaceholder title="Advogados" subtitle="Cadastro e gestão dos advogados do escritório." />
+          )}
 
           {isAuthed && view === VIEWS.CLIENTES && <DevPlaceholder title="Clientes" subtitle="Cadastro e gestão de clientes." />}
 
