@@ -649,13 +649,13 @@ export default function App() {
                 - mude a classe abaixo (h-10/h-11/h-12...) para testar a altura ideal.
                 - Ex.: "h-10" deixa menor; "h-14" deixa maior.
             */}
-            <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
+            <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
           </div>
 
           {/* ✅ Ajuste #4 (AMR Advogados):
               - altere text-base/text-lg/text-xl para testar o tamanho.
           */}
-          <p className="mt-3 text-lg font-semibold tracking-wide text-white">AMR Advogados</p>
+          <p className="mt-3 text-xl font-semibold tracking-wide text-white">AMR Advogados</p>
         </div>
 
         {/* Navegação */}
