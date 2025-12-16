@@ -369,7 +369,27 @@ export default function App() {
         </div>
 
         {/* Rodapé */}
-        <div className="px-4 pb-4 space-y-3">
-          <div className="text-sm text-slate-600 flex items-center justify-between">
-            <span className="truncate max-w-[170px]">{auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}</span>
-            <span className="font-semibold">{auth?.user?.role || (
+<div className="px-4 pb-4 space-y-3">
+  <div className="text-sm text-slate-600 flex items-center justify-between">
+    <span className="truncate max-w-[170px]">
+      {auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}
+    </span>
+    <span className="font-semibold">
+      {auth?.user?.role || "—"}
+    </span>
+  </div>
+
+  <div className="text-xs text-slate-500 flex items-center justify-between">
+    <span>{clock?.date}</span>
+    <span className="font-mono">{clock?.time}</span>
+  </div>
+
+  <button
+    type="button"
+    onClick={logout}
+    className="w-full rounded-xl bg-slate-900 text-white py-2 text-sm font-semibold hover:bg-slate-800 transition"
+  >
+    Sair
+  </button>
+</div>
+
