@@ -111,10 +111,10 @@ function Sidebar({ auth, onLogout }) {
       </nav>
 
       {/* Descanso */}
-      <div className="px-4">
+     {/* <div className="px-4">
         <RestTimer />
       </div>
-
+     */}
       {/* Rodapé */}
       <div className="px-4 pb-4 pt-3 space-y-2 text-sm">
         <div className="flex justify-between font-medium">
