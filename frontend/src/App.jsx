@@ -499,7 +499,7 @@ export default function App() {
                 - mude a classe abaixo (h-7/h-8/h-9...) para testar a altura ideal.
                 - Ex.: "h-7" menor; "h-10" maior.
             */}
-            <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
+            <img src={logoSrc} alt="AMR" className="h-4 w-auto" />
           </div>
 
           {/* ✅ Ajuste #4 (AMR Advogados): maior */}
