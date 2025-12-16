@@ -191,6 +191,62 @@ const Icon = {
       <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   ),
+  wallet: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M4 7h16v12H4V7Z" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 9h16" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M16 14h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  briefcase: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M8 7V5h8v2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 7h16v14H4V7Z" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 12h16" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  users: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M16 13c-2.8 0-5 1.4-5 3v1h10v-1c0-1.6-2.2-3-5-3Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M8 13c-2.8 0-5 1.4-5 3v1h8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  ),
+  folder: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M4 7h6l2 2h8v10H4V7Z" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ),
+  clock: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M12 21a9 9 0 1 0-9-9 9 9 0 0 0 9 9Z" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 7v6l4 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  settings: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 15a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.4 15a7.6 7.6 0 0 0 .1-1 7.6 7.6 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1l-.3-2.6H10l-.3 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L5.6 13a7.6 7.6 0 0 0-.1 1 7.6 7.6 0 0 0 .1 1l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.3 2.6h4l.3-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
 };
 
 /** =========================
@@ -273,9 +329,21 @@ function Select({ label, value, onChange, options }) {
 const VIEWS = {
   LOGIN: "login",
   DASH: "dashboard",
-  LIST: "clients-orders",
+
+  // Admin-only (operacional)
+  PAGAMENTOS: "pagamentos",
+  REPASSES: "repasses",
+  ADVOGADOS: "advogados",
+  CLIENTES: "clientes",
   CREATE: "create-client-order",
+  LIST: "clients-orders",
+
+  // Both
+  HISTORICO: "historico",
   REPORTS: "reports",
+
+  // Admin-only (administrativo)
+  SETTINGS: "settings",
   ADMIN_USERS: "admin-users",
 };
 
@@ -318,9 +386,19 @@ export default function App() {
     const map = {
       [VIEWS.LOGIN]: "Login",
       [VIEWS.DASH]: "Dashboard",
-      [VIEWS.LIST]: "Clientes & Ordens",
+
+      [VIEWS.PAGAMENTOS]: "Pagamentos",
+      [VIEWS.REPASSES]: "Repasses",
+      [VIEWS.ADVOGADOS]: "Advogados",
+      [VIEWS.CLIENTES]: "Clientes",
+
       [VIEWS.CREATE]: "Cadastro rápido",
+      [VIEWS.LIST]: "Clientes & Ordens",
+
+      [VIEWS.HISTORICO]: "Histórico",
       [VIEWS.REPORTS]: "Relatórios",
+
+      [VIEWS.SETTINGS]: "Configurações",
       [VIEWS.ADMIN_USERS]: "Usuários",
     };
     return map[view] || "Módulo";
@@ -330,7 +408,6 @@ export default function App() {
     let alive = true;
     (async () => {
       try {
-        // ✅ SEM /api duplicado: se VITE_API_URL já tem /api, aqui é só "/health"
         await apiFetch("/health", { method: "GET" });
         if (alive) setBackendOk("ok");
       } catch {
@@ -366,6 +443,10 @@ export default function App() {
   function navItem(key, label, icon, opts = {}) {
     const active = view === key;
     const disabled = Boolean(opts.disabled);
+
+    // ✅ Ajuste #3: "invertido" (ativo claro, inativo mais escuro)
+    // - Ativo: branco/translúcido, texto escuro
+    // - Inativo: navy/translúcido, texto claro, hover
     return (
       <button
         type="button"
@@ -373,15 +454,15 @@ export default function App() {
         disabled={disabled}
         title={opts.title || ""}
         className={cx(
-          "w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border",
+          "w-full rounded-xl px-3 py-2 text-sm font-semibold flex items-center gap-2 border transition-colors",
           disabled
-            ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+            ? "bg-white/5 text-white/35 border-white/10 cursor-not-allowed"
             : active
-            ? "bg-amr-navy text-white border-amr-navy"
-            : "bg-white text-slate-700 hover:bg-slate-50"
+            ? "bg-white text-[#081A33] border-white/70"
+            : "bg-white/10 text-white border-white/10 hover:bg-white/15"
         )}
       >
-        <span className={cx("inline-flex", active ? "text-white" : disabled ? "text-slate-300" : "text-slate-500")}>
+        <span className={cx("inline-flex", disabled ? "text-white/30" : active ? "text-[#081A33]" : "text-white/80")}>
           {icon}
         </span>
         {label}
@@ -401,13 +482,11 @@ export default function App() {
     setLoginError("");
     setLoginLoading(true);
     try {
-      // ✅ SEM /api duplicado
       const data = await apiFetch("/auth/login", {
         method: "POST",
         body: { email: loginEmail, senha: loginSenha },
       });
 
-      // esperado: { token, user: { id, nome, email, role } }
       setAuth(data.token, data.user);
       setAuthState({ token: data.token, user: data.user });
 
@@ -470,7 +549,6 @@ export default function App() {
         },
       };
 
-      // ✅ SEM /api duplicado
       await apiFetch("/clients-and-orders", { method: "POST", body: payload });
 
       setCreateOk("Cliente + Ordem salvos com sucesso.");
@@ -501,7 +579,6 @@ export default function App() {
     setListErr("");
     setListLoading(true);
     try {
-      // ✅ SEM /api duplicado
       const data = await apiFetch("/clients-with-orders", { method: "GET" });
       setClientsWithOrders(data || []);
     } catch (e) {
@@ -527,7 +604,6 @@ export default function App() {
     setDashErr("");
     setDashLoading(true);
     try {
-      // ✅ SEM /api duplicado
       const data = await apiFetch("/dashboard/summary", { method: "GET" });
       setDash(data);
     } catch (e) {
@@ -548,6 +624,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed]);
 
+  function DevPlaceholder({ title, subtitle }) {
+    return (
+      <Card
+        title={title}
+        subtitle={subtitle || "Em desenvolvimento. Vamos implementar este módulo no próximo ciclo."}
+        right={<Badge tone="slate">Em breve</Badge>}
+      >
+        <div className="text-sm text-slate-600">
+          Esse é um placeholder proposital para manter navegação/UX estáveis enquanto evoluímos o app.
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar fixa (layout Sidebar 2) */}
@@ -555,9 +645,17 @@ export default function App() {
         {/* Marca */}
         <div className="px-6 pt-6 pb-4 flex flex-col items-center">
           <div className="rounded-2xl bg-white/95 p-3 shadow-sm">
-            <img src={logoSrc} alt="AMR" className="h-12 w-auto" />
+            {/* ✅ Ajuste #1 (LOGO):
+                - mude a classe abaixo (h-10/h-11/h-12...) para testar a altura ideal.
+                - Ex.: "h-10" deixa menor; "h-14" deixa maior.
+            */}
+            <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
           </div>
-          <p className="mt-3 text-sm font-semibold tracking-wide text-white">AMR Advogados</p>
+
+          {/* ✅ Ajuste #4 (AMR Advogados):
+              - altere text-base/text-lg/text-xl para testar o tamanho.
+          */}
+          <p className="mt-3 text-lg font-semibold tracking-wide text-white">AMR Advogados</p>
         </div>
 
         {/* Navegação */}
@@ -571,28 +669,37 @@ export default function App() {
               navItem(VIEWS.LOGIN, "Login", <Icon.user />)
             ) : (
               <>
-                {/* ✅ Cadastro rápido só para ADMIN */}
-                {isAdmin ? navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />) : null}
-
-                {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
-                {navItem(VIEWS.DASH, "Dashboard financeiro", <Icon.chart />)}
-
-                {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />, {
-                  disabled: true,
-                  title: "Em breve",
-                })}
-
-                {/* ✅ Admin section só para ADMIN */}
-                {isAdmin ? (
+                {/* USER: só o que você pediu */}
+                {!isAdmin ? (
                   <>
+                    {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
+                    {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
+                    {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
+                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
+                  </>
+                ) : (
+                  <>
+                    {/* ADMIN: tudo */}
+                    {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
+                    {navItem(VIEWS.PAGAMENTOS, "Pagamentos", <Icon.wallet />)}
+                    {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
+                    {navItem(VIEWS.ADVOGADOS, "Advogados", <Icon.users />)}
+                    {navItem(VIEWS.CLIENTES, "Clientes", <Icon.folder />)}
+                    {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
+                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
+
                     <div className="pt-4">
                       <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Administrativo</p>
                     </div>
 
-                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />, { disabled: true, title: "Em breve" })}
-                    {navItem("access-control", "Controle de acesso", <Icon.lock />, { disabled: true, title: "Em breve" })}
+                    {navItem(VIEWS.SETTINGS, "Configurações", <Icon.settings />)}
+                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />)}
+
+                    {/* (mantém os módulos técnicos que já existiam, se você quiser continuar usando) */}
+                    {navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />)}
+                    {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
                   </>
-                ) : null}
+                )}
               </>
             )}
           </div>
@@ -633,7 +740,7 @@ export default function App() {
       {/* Conteúdo */}
       <main className="ml-[280px] flex-1 min-h-screen overflow-y-auto">
         <div className="px-6 lg:px-8 py-6 space-y-6">
-          {/* Cabeçalho interno (sem topo fixo) */}
+          {/* Cabeçalho interno */}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-900">{moduleName}</p>
@@ -648,13 +755,7 @@ export default function App() {
             <Card title="Login" subtitle="Entre com seu usuário e senha para acessar o sistema.">
               <div className="grid grid-cols-1 gap-4">
                 <Input label="E-mail" value={loginEmail} onChange={setLoginEmail} placeholder="seu@email.com" />
-                <Input
-                  label="Senha"
-                  value={loginSenha}
-                  onChange={setLoginSenha}
-                  placeholder="••••••••"
-                  type="password"
-                />
+                <Input label="Senha" value={loginSenha} onChange={setLoginSenha} placeholder="••••••••" type="password" />
 
                 {loginError ? <div className="text-sm text-rose-600">{loginError}</div> : null}
 
@@ -673,12 +774,67 @@ export default function App() {
             </Card>
           )}
 
+          {isAuthed && view === VIEWS.DASH && (
+            <Card title="Dashboard financeiro" subtitle={isAdmin ? "Resumo geral (provisório)." : "Somente seus dados (em breve)."}>
+              {dashLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
+              {dashErr ? <p className="text-sm text-rose-600">{dashErr}</p> : null}
+
+              {!dashLoading && !dashErr && dash && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="rounded-2xl border bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Clientes</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalClients}</p>
+                  </div>
+                  <div className="rounded-2xl border bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ordens</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalOrders}</p>
+                  </div>
+                  <div className="rounded-2xl border bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ativas</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalAtivas}</p>
+                  </div>
+                  <div className="rounded-2xl border bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor previsto</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      R$ {Number(dash.totalValorPrevisto || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {isAuthed && view === VIEWS.PAGAMENTOS && (
+            <DevPlaceholder title="Pagamentos" subtitle="Aqui entraremos no cadastro/baixa de pagamentos efetuados pelos clientes." />
+          )}
+
+          {isAuthed && view === VIEWS.REPASSES && (
+            <DevPlaceholder title="Repasses" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus repasses."} />
+          )}
+
+          {isAuthed && view === VIEWS.ADVOGADOS && <DevPlaceholder title="Advogados" subtitle="Cadastro e gestão dos advogados do escritório." />}
+
+          {isAuthed && view === VIEWS.CLIENTES && <DevPlaceholder title="Clientes" subtitle="Cadastro e gestão de clientes." />}
+
+          {isAuthed && view === VIEWS.HISTORICO && (
+            <DevPlaceholder title="Histórico" subtitle="Mantém registro de eventos e movimentações (vamos definir escopo)." />
+          )}
+
+          {isAuthed && view === VIEWS.REPORTS && (
+            <DevPlaceholder title="Relatórios" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus dados."} />
+          )}
+
+          {isAuthed && view === VIEWS.SETTINGS && (
+            <DevPlaceholder title="Configurações" subtitle="Modelos, parâmetros e ajustes globais do sistema." />
+          )}
+
+          {isAuthed && view === VIEWS.ADMIN_USERS && (
+            <DevPlaceholder title="Usuários" subtitle="Gestão de usuários (Admin/User), ativação, reset de senha e permissões." />
+          )}
+
+          {/* Mantém os módulos antigos para continuidade técnica */}
           {isAuthed && view === VIEWS.CREATE && (
-            <Card
-              title="Cadastro rápido: Cliente + Ordem"
-              subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação."
-              right={<Badge tone="blue">API: {import.meta.env.VITE_API_URL || "—"}</Badge>}
-            >
+            <Card title="Cadastro rápido: Cliente + Ordem" subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação.">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="rounded-2xl border bg-white p-4">
                   <p className="text-sm font-semibold text-slate-900">Cliente</p>
@@ -731,7 +887,7 @@ export default function App() {
                     <Input
                       label="Valor total previsto"
                       value={formatBRLFromCents(centsFromInputDigits(ordemValor))}
-                      onChange={setOrdemValor}
+                      onChange={setOremValorSafe(setOrdemValor)}
                       placeholder="Ex.: 10000"
                       help="(R$) Digitando 1 = 0,01; 12 = 0,12; 123 = 1,23; 123456 = 1.234,56"
                       inputMode="numeric"
@@ -831,38 +987,13 @@ export default function App() {
               )}
             </Card>
           )}
-
-          {isAuthed && view === VIEWS.DASH && (
-            <Card title="Dashboard financeiro" subtitle="Resumo geral (provisório).">
-              {dashLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
-              {dashErr ? <p className="text-sm text-rose-600">{dashErr}</p> : null}
-
-              {!dashLoading && !dashErr && dash && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Clientes</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalClients}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ordens</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalOrders}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ativas</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalAtivas}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor previsto</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      R$ {Number(dash.totalValorPrevisto || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
         </div>
       </main>
     </div>
   );
+}
+
+/** Pequeno helper pra manter o input de valor estável mesmo com setState */
+function setOremValorSafe(setter) {
+  return (v) => setter(v);
 }
