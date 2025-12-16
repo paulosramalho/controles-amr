@@ -503,7 +503,7 @@ export default function App() {
           </div>
 
           {/* ✅ Ajuste #4 (AMR Advogados): maior */}
-          <p className="mt-3 text-sm font-semibold tracking-wide text-white">Controle de Pagamentos e Repasses</p>
+          <p className="mt-3 text-base font-semibold tracking-wide text-white">Controle de Pagamentos e Repasses</p>
         </div>
 
         {/* Navegação (sem headers Operacional/Administrativo) */}
