@@ -138,25 +138,6 @@ function Card({ title, subtitle, children, right }) {
   );
 }
 
-function Input({ label, value, onChange, placeholder, type = "text", error }) {
-  return (
-    <label className="block">
-      <div className="text-xs font-semibold text-slate-700">{label}</div>
-      <input
-        className={cx(
-          "mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none",
-          error ? "border-rose-300 focus:ring-2 focus:ring-rose-100" : "border-slate-200 focus:ring-2 focus:ring-slate-100"
-        )}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        type={type}
-      />
-      {error ? <div className="mt-1 text-xs text-rose-600">{error}</div> : null}
-    </label>
-  );
-}
-
 const VIEWS = {
   LOGIN: "login",
   DASH: "dashboard",
@@ -336,7 +317,7 @@ export default function App() {
       {/* Sidebar fixa */}
       <aside
         className={cx(
-          "fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col",
+          "fixed inset-y-0 left-0 w-[280px] bg-white text-slate-800 flex flex-col",
           "rounded-r-2xl"
         )}
       >
@@ -357,13 +338,10 @@ export default function App() {
           </p>
           */}
 
-          <p className="mt-3 text-base font-semibold tracking-wide text-white">Pagamentos e Repasses</p>
+          <p className="mt-3 text-base font-semibold tracking-wide text-slate-800">Pagamentos e Repasses</p>
         </div>
 
-        {/* Navegação
-           - Sidebar fica fixa (não rola com a página)
-           - Se a altura da tela for pequena, SOMENTE esta área pode rolar internamente (melhor que sumir menu)
-        */}
+        {/* Navegação */}
         <div className="px-4 flex-1 overflow-y-auto overflow-x-hidden pb-2">
           <div className="space-y-2">
             {!isAuthed ? (
@@ -388,109 +366,10 @@ export default function App() {
               </>
             )}
           </div>
-
-          {/* Descanso — mantido no código, mas comentado para não “comer” espaço.
-              Quando você quiser reinserir, eu compacto o RestTimer também. */}
-          {/*
-          <div className="mt-3">
-            <RestTimer />
-          </div>
-          */}
         </div>
 
-        {/* Rodapé da sidebar: usuário + data/hora + sair */}
+        {/* Rodapé */}
         <div className="px-4 pb-4 space-y-3">
-          {/* +2 pts */}
-          <div className="text-sm text-white/80 flex items-center justify-between">
+          <div className="text-sm text-slate-600 flex items-center justify-between">
             <span className="truncate max-w-[170px]">{auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}</span>
-            <span className="font-semibold">{auth?.user?.role || (isAuthed ? "—" : "—")}</span>
-          </div>
-
-          {/* +2 pts */}
-          <div className="text-sm text-white/70 flex items-center justify-between font-mono">
-            <span>{clock.date}</span>
-            <span>{clock.time}</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15"
-          >
-            Sair
-          </button>
-        </div>
-      </aside>
-
-      {/* Conteúdo */}
-      <main className="ml-[280px] flex-1 min-h-screen overflow-y-auto">
-        <div className="px-6 lg:px-8 py-6 space-y-6">
-          {/* Cabeçalho interno (do conteúdo) */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{moduleName}</p>
-              <p className="text-xs text-slate-500">Controle de recebimentos, repasses e obrigações internas</p>
-            </div>
-            <Badge tone={backendOk === "ok" ? "green" : backendOk === "erro" ? "red" : "slate"}>
-              {backendOk === "ok" ? "Backend: ok" : backendOk === "erro" ? "Backend: erro" : "Backend: verificando..."}
-            </Badge>
-          </div>
-
-          {!isAuthed && view === VIEWS.LOGIN && (
-            <Card title="Login" subtitle="Entre com seu usuário e senha para acessar o sistema.">
-              <div className="grid grid-cols-1 gap-4">
-                <Input label="E-mail" value={loginEmail} onChange={setLoginEmail} placeholder="seu@email.com" />
-                <Input label="Senha" value={loginSenha} onChange={setLoginSenha} placeholder="••••••••" type="password" />
-
-                {loginError ? <div className="text-sm text-rose-600">{loginError}</div> : null}
-
-                <button
-                  type="button"
-                  onClick={doLogin}
-                  disabled={loginLoading}
-                  className={cx(
-                    "rounded-xl bg-amr-navy text-white px-4 py-2 text-sm font-semibold",
-                    loginLoading ? "opacity-70 cursor-not-allowed" : "hover:opacity-95"
-                  )}
-                >
-                  {loginLoading ? "Entrando..." : "Entrar"}
-                </button>
-              </div>
-            </Card>
-          )}
-
-          {isAuthed && view === VIEWS.DASH && (
-            <DevPlaceholder
-              title="Dashboard"
-              subtitle={isAdmin ? "Visão geral (Admin). Depois segmentamos por usuário." : "Somente seus dados (User)."}
-            />
-          )}
-
-          {isAuthed && view === VIEWS.PAGAMENTOS && (
-            <DevPlaceholder title="Pagamentos" subtitle="Cadastro/baixa de pagamentos efetuados pelos clientes." />
-          )}
-
-          {isAuthed && view === VIEWS.REPASSES && (
-            <DevPlaceholder title="Repasses" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus repasses."} />
-          )}
-
-          {isAuthed && view === VIEWS.ADVOGADOS && (
-            <DevPlaceholder title="Advogados" subtitle="Cadastro e gestão dos advogados do escritório." />
-          )}
-
-          {isAuthed && view === VIEWS.CLIENTES && <DevPlaceholder title="Clientes" subtitle="Cadastro e gestão de clientes." />}
-
-          {isAuthed && view === VIEWS.HISTORICO && <DevPlaceholder title="Histórico" subtitle="Vamos definir o escopo deste módulo." />}
-
-          {isAuthed && view === VIEWS.REPORTS && (
-            <DevPlaceholder title="Relatórios" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus dados."} />
-          )}
-
-          {isAuthed && view === VIEWS.SETTINGS && (
-            <DevPlaceholder title="Configurações" subtitle="Gestão de usuários, modelos de cálculo, parâmetros, etc." />
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
+            <span className="font-semibold">{auth?.user?.role || (
