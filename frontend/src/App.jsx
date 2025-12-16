@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
+
 import logoSrc from "./assets/logo.png";
 import { apiFetch, clearAuth } from "./lib/api";
 import RestTimer from "./components/RestTimer";
 
 /* =========================
-   Helpers de Auth / Layout
+   Auth helpers
 ========================= */
 
 function useAuth() {
@@ -17,10 +24,11 @@ function useAuth() {
     }
   });
 
-  const logout = () => {
+  function logout() {
     clearAuth();
     setAuth(null);
-  };
+    window.location.href = "/login";
+  }
 
   return { auth, setAuth, logout };
 }
@@ -32,7 +40,7 @@ function ProtectedRoute({ children }) {
 }
 
 /* =========================
-   Views / Rotas
+   Views
 ========================= */
 
 const VIEWS = {
@@ -55,8 +63,7 @@ function Sidebar({ auth, onLogout }) {
   const role = auth?.user?.role;
 
   const menu = useMemo(
-    () =>
-      Object.values(VIEWS).filter(v => v.roles.includes(role)),
+    () => Object.values(VIEWS).filter(v => v.roles.includes(role)),
     [role]
   );
 
@@ -70,17 +77,10 @@ function Sidebar({ auth, onLogout }) {
   const time = now.toLocaleTimeString("pt-BR");
 
   return (
-    <aside
-      className="
-        fixed inset-y-0 left-0 w-[280px]
-        bg-[#081A33] text-white
-        flex flex-col
-        rounded-r-2xl
-      "
-    >
-      {/* ===== Logo ===== */}
+    <aside className="fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col rounded-r-2xl">
+      {/* Logo */}
       <div className="flex flex-col items-center px-6 pt-6 pb-4">
-        {/* 🔧 Ajuste aqui a altura da logo (h-7 / h-8 / h-9...) */}
+        {/* 🔧 Ajuste a altura aqui */}
         <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
 
         {/*
@@ -90,7 +90,7 @@ function Sidebar({ auth, onLogout }) {
         */}
       </div>
 
-      {/* ===== Menu ===== */}
+      {/* Menu */}
       <nav className="flex-1 px-4 space-y-1 overflow-hidden">
         {menu.map(item => {
           const active = location.pathname === item.path;
@@ -98,12 +98,11 @@ function Sidebar({ auth, onLogout }) {
             <a
               key={item.path}
               href={item.path}
-              className={`
-                block px-4 py-2 rounded-lg transition
-                ${active
+              className={`block px-4 py-2 rounded-lg transition ${
+                active
                   ? "bg-white text-[#081A33] font-semibold"
-                  : "hover:bg-white/10"}
-              `}
+                  : "hover:bg-white/10"
+              }`}
             >
               {item.label}
             </a>
@@ -111,15 +110,15 @@ function Sidebar({ auth, onLogout }) {
         })}
       </nav>
 
-      {/* ===== Descanso ===== */}
+      {/* Descanso */}
       <div className="px-4">
         <RestTimer />
       </div>
 
-      {/* ===== Rodapé ===== */}
+      {/* Rodapé */}
       <div className="px-4 pb-4 pt-3 space-y-2 text-sm">
         <div className="flex justify-between font-medium">
-          <span className="truncate">{auth?.user?.nome || "—"}</span>
+          <span className="truncate">{auth?.user?.nome}</span>
           <span>{auth?.user?.role}</span>
         </div>
 
@@ -130,10 +129,7 @@ function Sidebar({ auth, onLogout }) {
 
         <button
           onClick={onLogout}
-          className="
-            w-full mt-2 py-2 rounded-lg
-            bg-white/10 hover:bg-white/20 transition
-          "
+          className="w-full mt-2 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
         >
           Sair
         </button>
@@ -143,7 +139,7 @@ function Sidebar({ auth, onLogout }) {
 }
 
 /* =========================
-   Telas (placeholder)
+   Screens
 ========================= */
 
 const Screen = ({ title }) => (
@@ -151,16 +147,11 @@ const Screen = ({ title }) => (
 );
 
 /* =========================
-   App
+   App shell
 ========================= */
 
 function AppShell() {
-  const { auth, setAuth, logout } = useAuth();
-
-  // Health check (visual)
-  useEffect(() => {
-    apiFetch("/health").catch(() => {});
-  }, []);
+  const { auth, logout } = useAuth();
 
   if (!auth) return <Navigate to="/login" replace />;
 
@@ -186,7 +177,7 @@ function AppShell() {
 }
 
 /* =========================
-   Login (simplificado)
+   Login
 ========================= */
 
 function Login() {
@@ -206,7 +197,7 @@ function Login() {
 
       localStorage.setItem("auth", JSON.stringify(resp));
       window.location.href = "/dashboard";
-    } catch (err) {
+    } catch {
       setErro("Erro no login");
     }
   }
