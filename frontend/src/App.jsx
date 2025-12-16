@@ -499,11 +499,11 @@ export default function App() {
                 - mude a classe abaixo (h-7/h-8/h-9...) para testar a altura ideal.
                 - Ex.: "h-7" menor; "h-10" maior.
             */}
-            <img src={logoSrc} alt="AMR" className="h-4 w-auto" />
+            <img src={logoSrc} alt="AMR" className="h-5 w-auto" />
           </div>
 
           {/* ✅ Ajuste #4 (AMR Advogados): maior */}
-          <p className="mt-3 text-2lg font-semibold tracking-wide text-white">Pagamentos e Repasses</p>
+          <p className="mt-3 text-sm font-semibold tracking-wide text-white">Controle de Pagamentos e Repasses</p>
         </div>
 
         {/* Navegação (sem headers Operacional/Administrativo) */}
