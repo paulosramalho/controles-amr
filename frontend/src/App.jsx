@@ -5,6 +5,7 @@ import {
   Route,
   Navigate,
   useLocation,
+  Link,
 } from "react-router-dom";
 
 import logoSrc from "./assets/logo.png";
@@ -30,7 +31,7 @@ function useAuth() {
     window.location.href = "/login";
   }
 
-  return { auth, setAuth, logout };
+  return { auth, logout };
 }
 
 function ProtectedRoute({ children }) {
@@ -50,8 +51,8 @@ const VIEWS = {
   ADVOGADOS: { label: "Advogados", path: "/advogados", roles: ["ADMIN"] },
   CLIENTES: { label: "Clientes", path: "/clientes", roles: ["ADMIN"] },
   HISTORICO: { label: "Histórico", path: "/historico", roles: ["ADMIN", "USER"] },
-  REPORTS: { label: "Relatórios", path: "/reports", roles: ["ADMIN", "USER"] },
-  SETTINGS: { label: "Configurações", path: "/settings", roles: ["ADMIN"] },
+  REPORTS: { label: "Reports", path: "/reports", roles: ["ADMIN", "USER"] },
+  SETTINGS: { label: "Settings", path: "/settings", roles: ["ADMIN"] },
 };
 
 /* =========================
@@ -60,7 +61,7 @@ const VIEWS = {
 
 function Sidebar({ auth, onLogout }) {
   const location = useLocation();
-  const role = auth?.user?.role;
+  const role = auth?.user?.role || auth?.role || "USER";
 
   const menu = useMemo(
     () => Object.values(VIEWS).filter(v => v.roles.includes(role)),
@@ -73,31 +74,28 @@ function Sidebar({ auth, onLogout }) {
     return () => clearInterval(id);
   }, []);
 
-  const date = now.toLocaleDateString("pt-BR");
-  const time = now.toLocaleTimeString("pt-BR");
-
   return (
     <aside className="fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col rounded-r-2xl">
       {/* Logo */}
       <div className="flex flex-col items-center px-6 pt-6 pb-4">
-        {/* 🔧 Ajuste a altura aqui */}
+        {/* 🔧 ajuste a altura aqui */}
         <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
 
         {/*
-        <p className="mt-3 text-2xl font-semibold tracking-wide">
+        <p className="mt-2 text-2xl font-semibold">
           AMR Advogados
         </p>
         */}
       </div>
 
-      {/* Menu */}
-      <nav className="flex-1 px-4 space-y-1 overflow-hidden">
+      {/* Menu (rola se precisar) */}
+      <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
         {menu.map(item => {
           const active = location.pathname === item.path;
           return (
-            <a
+            <Link
               key={item.path}
-              href={item.path}
+              to={item.path}
               className={`block px-4 py-2 rounded-lg transition ${
                 active
                   ? "bg-white text-[#081A33] font-semibold"
@@ -105,32 +103,28 @@ function Sidebar({ auth, onLogout }) {
               }`}
             >
               {item.label}
-            </a>
+            </Link>
           );
         })}
       </nav>
 
       {/* Descanso */}
-     {/* <div className="px-4">
+      <div className="px-4">
         <RestTimer />
       </div>
-     */}
+
       {/* Rodapé */}
       <div className="px-4 pb-4 pt-3 space-y-2 text-sm">
-        <div className="flex justify-between font-medium">
-          {/* <span className="truncate">{auth?.user?.nome}</span> */}
-          {/* <span>{auth?.user?.role}</span> */}
+        <div className="flex justify-between font-medium text-[15px]">
           <span className="truncate">
             {auth?.user?.nome || "Usuário"}
           </span>
-          <span>
-            {auth?.user?.role || auth?.role || "—"}
-          </span>
+          <span>{role}</span>
         </div>
 
-        <div className="flex justify-between font-mono opacity-80">
-          <span>{date}</span>
-          <span>{time}</span>
+        <div className="flex justify-between font-mono opacity-80 text-[15px]">
+          <span>{now.toLocaleDateString("pt-BR")}</span>
+          <span>{now.toLocaleTimeString("pt-BR")}</span>
         </div>
 
         <button
@@ -173,8 +167,8 @@ function AppShell() {
           <Route path="/advogados" element={<Screen title="Advogados" />} />
           <Route path="/clientes" element={<Screen title="Clientes" />} />
           <Route path="/historico" element={<Screen title="Histórico" />} />
-          <Route path="/reports" element={<Screen title="Relatórios" />} />
-          <Route path="/settings" element={<Screen title="Configurações" />} />
+          <Route path="/reports" element={<Screen title="Reports" />} />
+          <Route path="/settings" element={<Screen title="Settings" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
