@@ -1,235 +1,266 @@
-// frontend/src/App.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
+import { apiFetch, clearAuth } from "./lib/api";
 import RestTimer from "./components/RestTimer";
-import { apiFetch, setAuth, clearAuth, getToken, getUser } from "./lib/api";
 
 /* =========================
-   HELPERS
+   Helpers de Auth / Layout
 ========================= */
-function cx(...c) {
-  return c.filter(Boolean).join(" ");
+
+function useAuth() {
+  const [auth, setAuth] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("auth"));
+    } catch {
+      return null;
+    }
+  });
+
+  const logout = () => {
+    clearAuth();
+    setAuth(null);
+  };
+
+  return { auth, setAuth, logout };
+}
+
+function ProtectedRoute({ children }) {
+  const auth = JSON.parse(localStorage.getItem("auth"));
+  if (!auth?.token) return <Navigate to="/login" replace />;
+  return children;
 }
 
 /* =========================
-   CONSTANTES DE VIEW
+   Views / Rotas
 ========================= */
+
 const VIEWS = {
-  LOGIN: "login",
-  DASH: "dashboard",
-  PAGAMENTOS: "pagamentos",
-  REPASSES: "repasses",
-  ADVOGADOS: "advogados",
-  CLIENTES: "clientes",
-  HISTORICO: "historico",
-  REPORTS: "reports",
-  SETTINGS: "settings",
+  DASHBOARD: { label: "Dashboard", path: "/dashboard", roles: ["ADMIN", "USER"] },
+  PAGAMENTOS: { label: "Pagamentos", path: "/pagamentos", roles: ["ADMIN"] },
+  REPASSES: { label: "Repasses", path: "/repasses", roles: ["ADMIN", "USER"] },
+  ADVOGADOS: { label: "Advogados", path: "/advogados", roles: ["ADMIN"] },
+  CLIENTES: { label: "Clientes", path: "/clientes", roles: ["ADMIN"] },
+  HISTORICO: { label: "Histórico", path: "/historico", roles: ["ADMIN", "USER"] },
+  REPORTS: { label: "Relatórios", path: "/reports", roles: ["ADMIN", "USER"] },
+  SETTINGS: { label: "Configurações", path: "/settings", roles: ["ADMIN"] },
 };
 
 /* =========================
-   APP
+   Sidebar
 ========================= */
-export default function App() {
-  const navigate = useNavigate();
+
+function Sidebar({ auth, onLogout }) {
   const location = useLocation();
+  const role = auth?.user?.role;
 
-  const [auth, setAuthState] = useState(() => ({
-    token: getToken(),
-    user: getUser(),
-  }));
+  const menu = useMemo(
+    () =>
+      Object.values(VIEWS).filter(v => v.roles.includes(role)),
+    [role]
+  );
 
-  const isAuthed = !!auth?.token;
-  const isAdmin = auth?.user?.role === "ADMIN";
-
-  const [view, setView] = useState(() => {
-    const p = new URLSearchParams(location.search);
-    return p.get("view") || (isAuthed ? VIEWS.DASH : VIEWS.LOGIN);
-  });
-
-  /* ===== relógio ===== */
   const [now, setNow] = useState(new Date());
   useEffect(() => {
-    const i = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(i);
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
 
   const date = now.toLocaleDateString("pt-BR");
   const time = now.toLocaleTimeString("pt-BR");
 
-  /* ===== backend health ===== */
-  const [backendOk, setBackendOk] = useState("verificando...");
+  return (
+    <aside
+      className="
+        fixed inset-y-0 left-0 w-[280px]
+        bg-[#081A33] text-white
+        flex flex-col
+        rounded-r-2xl
+      "
+    >
+      {/* ===== Logo ===== */}
+      <div className="flex flex-col items-center px-6 pt-6 pb-4">
+        {/* 🔧 Ajuste aqui a altura da logo (h-7 / h-8 / h-9...) */}
+        <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
+
+        {/*
+        <p className="mt-3 text-2xl font-semibold tracking-wide">
+          AMR Advogados
+        </p>
+        */}
+      </div>
+
+      {/* ===== Menu ===== */}
+      <nav className="flex-1 px-4 space-y-1 overflow-hidden">
+        {menu.map(item => {
+          const active = location.pathname === item.path;
+          return (
+            <a
+              key={item.path}
+              href={item.path}
+              className={`
+                block px-4 py-2 rounded-lg transition
+                ${active
+                  ? "bg-white text-[#081A33] font-semibold"
+                  : "hover:bg-white/10"}
+              `}
+            >
+              {item.label}
+            </a>
+          );
+        })}
+      </nav>
+
+      {/* ===== Descanso ===== */}
+      <div className="px-4">
+        <RestTimer />
+      </div>
+
+      {/* ===== Rodapé ===== */}
+      <div className="px-4 pb-4 pt-3 space-y-2 text-sm">
+        <div className="flex justify-between font-medium">
+          <span className="truncate">{auth?.user?.nome || "—"}</span>
+          <span>{auth?.user?.role}</span>
+        </div>
+
+        <div className="flex justify-between font-mono opacity-80">
+          <span>{date}</span>
+          <span>{time}</span>
+        </div>
+
+        <button
+          onClick={onLogout}
+          className="
+            w-full mt-2 py-2 rounded-lg
+            bg-white/10 hover:bg-white/20 transition
+          "
+        >
+          Sair
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+/* =========================
+   Telas (placeholder)
+========================= */
+
+const Screen = ({ title }) => (
+  <div className="p-6 text-2xl font-semibold">{title}</div>
+);
+
+/* =========================
+   App
+========================= */
+
+function AppShell() {
+  const { auth, setAuth, logout } = useAuth();
+
+  // Health check (visual)
   useEffect(() => {
-    apiFetch("/health")
-      .then(() => setBackendOk("ok"))
-      .catch(() => setBackendOk("erro"));
+    apiFetch("/health").catch(() => {});
   }, []);
 
-  /* ===== navegação ===== */
-  function go(v) {
-    setView(v);
-    const p = new URLSearchParams(location.search);
-    p.set("view", v);
-    navigate({ search: p.toString() }, { replace: true });
-  }
+  if (!auth) return <Navigate to="/login" replace />;
 
-  function logout() {
-    clearAuth();
-    setAuthState({ token: null, user: null });
-    setView(VIEWS.LOGIN);
-  }
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <Sidebar auth={auth} onLogout={logout} />
 
-  function navItem(key, label) {
-    const active = view === key;
-    return (
-      <button
-        onClick={() => go(key)}
-        className={cx(
-          "w-full text-left px-4 py-2 rounded-xl font-semibold transition",
-          active
-            ? "bg-white text-[#081A33]"
-            : "text-white hover:bg-white/10"
-        )}
-      >
-        {label}
-      </button>
-    );
-  }
+      <main className="ml-[280px] min-h-screen">
+        <Routes>
+          <Route path="/dashboard" element={<Screen title="Dashboard" />} />
+          <Route path="/pagamentos" element={<Screen title="Pagamentos" />} />
+          <Route path="/repasses" element={<Screen title="Repasses" />} />
+          <Route path="/advogados" element={<Screen title="Advogados" />} />
+          <Route path="/clientes" element={<Screen title="Clientes" />} />
+          <Route path="/historico" element={<Screen title="Histórico" />} />
+          <Route path="/reports" element={<Screen title="Relatórios" />} />
+          <Route path="/settings" element={<Screen title="Configurações" />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
 
-  /* =========================
-     LOGIN
-  ========================= */
+/* =========================
+   Login (simplificado)
+========================= */
+
+function Login() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState(null);
 
-  async function doLogin() {
-    setError("");
-    setLoading(true);
+  async function handleLogin(e) {
+    e.preventDefault();
+    setErro(null);
+
     try {
-      const data = await apiFetch("/auth/login", {
+      const resp = await apiFetch("/auth/login", {
         method: "POST",
         body: { email, senha },
       });
-      setAuth(data.token, data.user);
-      setAuthState({ token: data.token, user: data.user });
-      go(VIEWS.DASH);
-    } catch (e) {
-      setError(e.message || "Erro no login");
-    } finally {
-      setLoading(false);
+
+      localStorage.setItem("auth", JSON.stringify(resp));
+      window.location.href = "/dashboard";
+    } catch (err) {
+      setErro("Erro no login");
     }
   }
 
-  /* =========================
-     RENDER
-  ========================= */
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* SIDEBAR */}
-      <aside className="fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col rounded-r-2xl">
-        {/* LOGO */}
-        <div className="px-6 pt-6 pb-4 flex flex-col items-center">
-          <div className="bg-white p-3 rounded-2xl">
-            {/* 🔧 Ajuste aqui a altura da logo (h-7 / h-8 / h-9...) */}
-            <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <form
+        onSubmit={handleLogin}
+        className="bg-white p-6 rounded-xl shadow w-[320px] space-y-4"
+      >
+        <h1 className="text-xl font-semibold">Login</h1>
 
-          {/*
-          🔕 "AMR Advogados️ogados" removido da UI, mas mantido para reativação futura
-          <p className="mt-3 text-2xl font-semibold tracking-wide">
-            AMR Advogados
-          </p>
-          */}
-        </div>
+        <input
+          type="email"
+          placeholder="E-mail"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          className="w-full border px-3 py-2 rounded"
+        />
 
-        {/* MENU */}
-        <div className="px-4 space-y-2">
-          {isAuthed && (
-            <>
-              {navItem(VIEWS.DASH, "Dashboard")}
-              {isAdmin && navItem(VIEWS.PAGAMENTOS, "Pagamentos")}
-              {navItem(VIEWS.REPASSES, "Repasses")}
-              {isAdmin && navItem(VIEWS.ADVOGADOS, "Advogados")}
-              {isAdmin && navItem(VIEWS.CLIENTES, "Clientes")}
-              {navItem(VIEWS.HISTORICO, "Histórico")}
-              {navItem(VIEWS.REPORTS, "Relatórios")}
-              {isAdmin && navItem(VIEWS.SETTINGS, "Configurações")}
-            </>
-          )}
-        </div>
+        <input
+          type="password"
+          placeholder="Senha"
+          value={senha}
+          onChange={e => setSenha(e.target.value)}
+          className="w-full border px-3 py-2 rounded"
+        />
 
-        {/* espaço elástico */}
-        <div className="flex-1" />
+        {erro && <p className="text-red-600 text-sm">{erro}</p>}
 
-        {/* RODAPÉ */}
-        <div className="px-4 pb-4 space-y-3">
-          {/* Descanso – versão compacta */}
-          <RestTimer />
-
-          <div className="text-sm flex justify-between opacity-80">
-            <span className="truncate">{auth?.user?.nome || "—"}</span>
-            <span className="font-semibold">{auth?.user?.role}</span>
-          </div>
-
-          <div className="text-sm flex justify-between font-mono opacity-70">
-            <span>{date}</span>
-            <span>{time}</span>
-          </div>
-
-          <button
-            onClick={logout}
-            className="w-full mt-2 rounded-xl border border-white/20 py-2 hover:bg-white/10"
-          >
-            Sair
-          </button>
-        </div>
-      </aside>
-
-      {/* CONTEÚDO */}
-      <main className="ml-[280px] flex-1 p-6">
-        {!isAuthed && view === VIEWS.LOGIN && (
-          <div className="max-w-sm mx-auto mt-20 bg-white p-6 rounded-2xl shadow">
-            <h2 className="text-lg font-semibold mb-4">Login</h2>
-
-            <input
-              className="w-full border rounded-xl px-3 py-2 mb-3"
-              placeholder="E-mail"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-
-            <input
-              className="w-full border rounded-xl px-3 py-2 mb-3"
-              type="password"
-              placeholder="Senha"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-            />
-
-            {error && <p className="text-red-600 text-sm">{error}</p>}
-
-            <button
-              onClick={doLogin}
-              disabled={loading}
-              className="w-full mt-4 bg-[#081A33] text-white py-2 rounded-xl"
-            >
-              {loading ? "Entrando..." : "Entrar"}
-            </button>
-          </div>
-        )}
-
-        {isAuthed && (
-          <div className="text-slate-700">
-            <h1 className="text-xl font-semibold capitalize">{view}</h1>
-            <p className="text-sm mt-2">
-              Backend:{" "}
-              <strong>{backendOk}</strong>
-            </p>
-          </div>
-        )}
-      </main>
+        <button className="w-full py-2 bg-[#081A33] text-white rounded">
+          Entrar
+        </button>
+      </form>
     </div>
+  );
+}
+
+/* ========================= */
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
