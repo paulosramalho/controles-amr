@@ -539,7 +539,7 @@ export default function App() {
         {/* Rodapé da sidebar: Descanso + usuário + data/hora + sair */}
         <div className="px-4 pb-4 space-y-3">
           {/* Descanso (mantém!) */}
-          <RestTimer />
+          {/* <RestTimer /> */}
 
           {/* ✅ Ajuste #3a: +2 pts (text-sm) */}
           <div className="text-sm text-white/80 flex items-center justify-between">
