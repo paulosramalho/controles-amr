@@ -119,7 +119,13 @@ function Sidebar({ auth, onLogout }) {
       <div className="px-4 pb-4 pt-3 space-y-2 text-sm">
         <div className="flex justify-between font-medium">
           <span className="truncate">{auth?.user?.nome}</span>
-          <span>{auth?.user?.role}</span>
+          {/* <span>{auth?.user?.role}</span> */}
+          {/* <span className="truncate"> */}
+            {auth?.user?.nome || "Usuário"}
+          </span>
+          <span>
+            {auth?.user?.role || auth?.role || "—"}
+          </span>
         </div>
 
         <div className="flex justify-between font-mono opacity-80">
