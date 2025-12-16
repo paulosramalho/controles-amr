@@ -160,16 +160,6 @@ const Icon = {
       />
     </svg>
   ),
-  plus: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  ),
-  list: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  ),
   chart: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
       <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.8" />
@@ -183,12 +173,6 @@ const Icon = {
         stroke="currentColor"
         strokeWidth="1.8"
       />
-    </svg>
-  ),
-  lock: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   ),
   wallet: () => (
@@ -214,11 +198,7 @@ const Icon = {
         stroke="currentColor"
         strokeWidth="1.8"
       />
-      <path
-        d="M8 13c-2.8 0-5 1.4-5 3v1h8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
+      <path d="M8 13c-2.8 0-5 1.4-5 3v1h8" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   ),
   folder: () => (
@@ -234,11 +214,7 @@ const Icon = {
   ),
   settings: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 15a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
+      <path d="M12 15a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" stroke="currentColor" strokeWidth="1.8" />
       <path
         d="M19.4 15a7.6 7.6 0 0 0 .1-1 7.6 7.6 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1l-.3-2.6H10l-.3 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L5.6 13a7.6 7.6 0 0 0-.1 1 7.6 7.6 0 0 0 .1 1l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.3 2.6h4l.3-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6Z"
         stroke="currentColor"
@@ -330,21 +306,18 @@ const VIEWS = {
   LOGIN: "login",
   DASH: "dashboard",
 
-  // Admin-only (operacional)
+  // Admin-only
   PAGAMENTOS: "pagamentos",
   REPASSES: "repasses",
   ADVOGADOS: "advogados",
   CLIENTES: "clientes",
-  CREATE: "create-client-order",
-  LIST: "clients-orders",
 
   // Both
   HISTORICO: "historico",
   REPORTS: "reports",
 
-  // Admin-only (administrativo)
+  // Admin-only
   SETTINGS: "settings",
-  ADMIN_USERS: "admin-users",
 };
 
 export default function App() {
@@ -380,30 +353,8 @@ export default function App() {
     };
   }, [clockNow]);
 
-  // backend health / module label
+  // backend health
   const [backendOk, setBackendOk] = useState("verificando...");
-  const moduleName = useMemo(() => {
-    const map = {
-      [VIEWS.LOGIN]: "Login",
-      [VIEWS.DASH]: "Dashboard",
-
-      [VIEWS.PAGAMENTOS]: "Pagamentos",
-      [VIEWS.REPASSES]: "Repasses",
-      [VIEWS.ADVOGADOS]: "Advogados",
-      [VIEWS.CLIENTES]: "Clientes",
-
-      [VIEWS.CREATE]: "Cadastro rápido",
-      [VIEWS.LIST]: "Clientes & Ordens",
-
-      [VIEWS.HISTORICO]: "Histórico",
-      [VIEWS.REPORTS]: "Relatórios",
-
-      [VIEWS.SETTINGS]: "Configurações",
-      [VIEWS.ADMIN_USERS]: "Usuários",
-    };
-    return map[view] || "Módulo";
-  }, [view]);
-
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -418,6 +369,21 @@ export default function App() {
       alive = false;
     };
   }, []);
+
+  const moduleName = useMemo(() => {
+    const map = {
+      [VIEWS.LOGIN]: "Login",
+      [VIEWS.DASH]: "Dashboard",
+      [VIEWS.PAGAMENTOS]: "Pagamentos",
+      [VIEWS.REPASSES]: "Repasses",
+      [VIEWS.ADVOGADOS]: "Advogados",
+      [VIEWS.CLIENTES]: "Clientes",
+      [VIEWS.HISTORICO]: "Histórico",
+      [VIEWS.REPORTS]: "Relatórios",
+      [VIEWS.SETTINGS]: "Configurações",
+    };
+    return map[view] || "Módulo";
+  }, [view]);
 
   // sync view in querystring (pra facilitar dev)
   useEffect(() => {
@@ -444,9 +410,7 @@ export default function App() {
     const active = view === key;
     const disabled = Boolean(opts.disabled);
 
-    // ✅ Ajuste #3: "invertido" (ativo claro, inativo mais escuro)
-    // - Ativo: branco/translúcido, texto escuro
-    // - Inativo: navy/translúcido, texto claro, hover
+    // Ativo: claro + texto escuro | Inativo: escuro + texto claro
     return (
       <button
         type="button"
@@ -498,126 +462,6 @@ export default function App() {
     }
   }
 
-  /** =========================
-   *  CADASTRO RÁPIDO (Cliente + Ordem)
-   *  ========================= */
-  const [cpfCnpj, setCpfCnpj] = useState("");
-  const [nomeRazaoSocial, setNomeRazaoSocial] = useState("");
-  const [email, setEmail] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [ordemDescricao, setOrdemDescricao] = useState("");
-  const [ordemTipoContrato, setOrdemTipoContrato] = useState("");
-  const [ordemValor, setOrdemValor] = useState(""); // digitado
-  const [ordemModelo, setOrdemModelo] = useState("AVISTA");
-  const [ordemDataInicio, setOrdemDataInicio] = useState("");
-
-  const [createOk, setCreateOk] = useState("");
-  const [createErr, setCreateErr] = useState("");
-  const [createLoading, setCreateLoading] = useState(false);
-
-  async function createClientAndOrder() {
-    setCreateOk("");
-    setCreateErr("");
-
-    const cpfCnpjMasked = maskCpfCnpj(cpfCnpj);
-    const isCpfCnpjOk = isValidCpfCnpj(cpfCnpjMasked);
-
-    if (!isCpfCnpjOk) return setCreateErr("CPF/CNPJ inválido.");
-    if (!nomeRazaoSocial.trim()) return setCreateErr("Nome/Razão Social é obrigatório.");
-    if (telefone && !isValidPhone(telefone)) return setCreateErr("Telefone inválido.");
-
-    const d = parseDateDDMMYYYY(ordemDataInicio);
-    if (!d) return setCreateErr("Data de início inválida (DD/MM/AAAA).");
-
-    const cents = centsFromInputDigits(ordemValor);
-
-    setCreateLoading(true);
-    try {
-      const payload = {
-        cliente: {
-          cpfCnpj: onlyDigits(cpfCnpjMasked),
-          nomeRazaoSocial: nomeRazaoSocial.trim(),
-          email: email.trim() || null,
-          telefone: onlyDigits(telefone) || null,
-        },
-        ordem: {
-          descricao: ordemDescricao.trim() || null,
-          tipoContrato: ordemTipoContrato.trim() || null,
-          valorTotalPrevisto: cents ? String(Number(cents) / 100) : null,
-          modeloPagamento: ordemModelo,
-          dataInicio: d.toISOString(),
-        },
-      };
-
-      await apiFetch("/clients-and-orders", { method: "POST", body: payload });
-
-      setCreateOk("Cliente + Ordem salvos com sucesso.");
-      setCpfCnpj("");
-      setNomeRazaoSocial("");
-      setEmail("");
-      setTelefone("");
-      setOrdemDescricao("");
-      setOrdemTipoContrato("");
-      setOrdemValor("");
-      setOrdemModelo("AVISTA");
-      setOrdemDataInicio("");
-    } catch (e) {
-      setCreateErr(e?.message || "Erro ao salvar");
-    } finally {
-      setCreateLoading(false);
-    }
-  }
-
-  /** =========================
-   *  LISTAGEM (Clientes + Ordens)
-   *  ========================= */
-  const [listLoading, setListLoading] = useState(false);
-  const [listErr, setListErr] = useState("");
-  const [clientsWithOrders, setClientsWithOrders] = useState([]);
-
-  async function loadClientsWithOrders() {
-    setListErr("");
-    setListLoading(true);
-    try {
-      const data = await apiFetch("/clients-with-orders", { method: "GET" });
-      setClientsWithOrders(data || []);
-    } catch (e) {
-      setListErr(e?.message || "Erro ao listar clientes + ordens");
-    } finally {
-      setListLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (isAuthed && view === VIEWS.LIST) loadClientsWithOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed, view]);
-
-  /** =========================
-   *  DASHBOARD
-   *  ========================= */
-  const [dashLoading, setDashLoading] = useState(false);
-  const [dashErr, setDashErr] = useState("");
-  const [dash, setDash] = useState(null);
-
-  async function loadDash() {
-    setDashErr("");
-    setDashLoading(true);
-    try {
-      const data = await apiFetch("/dashboard/summary", { method: "GET" });
-      setDash(data);
-    } catch (e) {
-      setDashErr(e?.message || "Erro ao carregar dashboard");
-    } finally {
-      setDashLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (isAuthed && view === VIEWS.DASH) loadDash();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed, view]);
-
   // Se deslogar, força view login
   useEffect(() => {
     if (!isAuthed && view !== VIEWS.LOGIN) setView(VIEWS.LOGIN);
@@ -640,70 +484,55 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar fixa (layout Sidebar 2) */}
-      <aside className="fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col">
+      {/* Sidebar fixa */}
+      <aside
+        className={cx(
+          "fixed inset-y-0 left-0 w-[280px] bg-[#081A33] text-white flex flex-col",
+          // ✅ Ajuste #5: cantos arredondados "como botões" (sem deslocar da esquerda)
+          "rounded-r-2xl"
+        )}
+      >
         {/* Marca */}
         <div className="px-6 pt-6 pb-4 flex flex-col items-center">
           <div className="rounded-2xl bg-white/95 p-3 shadow-sm">
             {/* ✅ Ajuste #1 (LOGO):
-                - mude a classe abaixo (h-10/h-11/h-12...) para testar a altura ideal.
-                - Ex.: "h-10" deixa menor; "h-14" deixa maior.
+                - mude a classe abaixo (h-7/h-8/h-9...) para testar a altura ideal.
+                - Ex.: "h-7" menor; "h-10" maior.
             */}
             <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
           </div>
 
-          {/* ✅ Ajuste #4 (AMR Advogados):
-              - altere text-base/text-lg/text-xl para testar o tamanho.
-          */}
-          <p className="mt-3 text-xl font-semibold tracking-wide text-white">AMR Advogados</p>
+          {/* ✅ Ajuste #4 (AMR Advogados): maior */}
+          <p className="mt-3 text-2xl font-semibold tracking-wide text-white">AMR Advogados</p>
         </div>
 
-        {/* Navegação */}
+        {/* Navegação (sem headers Operacional/Administrativo) */}
         <div className="px-4 flex-1 overflow-hidden flex flex-col">
-          <div className="mb-3">
-            <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Operacional</p>
-          </div>
-
-          <div className="space-y-2 flex-1 overflow-hidden">
+          <div className="space-y-2">
             {!isAuthed ? (
               navItem(VIEWS.LOGIN, "Login", <Icon.user />)
+            ) : !isAdmin ? (
+              <>
+                {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
+                {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
+                {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
+                {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
+              </>
             ) : (
               <>
-                {/* USER: só o que você pediu */}
-                {!isAdmin ? (
-                  <>
-                    {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
-                    {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
-                    {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
-                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
-                  </>
-                ) : (
-                  <>
-                    {/* ADMIN: tudo */}
-                    {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
-                    {navItem(VIEWS.PAGAMENTOS, "Pagamentos", <Icon.wallet />)}
-                    {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
-                    {navItem(VIEWS.ADVOGADOS, "Advogados", <Icon.users />)}
-                    {navItem(VIEWS.CLIENTES, "Clientes", <Icon.folder />)}
-                    {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
-                    {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
-
-                    <div className="pt-4">
-                      <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wide">Administrativo</p>
-                    </div>
-
-                    {navItem(VIEWS.SETTINGS, "Configurações", <Icon.settings />)}
-                    {navItem(VIEWS.ADMIN_USERS, "Usuários", <Icon.user />)}
-
-                    {/* (mantém os módulos técnicos que já existiam, se você quiser continuar usando) */}
-                    {navItem(VIEWS.CREATE, "Cadastro rápido", <Icon.plus />)}
-                    {navItem(VIEWS.LIST, "Listagem (Clientes & Ordens)", <Icon.list />)}
-                  </>
-                )}
+                {navItem(VIEWS.DASH, "Dashboard", <Icon.chart />)}
+                {navItem(VIEWS.PAGAMENTOS, "Pagamentos", <Icon.wallet />)}
+                {navItem(VIEWS.REPASSES, "Repasses", <Icon.briefcase />)}
+                {navItem(VIEWS.ADVOGADOS, "Advogados", <Icon.users />)}
+                {navItem(VIEWS.CLIENTES, "Clientes", <Icon.folder />)}
+                {navItem(VIEWS.HISTORICO, "Histórico", <Icon.clock />)}
+                {navItem(VIEWS.REPORTS, "Relatórios", <Icon.shield />)}
+                {navItem(VIEWS.SETTINGS, "Configurações", <Icon.settings />)}
               </>
             )}
           </div>
 
+          {/* espaço elástico para empurrar o rodapé e garantir sidebar sempre toda visível */}
           <div className="flex-1" />
         </div>
 
@@ -712,21 +541,18 @@ export default function App() {
           {/* Descanso (mantém!) */}
           <RestTimer />
 
-          {/* Nome + role */}
-          <div className="text-xs text-white/80 flex items-center justify-between">
-            <span className="truncate max-w-[170px]">
-              {auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}
-            </span>
+          {/* ✅ Ajuste #3a: +2 pts (text-sm) */}
+          <div className="text-sm text-white/80 flex items-center justify-between">
+            <span className="truncate max-w-[170px]">{auth?.user?.nome || (isAuthed ? "—" : "Em desenvolvimento")}</span>
             <span className="font-semibold">{auth?.user?.role || (isAuthed ? "—" : "—")}</span>
           </div>
 
-          {/* Data + hora */}
-          <div className="text-xs text-white/70 flex items-center justify-between font-mono">
+          {/* ✅ Ajuste #3b: +2 pts (text-sm) */}
+          <div className="text-sm text-white/70 flex items-center justify-between font-mono">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
           </div>
 
-          {/* Sair */}
           <button
             type="button"
             onClick={logout}
@@ -775,37 +601,14 @@ export default function App() {
           )}
 
           {isAuthed && view === VIEWS.DASH && (
-            <Card title="Dashboard financeiro" subtitle={isAdmin ? "Resumo geral (provisório)." : "Somente seus dados (em breve)."}>
-              {dashLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
-              {dashErr ? <p className="text-sm text-rose-600">{dashErr}</p> : null}
-
-              {!dashLoading && !dashErr && dash && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Clientes</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalClients}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ordens</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalOrders}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ativas</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{dash.totalAtivas}</p>
-                  </div>
-                  <div className="rounded-2xl border bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Valor previsto</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      R$ {Number(dash.totalValorPrevisto || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </Card>
+            <DevPlaceholder
+              title="Dashboard"
+              subtitle={isAdmin ? "Visão geral (Admin). Depois segmentamos por usuário." : "Somente seus dados (User)."}
+            />
           )}
 
           {isAuthed && view === VIEWS.PAGAMENTOS && (
-            <DevPlaceholder title="Pagamentos" subtitle="Aqui entraremos no cadastro/baixa de pagamentos efetuados pelos clientes." />
+            <DevPlaceholder title="Pagamentos" subtitle="Cadastro/baixa de pagamentos efetuados pelos clientes." />
           )}
 
           {isAuthed && view === VIEWS.REPASSES && (
@@ -816,184 +619,17 @@ export default function App() {
 
           {isAuthed && view === VIEWS.CLIENTES && <DevPlaceholder title="Clientes" subtitle="Cadastro e gestão de clientes." />}
 
-          {isAuthed && view === VIEWS.HISTORICO && (
-            <DevPlaceholder title="Histórico" subtitle="Mantém registro de eventos e movimentações (vamos definir escopo)." />
-          )}
+          {isAuthed && view === VIEWS.HISTORICO && <DevPlaceholder title="Histórico" subtitle="Vamos definir o escopo deste módulo." />}
 
           {isAuthed && view === VIEWS.REPORTS && (
             <DevPlaceholder title="Relatórios" subtitle={isAdmin ? "Admin vê tudo." : "User verá apenas seus dados."} />
           )}
 
           {isAuthed && view === VIEWS.SETTINGS && (
-            <DevPlaceholder title="Configurações" subtitle="Modelos, parâmetros e ajustes globais do sistema." />
-          )}
-
-          {isAuthed && view === VIEWS.ADMIN_USERS && (
-            <DevPlaceholder title="Usuários" subtitle="Gestão de usuários (Admin/User), ativação, reset de senha e permissões." />
-          )}
-
-          {/* Mantém os módulos antigos para continuidade técnica */}
-          {isAuthed && view === VIEWS.CREATE && (
-            <Card title="Cadastro rápido: Cliente + Ordem" subtitle="Crie um Cliente e uma Ordem de Pagamento em uma única ação.">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="rounded-2xl border bg-white p-4">
-                  <p className="text-sm font-semibold text-slate-900">Cliente</p>
-                  <p className="text-xs text-slate-500">Dados principais para identificação e contato.</p>
-
-                  <div className="mt-4 space-y-3">
-                    <Input
-                      label="CPF/CNPJ"
-                      value={maskCpfCnpj(cpfCnpj)}
-                      onChange={setCpfCnpj}
-                      placeholder="Ex.: 111.222.333-44"
-                      error={cpfCnpj && !isValidCpfCnpj(cpfCnpj) ? "CPF/CNPJ inválido" : ""}
-                    />
-                    <Input
-                      label="Nome / Razão Social"
-                      value={nomeRazaoSocial}
-                      onChange={setNomeRazaoSocial}
-                      placeholder="Ex.: Empresa X Ltda."
-                    />
-                    <Input label="E-mail" value={email} onChange={setEmail} placeholder="financeiro@empresa.com" type="email" />
-                    <Input
-                      label="Telefone"
-                      value={maskPhone(telefone)}
-                      onChange={setTelefone}
-                      placeholder="(99) 9 9999-9999"
-                      error={telefone && !isValidPhone(telefone) ? "Telefone inválido" : ""}
-                      inputMode="tel"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border bg-white p-4">
-                  <p className="text-sm font-semibold text-slate-900">Ordem de Pagamento</p>
-                  <p className="text-xs text-slate-500">Detalhes do contrato/ocorrência vinculada ao cliente.</p>
-
-                  <div className="mt-4 space-y-3">
-                    <Input
-                      label="Descrição / Objeto"
-                      value={ordemDescricao}
-                      onChange={setOrdemDescricao}
-                      placeholder="Ex.: Contrato consultivo mensal"
-                    />
-                    <Input
-                      label="Tipo de contrato"
-                      value={ordemTipoContrato}
-                      onChange={setOrdemTipoContrato}
-                      placeholder="Ex.: esporádico, recorrente..."
-                    />
-
-                    <Input
-                      label="Valor total previsto"
-                      value={formatBRLFromCents(centsFromInputDigits(ordemValor))}
-                      onChange={setOremValorSafe(setOrdemValor)}
-                      placeholder="Ex.: 10000"
-                      help="(R$) Digitando 1 = 0,01; 12 = 0,12; 123 = 1,23; 123456 = 1.234,56"
-                      inputMode="numeric"
-                    />
-
-                    <Select
-                      label="Modelo de pagamento"
-                      value={ordemModelo}
-                      onChange={setOrdemModelo}
-                      options={[
-                        { value: "AVISTA", label: "À vista" },
-                        { value: "ENTRADA_E_PARCELAS", label: "Entrada + parcelas" },
-                        { value: "PARCELADO", label: "Parcelado" },
-                      ]}
-                    />
-
-                    <Input
-                      label="Data de início"
-                      value={maskDate(ordemDataInicio)}
-                      onChange={setOrdemDataInicio}
-                      placeholder="dd/mm/aaaa"
-                      error={ordemDataInicio && !parseDateDDMMYYYY(maskDate(ordemDataInicio)) ? "Data inválida" : ""}
-                      inputMode="numeric"
-                      maxLength={10}
-                    />
-                  </div>
-
-                  {createErr ? <div className="mt-3 text-sm text-rose-600">{createErr}</div> : null}
-                  {createOk ? <div className="mt-3 text-sm text-emerald-700">{createOk}</div> : null}
-
-                  <button
-                    type="button"
-                    onClick={createClientAndOrder}
-                    disabled={createLoading}
-                    className={cx(
-                      "mt-4 w-full rounded-xl bg-amr-navy text-white px-4 py-2 text-sm font-semibold",
-                      createLoading ? "opacity-70 cursor-not-allowed" : "hover:opacity-95"
-                    )}
-                  >
-                    {createLoading ? "Salvando..." : "Salvar cliente + ordem"}
-                  </button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {isAuthed && view === VIEWS.LIST && (
-            <Card
-              title="Listagem (Clientes & Ordens)"
-              subtitle="Use a Listagem para validar rapidamente os cadastros feitos no Cadastro rápido."
-              right={
-                <button
-                  type="button"
-                  onClick={loadClientsWithOrders}
-                  className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Atualizar
-                </button>
-              }
-            >
-              {listLoading ? <p className="text-sm text-slate-500">Carregando...</p> : null}
-              {listErr ? <p className="text-sm text-rose-600">{listErr}</p> : null}
-
-              {!listLoading && !listErr && (
-                <div className="space-y-4">
-                  {clientsWithOrders.length === 0 ? (
-                    <p className="text-sm text-slate-500">Sem dados ainda.</p>
-                  ) : (
-                    clientsWithOrders.map((c) => (
-                      <div key={c.id} className="rounded-2xl border bg-white p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{c.nomeRazaoSocial}</p>
-                            <p className="text-xs text-slate-500">{maskCpfCnpj(c.cpfCnpj)}</p>
-                          </div>
-                          <Badge tone={c.ativo ? "green" : "red"}>{c.ativo ? "Ativo" : "Inativo"}</Badge>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {(c.ordens || []).map((o) => (
-                            <div key={o.id} className="rounded-2xl border bg-slate-50 p-3">
-                              <p className="text-sm font-semibold text-slate-900">{o.descricao || "Ordem sem descrição"}</p>
-                              <p className="text-xs text-slate-500">
-                                Seq.: {o.sequenciaCliente} • Status: {o.status}
-                              </p>
-                              <p className="mt-2 text-sm text-slate-700">
-                                Valor previsto: R$ {formatBRLFromNumber(o.valorTotalPrevisto)}
-                              </p>
-                              <p className="text-xs text-slate-500">Início: {formatDateDDMMYYYY(o.dataInicio)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </Card>
+            <DevPlaceholder title="Configurações" subtitle="Gestão de usuários, modelos de cálculo, parâmetros, etc." />
           )}
         </div>
       </main>
     </div>
   );
-}
-
-/** Pequeno helper pra manter o input de valor estável mesmo com setState */
-function setOremValorSafe(setter) {
-  return (v) => setter(v);
 }
