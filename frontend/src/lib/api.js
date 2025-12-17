@@ -1,64 +1,56 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "";
-const TOKEN_KEY = "amr_token";
-const USER_KEY = "amr_user"; // opcional, mas útil
+const BASE_URL = import.meta.env.VITE_API_URL;
 
-export function setAuth(token, user) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+export function setAuth(token) {
+  localStorage.setItem("token", token);
 }
 
 export function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem("token");
 }
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function getUser() {
-  const raw = localStorage.getItem(USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-// path deve começar com "/".
-// Ex.: apiFetch("/auth/login") -> BASE_URL + "/auth/login"
 export async function apiFetch(path, options = {}) {
-  const token = getToken();
+  console.log("[apiFetch] BASE_URL =", BASE_URL);
+  console.log("[apiFetch] PATH =", path);
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const url = `${BASE_URL}${path}`;
+  console.log("[apiFetch] FINAL URL =", url);
+
+  const token = localStorage.getItem("token");
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  console.log("[apiFetch] HEADERS =", headers);
+  console.log("[apiFetch] OPTIONS (antes) =", options);
+
+  const fetchOptions = {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+    headers,
+    body:
+      options.body && typeof options.body !== "string"
+        ? JSON.stringify(options.body)
+        : options.body,
+  };
 
-  // 401 => desloga automático (como você pediu)
-  if (res.status === 401) {
-    clearAuth();
-    // evita loop caso já esteja na tela de login
-    if (window.location.pathname !== "/") window.location.href = "/";
-    throw new Error("Não autenticado.");
-  }
+  console.log("[apiFetch] OPTIONS (depois) =", fetchOptions);
 
-  const text = await res.text();
+  const response = await fetch(url, fetchOptions);
 
-  // Se vier HTML (<!DOCTYPE...), a gente te dá o diagnóstico com começo do payload
+  console.log("[apiFetch] STATUS =", response.status);
+  console.log("[apiFetch] OK =", response.ok);
+
+  const rawText = await response.text();
+  console.log("[apiFetch] RAW RESPONSE =", rawText);
+
   try {
-    return text ? JSON.parse(text) : null;
-  } catch {
+    return JSON.parse(rawText);
+  } catch (err) {
     throw new Error(
-      `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${text.slice(
+      `Resposta inválida do servidor (${response.status}). Esperado JSON, recebido: ${rawText.slice(
         0,
-        80
+        120
       )}`
     );
   }
