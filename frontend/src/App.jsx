@@ -67,7 +67,7 @@ function Login({ onLogin }) {
         className="w-full max-w-sm bg-white p-6 rounded-xl shadow"
       >
         <div className="flex flex-col items-center mb-6">
-          <img src={logoSrc} alt="AMR" className="h-16 mb-2" />
+          <img src={logoSrc} alt="AMR" className="h-10 mb-2" />
           <p className="text-sm text-slate-600 text-center">
             Controle de recebimentos, repasses e obrigações internas
           </p>
