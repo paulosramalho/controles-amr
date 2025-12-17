@@ -71,6 +71,9 @@ function Login({ onLogin }) {
           <p className="text-sm text-slate-600 text-center">
             Controle de recebimentos, repasses e obrigações internas
           </p>
+          <p className="text-sm text-slate-600 text-center">
+            ________________________________________________
+          </p>
         </div>
 
         <label className="block text-sm mb-1">E-mail</label>
