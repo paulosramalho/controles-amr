@@ -1,56 +1,64 @@
-const BASE_URL = import.meta.env.VITE_API_URL;
+const BASE_URL = import.meta.env.VITE_API_URL || "";
+const TOKEN_KEY = "amr_token";
+const USER_KEY = "amr_user"; // opcional, mas útil
 
-export function setAuth(token) {
-  localStorage.setItem("token", token);
+export function setAuth(token, user) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function clearAuth() {
-  localStorage.removeItem("token");
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
 }
 
-export async function apiFetch(path, options = {}) {
-  console.log("[apiFetch] BASE_URL =", BASE_URL);
-  console.log("[apiFetch] PATH =", path);
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-  const url = `${BASE_URL}${path}`;
-  console.log("[apiFetch] FINAL URL =", url);
-
-  const token = localStorage.getItem("token");
-
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  console.log("[apiFetch] HEADERS =", headers);
-  console.log("[apiFetch] OPTIONS (antes) =", options);
-
-  const fetchOptions = {
-    ...options,
-    headers,
-    body:
-      options.body && typeof options.body !== "string"
-        ? JSON.stringify(options.body)
-        : options.body,
-  };
-
-  console.log("[apiFetch] OPTIONS (depois) =", fetchOptions);
-
-  const response = await fetch(url, fetchOptions);
-
-  console.log("[apiFetch] STATUS =", response.status);
-  console.log("[apiFetch] OK =", response.ok);
-
-  const rawText = await response.text();
-  console.log("[apiFetch] RAW RESPONSE =", rawText);
-
+export function getUser() {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
   try {
-    return JSON.parse(rawText);
-  } catch (err) {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// path deve começar com "/".
+// Ex.: apiFetch("/auth/login") -> BASE_URL + "/auth/login"
+export async function apiFetch(path, options = {}) {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  // 401 => desloga automático (como você pediu)
+  if (res.status === 401) {
+    clearAuth();
+    // evita loop caso já esteja na tela de login
+    if (window.location.pathname !== "/") window.location.href = "/";
+    throw new Error("Não autenticado.");
+  }
+
+  const text = await res.text();
+
+  // Se vier HTML (<!DOCTYPE...), a gente te dá o diagnóstico com começo do payload
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
     throw new Error(
-      `Resposta inválida do servidor (${response.status}). Esperado JSON, recebido: ${rawText.slice(
+      `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${text.slice(
         0,
-        120
+        80
       )}`
     );
   }
