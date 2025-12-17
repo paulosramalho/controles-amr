@@ -49,11 +49,7 @@ function Login({ onLogin }) {
   e.preventDefault();
   setError("");
   try {
-    const resp = await apiFetch("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, senha }),
-      headers: { "Content-Type": "application/json" },
-    });
+    const resp = await apiFetch("/auth/login", { method: "POST", body: { email, senha } });
 
     setAuth(resp.token);
     onLogin(resp.user);
