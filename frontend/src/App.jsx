@@ -48,8 +48,15 @@ function Login({ onLogin }) {
   async function submit(e) {
   e.preventDefault();
   setError("");
+
   try {
-    const resp = await apiFetch("/auth/login", { method: "POST", body: { email, senha } });
+    const resp = await apiFetch("/auth/login", {
+  method: "POST",
+  body: {
+    email,
+    senha,
+  },
+});
 
     setAuth(resp.token);
     onLogin(resp.user);
