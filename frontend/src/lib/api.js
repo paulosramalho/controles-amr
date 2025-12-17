@@ -1,101 +1,128 @@
 // frontend/src/lib/api.js
-// API helper (Bearer token) + tratamento robusto de JSON/HTML + auto-logout em 401
-// Observação: BASE_URL deve apontar para a BASE da API, incluindo "/api"
-// Ex.: https://controles-amr-backend.onrender.com/api  |  http://localhost:4000/api
+// API helper (Bearer token) + tratamento de JSON/HTML + 401 auto-logout
+// Observação: VITE_API_URL pode ser:
+//  - http://localhost:4000        (sem /api)  ✅ funciona
+//  - http://localhost:4000/api    (com /api)  ✅ funciona
+//  - https://controles-amr-backend.onrender.com
+//  - https://controles-amr-backend.onrender.com/api
 
-const BASE_URL_RAW = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
-
-// =====================
-// Storage do token
-// =====================
 const TOKEN_KEY = "amr_token";
+const USER_KEY = "amr_user";
 
-export function setAuth(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
+function normalizeBase(raw) {
+  const base = (raw || "").trim().replace(/\/+$/, "");
+  return base || "http://localhost:4000";
 }
-export function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY);
+
+// Monta URL SEM duplicar /api
+function buildUrl(path) {
+  const base = normalizeBase(import.meta.env.VITE_API_URL);
+
+  let p = String(path || "");
+  if (!p.startsWith("/")) p = `/${p}`;
+
+  // Se o path já vier com /api/..., respeita
+  const pathHasApiPrefix = p === "/api" || p.startsWith("/api/");
+
+  // Se a base já termina com /api, NÃO adiciona /api de novo
+  const baseHasApiSuffix = base.endsWith("/api");
+
+  // Regras:
+  // - Se path já tem /api -> base + path
+  // - Senão:
+  //    - se base já tem /api -> base + path
+  //    - se base não tem /api -> base + "/api" + path
+  if (pathHasApiPrefix) return `${base}${p}`;
+  if (baseHasApiSuffix) return `${base}${p}`;
+  return `${base}/api${p}`;
 }
-export function getAuthToken() {
+
+export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
 }
 
-// =====================
-// Utils
-// =====================
-function joinUrl(base, path) {
-  const b = String(base || "").replace(/\/+$/, "");
-  const p = String(path || "");
-  const p2 = p.startsWith("/") ? p : `/${p}`;
-  return `${b}${p2}`;
-}
-
-async function readBodySmart(res) {
-  const ct = (res.headers.get("content-type") || "").toLowerCase();
-
-  // Se for JSON, tenta JSON
-  if (ct.includes("application/json")) {
-    const data = await res.json().catch(() => null);
-    return { kind: "json", data };
+export function getAuthUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
-
-  // Senão, lê texto (ex.: HTML de erro)
-  const text = await res.text().catch(() => "");
-  return { kind: "text", text, contentType: ct };
 }
 
-// =====================
-// Fetch principal
-// =====================
+export function setAuth(token, user = undefined) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  if (user !== undefined) localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
 export async function apiFetch(path, options = {}) {
-  const url = joinUrl(BASE_URL_RAW, path);
+  const url = buildUrl(path);
 
-  const token = getAuthToken();
+  const token = getToken();
+  const headers = new Headers(options.headers || {});
 
-  const headers = {
-    Accept: "application/json",
-    ...(options.headers || {}),
-  };
+  // Se tiver token, manda Bearer
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  // Só seta Content-Type se tiver body (e se não for FormData)
-  const hasBody = options.body !== undefined && options.body !== null;
-  const isFormData = hasBody && (typeof FormData !== "undefined") && (options.body instanceof FormData);
+  // Body: se for objeto normal, vira JSON automaticamente
+  let body = options.body;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const isString = typeof body === "string";
 
-  if (hasBody && !isFormData && !headers["Content-Type"] && !headers["content-type"]) {
-    headers["Content-Type"] = "application/json";
+  if (body !== undefined && body !== null && !isFormData && !isString) {
+    headers.set("Content-Type", "application/json");
+    body = JSON.stringify(body);
+  } else if (isString) {
+    // Se você já mandou string, garanta content-type se não existir
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // Accept JSON
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-  const res = await fetch(url, { ...options, headers });
+  const resp = await fetch(url, {
+    method: options.method || "GET",
+    headers,
+    body,
+  });
 
-  // 401 -> derruba sessão
-  if (res.status === 401) {
+  // 401: limpa auth e dispara erro
+  if (resp.status === 401) {
     clearAuth();
-    const err = new Error("Não autenticado.");
+    const msg = "Não autenticado.";
+    const err = new Error(msg);
     err.status = 401;
     throw err;
   }
 
-  const body = await readBodySmart(res);
+  // Tenta ler JSON; se vier HTML (Render/Vercel 404/400), devolve erro claro
+  const ct = resp.headers.get("content-type") || "";
+  const isJson = ct.includes("application/json");
 
-  if (!res.ok) {
-    // Mensagem amigável com snippet do HTML/texto quando não for JSON
-    let msg = `Erro HTTP ${res.status}`;
-    if (body.kind === "json" && body.data) {
-      msg = body.data.message || body.data.error || msg;
-    } else if (body.kind === "text" && body.text) {
-      const snippet = body.text.replace(/\s+/g, " ").slice(0, 160);
-      msg = `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${snippet}`;
-    }
-    const err = new Error(msg);
-    err.status = res.status;
-    err.body = body;
+  if (!isJson) {
+    const text = await resp.text().catch(() => "");
+    const preview = text.slice(0, 220).replace(/\s+/g, " ").trim();
+    const err = new Error(
+      `Resposta inválida do servidor (${resp.status}). Esperado JSON, recebido: ${preview || "(vazio)"}`
+    );
+    err.status = resp.status;
+    err.raw = text;
     throw err;
   }
 
-  // ok
-  if (body.kind === "json") return body.data;
-  // Se por acaso vier texto em 200, devolve o texto
-  return body.text ?? null;
+  const data = await resp.json();
+
+  if (!resp.ok) {
+    const err = new Error(data?.message || `Erro HTTP ${resp.status}`);
+    err.status = resp.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
 }
