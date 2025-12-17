@@ -46,19 +46,21 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
 
   async function submit(e) {
-    e.preventDefault();
-    setError("");
-    try {
-      const resp = await apiFetch("/auth/login", {
-        method: "POST",
-        body: { email, senha },
-      });
-      setAuth(resp.token);
-      onLogin(resp.user);
-    } catch (err) {
-      setError(err.message || "Erro no login");
-    }
+  e.preventDefault();
+  setError("");
+  try {
+    const resp = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, senha }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    setAuth(resp.token);
+    onLogin(resp.user);
+  } catch (err) {
+    setError(err.message || "Erro no login");
   }
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
