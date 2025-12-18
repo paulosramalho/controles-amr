@@ -6,10 +6,11 @@ import { apiFetch, setAuth } from "./lib/api";
 /**
  * App.jsx — versão funcional (loga) + ajustes UI:
  * 1) Botão "Entrar" vira "Entrando..." após click (loading state)
- * 2) Texto "AMR Controle de recebimentos, repasses e obrigações internas"
- *    embaixo da logo, centralizados (Login + Sidebar)
- * 3) Loading “fino”: spinner minimalista no botão durante submit
- * 4) NÃO mexer no processo de login: mantido 100% (mesma chamada/apiFetch e payload)
+ * 2) Texto "Controle de recebimentos, repasses e obrigações internas"
+ *    embaixo da logo, centralizados (Login + Sidebar) — agora em 1 linha e mais destaque
+ * 3) Sidebar hover mais evidente
+ * 4) Rodapé da sidebar: inverte Data/Hora com Usuário/Tipo + aumenta Data/Hora ~2pt
+ * 5) NÃO mexer no processo de login: mantido 100% (mesma chamada/apiFetch e payload)
  */
 
 function useClock() {
@@ -66,18 +67,18 @@ function Login({ onLogin }) {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div className="flex flex-col items-center mb-6 text-center">
+        <div className="flex flex-col items-center text-center">
           {/* 🔧 Ajuste da altura da logo NO LOGIN:
               altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
           <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
 
-          <div className="text-xs text-slate-500 leading-tight tracking-wide max-w-xs">
-           Controle de recebimentos, repasses e obrigações internas
+          {/* Texto abaixo da logo: 1 linha, centralizado, mais destaque, mais afastado */}
+          <div className="mt-5 text-[15px] font-semibold text-slate-800 tracking-wide whitespace-nowrap">
+            Controle de recebimentos, repasses e obrigações internas
           </div>
         </div>
-       {/* </div> */}
 
-        <h1 className="text-lg font-semibold text-slate-900">Login</h1>
+        <h1 className="mt-6 text-lg font-semibold text-slate-900">Login</h1>
         <p className="text-sm text-slate-600 mt-1">
           Entre com seu usuário e senha para acessar o sistema.
         </p>
@@ -171,23 +172,23 @@ function AppShell({ user, onLogout }) {
         <div className="p-5 border-b border-slate-200">
           <div className="flex flex-col items-center justify-center">
             {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
-                altere o "h-14" abaixo (ex.: h-12, h-10, h-16...) */}
-             <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
+                altere o "h-7" abaixo (ex.: h-8, h-10...) */}
+            <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
 
-            {/* Pedido: texto abaixo da logo, centralizado */}
-            <div className="mt-2 text-center">
-             {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
-              <div className="mt-2 text-center text-xs text-slate-500 leading-tight tracking-wide">
-    Controle de recebimentos, repasses e obrigações internas
-  </div>
-</div>
-          </div>
+            {/* Texto abaixo da logo, centralizado */}
+            <div className="mt-3 text-center">
+              {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
+              <div className="text-xs text-slate-500 leading-tight tracking-wide">
+                Controle de recebimentos, repasses e obrigações internas
+              </div>
+            </div>
 
-          {/* Mantido comentado, como já combinado em rodadas anteriores:
-          <div className="mt-2 text-center text-base font-semibold text-slate-900">
-            AMR Advogados
+            {/* Mantido comentado, como já combinado em rodadas anteriores:
+            <div className="mt-2 text-center text-base font-semibold text-slate-900">
+              AMR Advogados
+            </div>
+            */}
           </div>
-          */}
         </div>
 
         <nav className="p-3 space-y-1 flex-1 overflow-auto">
@@ -200,7 +201,7 @@ function AppShell({ user, onLogout }) {
                  ${
                    isActive
                      ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
-                     : "text-slate-700 hover:bg-white hover:ring-1 hover:ring-slate-200"
+                     : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
                  }`
               }
             >
@@ -210,13 +211,16 @@ function AppShell({ user, onLogout }) {
         </nav>
 
         <div className="p-4 border-t border-slate-200">
-          <div className="flex items-center justify-between text-sm text-slate-700">
-            <span className="truncate max-w-[160px]">{user?.nome || "—"}</span>
-            <span className="font-semibold">{user?.role || "—"}</span>
-          </div>
-          <div className="mt-1 flex font-bold items-center justify-between text-xs text-slate-500">
+          {/* INVERTIDO: Data/Hora em cima (maior ~2pt) */}
+          <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
+          </div>
+
+          {/* Usuário/Tipo embaixo */}
+          <div className="mt-1 flex items-center justify-between text-sm text-slate-600">
+            <span className="truncate max-w-[160px]">{user?.nome || "—"}</span>
+            <span className="font-semibold text-slate-700">{user?.role || "—"}</span>
           </div>
 
           <button
@@ -238,10 +242,7 @@ function AppShell({ user, onLogout }) {
           <Route path="/clientes" element={<Placeholder title="Clientes" />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
-          <Route
-            path="/configuracoes"
-            element={<Placeholder title="Configurações" />}
-          />
+          <Route path="/configuracoes" element={<Placeholder title="Configurações" />} />
         </Routes>
       </main>
     </div>
