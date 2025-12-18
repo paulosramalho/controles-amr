@@ -69,7 +69,7 @@ function Login({ onLogin }) {
         <div className="flex flex-col items-center mb-6 text-center">
           {/* 🔧 Ajuste da altura da logo NO LOGIN:
               altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
-          <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
+          <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
 
           <div className="text-xs text-slate-500 leading-tight tracking-wide max-w-xs">
            Controle de recebimentos, repasses e obrigações internas
