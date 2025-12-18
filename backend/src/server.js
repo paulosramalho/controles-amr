@@ -243,6 +243,26 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+const allowedOrigins = [
+  "https://controles-amr.vercel.app",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // requests sem origin (ex.: healthcheck/curl) passam
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
+
+// garantir preflight para todas as rotas
+app.options("*", cors());
+
 /* =========================
    ADVOGADOS — ROTAS (Admin + User)
    Observação:
