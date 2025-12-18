@@ -69,12 +69,11 @@ function Login({ onLogin }) {
         <div className="flex items-center gap-3 mb-6">
           {/* 🔧 Ajuste da altura da logo NO LOGIN:
               altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
-          <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
-
+          <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
           <div className="min-w-0">
-            <div className="text-xs text-slate-500 leading-snug max-w-xs">
-    Controle de recebimentos, repasses e obrigações internas
-  </div>
+            <P className="text-xs text-slate-500 leading-snug max-w-xs">
+              Controle de recebimentos, repasses e obrigações internas
+            </P>
           </div>
         </div>
 
@@ -173,12 +172,12 @@ function AppShell({ user, onLogout }) {
           <div className="flex flex-col items-center justify-center">
             {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
                 altere o "h-14" abaixo (ex.: h-12, h-10, h-16...) */}
-            <img src={logoSrc} alt="AMR" className="h-14 w-auto" />
+            <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
 
             {/* Pedido: texto abaixo da logo, centralizado */}
             <div className="mt-2 text-center">
-              <div className="text-sm font-semibold text-slate-900">AMR</div>
-              <div className="text-xs text-slate-500 leading-snug">
+             {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
+              <div className="text-xs font-bold text-slate-500 leading-snug">
                 Controle de recebimentos, repasses e obrigações internas
               </div>
             </div>
