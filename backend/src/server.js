@@ -13,7 +13,16 @@ const PORT = process.env.PORT || 4000;
 // Prisma
 const prisma = new PrismaClient();
 
-app.use(cors());
+// CORS (explicita Authorization pra evitar dor em prod)
+app.use(
+  cors({
+    origin: true,
+    credentials: false,
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  })
+);
+
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -128,6 +137,13 @@ function calcAnoMes(date) {
   return `${y}-${m}`;
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "ADMIN") {
+    return res.status(403).json({ message: "Acesso restrito a administradores." });
+  }
+  next();
+}
+
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
 ========================= */
@@ -159,6 +175,8 @@ function publicUser(u) {
     email: u.email,
     role: u.role,
     ativo: u.ativo,
+    // ✅ IMPORTANTE: precisa existir para /api/advogados/me
+    advogadoId: u.advogadoId ?? null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
     createdAtBR: formatDateBR(u.createdAt),
@@ -184,7 +202,6 @@ async function attachUserIfPresent(req, _res, next) {
     // Se o schema ainda não tiver Usuario, não quebra
     if (!prisma.usuario) return next();
 
-    // ✅ CORREÇÃO CRÍTICA:
     // payload.sub vem como string (ex: "1") e o Prisma espera Int.
     const userId = Number(payload.sub);
     if (!Number.isFinite(userId)) return next();
@@ -227,6 +244,144 @@ app.get("/api/health", async (_req, res) => {
 });
 
 /* =========================
+   ADVOGADOS — ROTAS (Admin + User)
+   Observação:
+   - Admin: CRUD (soft delete via ativo)
+   - User: /me (editar seus próprios dados)
+========================= */
+
+// ✅ BUG FIX: era "authRequired" (inexistente). O certo é requireAuth.
+app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
+  const advogados = await prisma.advogado.findMany({
+    orderBy: { nome: "asc" },
+  });
+  res.json(advogados);
+});
+
+app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
+  const { nome, cpf, oab, email, telefone, chavePix, senha } = req.body;
+
+// ✅ Normalização (blindagem)
+  cpf = onlyDigits(cpf);
+  oab = String(oab || "").trim().toUpperCase();
+  email = String(email || "").trim().toLowerCase();
+  telefone = telefone ? onlyDigits(telefone) : null;
+  if (!nome || !cpf || !oab || !email || !senha) {
+    return res.status(400).json({ message: "Campos obrigatórios ausentes." });
+  }
+
+  // ✅ BUG FIX: bcrypt não existia aqui. Precisamos carregar.
+  const { bcrypt } = await getAuthLibs();
+  const senhaHash = await bcrypt.hash(String(senha), 10);
+
+  const advogado = await prisma.advogado.create({
+    data: {
+      nome,
+      cpf,
+      oab,
+      email,
+      telefone: telefone ?? null,
+      // campo novo (ok se existir no schema; se ainda não existir, comente aqui)
+      chavePix: chavePix ?? null,
+      ativo: true,
+      usuario: {
+        create: {
+          nome,
+          email,
+          senhaHash,
+          role: "USER",
+          ativo: true,
+        },
+      },
+    },
+  });
+
+  res.status(201).json(advogado);
+});
+
+app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { nome, email, telefone, chavePix, senha } = req.body;
+
+  const data = {
+    ...(nome !== undefined ? { nome } : {}),
+    ...(email !== undefined ? { email } : {}),
+    ...(telefone !== undefined ? { telefone } : {}),
+    ...(chavePix !== undefined ? { chavePix } : {}),
+  };
+
+  if (senha) {
+    const { bcrypt } = await getAuthLibs();
+    data.usuario = {
+      update: { senhaHash: await bcrypt.hash(String(senha), 10) },
+    };
+  }
+
+  const advogado = await prisma.advogado.update({
+    where: { id: Number(id) },
+    data,
+  });
+
+  res.json(advogado);
+});
+
+app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { ativo } = req.body;
+
+  await prisma.advogado.update({
+    where: { id: Number(id) },
+    data: {
+      ativo: Boolean(ativo),
+      usuario: { update: { ativo: Boolean(ativo) } },
+    },
+  });
+
+  res.json({ success: true });
+});
+
+app.get("/api/advogados/me", requireAuth, async (req, res) => {
+  if (!req.user.advogadoId) {
+    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+  }
+
+  const advogado = await prisma.advogado.findUnique({
+    where: { id: req.user.advogadoId },
+  });
+
+  res.json(advogado);
+});
+
+app.put("/api/advogados/me", requireAuth, async (req, res) => {
+  const { nome, email, telefone, chavePix, senha } = req.body;
+
+  if (!req.user.advogadoId) {
+    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+  }
+
+  const data = {
+    ...(nome !== undefined ? { nome } : {}),
+    ...(email !== undefined ? { email } : {}),
+    ...(telefone !== undefined ? { telefone } : {}),
+    ...(chavePix !== undefined ? { chavePix } : {}),
+  };
+
+  if (senha) {
+    const { bcrypt } = await getAuthLibs();
+    data.usuario = {
+      update: { senhaHash: await bcrypt.hash(String(senha), 10) },
+    };
+  }
+
+  const advogado = await prisma.advogado.update({
+    where: { id: req.user.advogadoId },
+    data,
+  });
+
+  res.json(advogado);
+});
+
+/* =========================
    AUTH — ROTAS
 ========================= */
 
@@ -251,11 +406,10 @@ app.post("/api/auth/login", async (req, res) => {
     const ok = await bcrypt.compare(senha, u.senhaHash);
     if (!ok) return res.status(401).json({ message: "Credenciais inválidas." });
 
-    const token = jwt.sign(
-      { role: u.role },
-      JWT_SECRET,
-      { subject: String(u.id), expiresIn: JWT_EXPIRES_IN }
-    );
+    const token = jwt.sign({ role: u.role }, JWT_SECRET, {
+      subject: String(u.id),
+      expiresIn: JWT_EXPIRES_IN,
+    });
 
     return res.json({ token, user: publicUser(u) });
   } catch (err) {
@@ -383,8 +537,9 @@ app.get("/api/orders", async (_req, res) => {
 
 app.get("/api/config/distribution-models", async (_req, res) => {
   try {
+    // ⚠️ Ajuste aqui se o campo for "cod" no schema atual:
     const modelos = await prisma.modeloDistribuicao.findMany({
-      orderBy: [{ codigo: "asc" }, { id: "asc" }],
+      orderBy: [{ cod: "asc" }, { id: "asc" }],
     });
     res.json(modelos);
   } catch (err) {
@@ -563,6 +718,18 @@ app.get("/api/dashboard/summary", async (_req, res) => {
     console.error("Erro no dashboard:", err);
     res.status(500).json({ message: "Erro ao carregar dashboard" });
   }
+});
+
+/* =========================
+   404 + Error handler (sempre JSON)
+========================= */
+app.use((req, res) => {
+  res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
+});
+
+app.use((err, _req, res, _next) => {
+  console.error("Erro não tratado:", err);
+  res.status(500).json({ message: "Erro interno do servidor." });
 });
 
 app.listen(PORT, () => {

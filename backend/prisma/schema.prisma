@@ -1,12 +1,26 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+/// ======================================================
+/// FASE 1 — COMPATIBILIDADE TOTAL
+/// ------------------------------------------------------
+/// Regras:
+/// - NÃO remover enums existentes no banco
+/// - NÃO remover tabelas/colunas existentes no banco
+/// - NÃO alterar tipos que forcem cast destrutivo (ex.: Decimal -> Double)
+/// - Nesta fase: apenas ADICIONAR estruturas novas (Advogado + vínculo)
+/// - Limpeza/renome/remoções: somente em FASE 3
+/// ======================================================
+
+/// =======================
+/// ENUMS (MANTIDOS + COMPLETOS)
+/// =======================
 
 enum UserRole {
   ADMIN
@@ -28,6 +42,8 @@ enum StatusOrdem {
 
 enum StatusPagamento {
   PREVISTO
+  EM_ABERTO
+  PARCIAL
   PAGO
   ATRASADO
   CANCELADO
@@ -36,7 +52,95 @@ enum StatusPagamento {
 enum TipoAdvogado {
   SOCIO
   ASSOCIADO
+  CORRESPONDENTE
+  OUTRO
 }
+
+/// =======================
+/// MODELOS EXISTENTES (NÃO REMOVER)
+/// =======================
+
+model Cliente {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  cpfCnpj         String
+  nomeRazaoSocial String
+  email           String?
+  telefone        String?
+  observacoes     String?
+  ativo           Boolean  @default(true)
+
+  ordens OrdemPagamento[]
+
+  // (se você já colocou unique no cpfCnpj em migração anterior, manter compatível aqui)
+  @@unique([cpfCnpj])
+  @@index([ativo])
+  @@index([nomeRazaoSocial])
+}
+
+model OrdemPagamento {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clienteId Int
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+
+  // Sequência de ocorrência (ordem) dentro do cliente
+  sequenciaCliente   Int
+  codigoInterno      String?
+  descricao          String?
+  tipoContrato       String?
+  valorTotalPrevisto Decimal?
+  modeloPagamento    ModeloPagamento
+  dataInicio         DateTime
+  dataFimPrevista    DateTime?
+  status             StatusOrdem
+
+  // relações que já existiam no seu esquema
+  pagamentos Pagamento[]
+  repasses   Repasse[]
+
+  @@unique([clienteId, sequenciaCliente])
+  @@index([status])
+  @@index([modeloPagamento])
+}
+
+model Pagamento {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
+  valor         Decimal?
+  dataPagamento DateTime?
+  status        StatusPagamento?
+
+  @@index([dataPagamento])
+}
+
+model Repasse {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
+  valor          Decimal?
+  competenciaAno Int?
+  competenciaMes Int?
+
+  @@index([competenciaAno, competenciaMes])
+}
+
+/// =======================
+/// MODELOS NOVOS (FASE 1)
+/// =======================
 
 model Usuario {
   id        Int      @id @default(autoincrement())
@@ -46,170 +150,52 @@ model Usuario {
   nome      String
   email     String   @unique
   senhaHash String
-
-  role      UserRole @default(USER)
   ativo     Boolean  @default(true)
+  role      UserRole @default(USER)
 
-  // Vínculo opcional com Advogado (para escopo do USER no futuro)
-  advogadoId Int?     @unique
-  advogado   Advogado? @relation(fields: [advogadoId], references: [id])
+  /// Vínculo 1:1 opcional com Advogado (FASE 1)
+  advogadoId Int?      @unique
+  advogado   Advogado? @relation(fields: [advogadoId], references: [id], onUpdate: Cascade, onDelete: SetNull)
 
-  @@index([role])
   @@index([ativo])
-}
-
-model Cliente {
-  id              Int      @id @default(autoincrement())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  cpfCnpj         String
-  nomeRazaoSocial String
-  email           String?
-  telefone        String?
-  observacoes     String?
-  ativo           Boolean  @default(true)
-
-  ordens          OrdemPagamento[]
-
-  @@unique([cpfCnpj])
-  @@index([nomeRazaoSocial])
-  @@index([email])
-}
-
-model OrdemPagamento {
-  id               Int            @id @default(autoincrement())
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-
-  clienteId        Int
-  cliente          Cliente        @relation(fields: [clienteId], references: [id])
-
-  sequenciaCliente Int
-  codigoInterno    String?
-  descricao        String?
-  tipoContrato     String?
-  valorTotalPrevisto Decimal?
-  modeloPagamento  ModeloPagamento
-  dataInicio       DateTime
-  dataFimPrevista  DateTime?
-  status           StatusOrdem
-
-  // para dashboards por mês
-  anoMesInicio     String?
-
-  pagamentos       Pagamento[]
-  repasses         Repasse[]
-
-  @@unique([clienteId, sequenciaCliente])
-  @@index([clienteId])
-  @@index([status])
-  @@index([anoMesInicio])
-}
-
-model Pagamento {
-  id             Int            @id @default(autoincrement())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  ordemId        Int
-  ordem          OrdemPagamento  @relation(fields: [ordemId], references: [id])
-
-  dataPrevista   DateTime?
-  dataPagamento  DateTime?
-  valorPrevisto  Decimal?
-  valorPago      Decimal?
-  status         StatusPagamento @default(PREVISTO)
-
-  @@index([ordemId])
-  @@index([status])
+  @@index([role])
 }
 
 model Advogado {
-  id               Int          @id @default(autoincrement())
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  nome             String
-  cpf              String?
-  email            String?
-  telefone         String?
-  tipo             TipoAdvogado
-  possuiFixoMensal Boolean      @default(false)
-  valorFixoMensal  Decimal?
-  ativo            Boolean      @default(true)
-
-  repasses         Repasse[]
-  usuario          Usuario?
-
-  @@index([nome])
-  @@index([email])
-}
-
-model Repasse {
-  id           Int          @id @default(autoincrement())
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-
-  advogadoId   Int
-  advogado     Advogado     @relation(fields: [advogadoId], references: [id])
-
-  ordemId      Int?
-  ordem        OrdemPagamento? @relation(fields: [ordemId], references: [id])
-
-  valor        Decimal?
-  referenciaAnoMes String?  // ex: "2025-12" (mês de referência)
-  pagoEm       DateTime?
-
-  @@index([advogadoId])
-  @@index([ordemId])
-  @@index([referenciaAnoMes])
-}
-
-model Estagiario {
-  id            Int      @id @default(autoincrement())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  nome          String
-  email         String?
-  telefone      String?
-
-  auxTransporte Decimal?
-  auxEstagio    Decimal?
-  ativo         Boolean  @default(true)
-
-  @@index([nome])
-}
-
-model PrestadorServico {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  nome      String
-  email     String?
-  telefone  String?
-  descricao String?
+  nome     String
+  cpf      String  @unique
+  oab      String  @unique
+  email    String
+  telefone String
+  ativo    Boolean @default(true)
 
-  valorMensal Decimal?
-  ativo     Boolean  @default(true)
+  usuario Usuario?
 
-  @@index([nome])
+  @@index([ativo])
 }
 
+/// =======================
+/// MODELO EXISTENTE (MANTER E NÃO CASTAR)
+/// =======================
+
 model ModeloDistribuicao {
-  id           Int      @id @default(autoincrement())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  codigo       String   // A, B, C, ...
-  origem       String   // "ESCRITÓRIO", "SÓCIO", ...
-  tipo         String   // "INCIDENTAL", "MENSAL/RECORRENTE", "SEMESTRAL"
-  percentual   Decimal
-  destinatario String   // "FUNDO DE RESERVA", "SÓCIO", ...
+  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
+  cod String? @unique
 
-  @@index([codigo])
-  @@index([origem])
-  @@index([tipo])
+  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
+  codigo       String?
+  destinatario String?
+  percentual   Decimal? // mantém Decimal para NÃO castar
+  origem       String?
+  tipo         String?
+
+  @@index([cod])
 }

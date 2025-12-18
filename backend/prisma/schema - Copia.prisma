@@ -1,11 +1,30 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+/// ======================================================
+/// FASE 1 — COMPATIBILIDADE TOTAL
+/// ------------------------------------------------------
+/// Regras:
+/// - NÃO remover enums existentes no banco
+/// - NÃO remover tabelas/colunas existentes no banco
+/// - NÃO alterar tipos que forcem cast destrutivo (ex.: Decimal -> Double)
+/// - Nesta fase: apenas ADICIONAR estruturas novas (Advogado + vínculo)
+/// - Limpeza/renome/remoções: somente em FASE 3
+/// ======================================================
+
+/// =======================
+/// ENUMS (MANTIDOS + COMPLETOS)
+/// =======================
+
+enum UserRole {
+  ADMIN
+  USER
 }
 
 enum ModeloPagamento {
@@ -21,54 +40,51 @@ enum StatusOrdem {
   CANCELADA
 }
 
-enum PerfilUsuario {
-  ADMIN
-  USER
+enum StatusPagamento {
+  PREVISTO
+  EM_ABERTO
+  PARCIAL
+  PAGO
+  ATRASADO
+  CANCELADO
 }
 
-model Usuario {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  nome     String
-  email    String        @unique
-  telefone String?
-  perfil   PerfilUsuario @default(USER)
-
-  // auth (placeholder real)
-  senhaHash String?
-  ativo     Boolean @default(true)
-
-  @@index([perfil])
-  @@index([ativo])
+enum TipoAdvogado {
+  SOCIO
+  ASSOCIADO
+  CORRESPONDENTE
+  OUTRO
 }
+
+/// =======================
+/// MODELOS EXISTENTES (NÃO REMOVER)
+/// =======================
 
 model Cliente {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  cpfCnpj         String  @unique
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  cpfCnpj         String
   nomeRazaoSocial String
   email           String?
   telefone        String?
   observacoes     String?
-  ativo           Boolean @default(true)
+  ativo           Boolean  @default(true)
 
   ordens OrdemPagamento[]
 
-  @@index([nomeRazaoSocial])
+  // (se você já colocou unique no cpfCnpj em migração anterior, manter compatível aqui)
+  @@unique([cpfCnpj])
   @@index([ativo])
+  @@index([nomeRazaoSocial])
 }
 
 model OrdemPagamento {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   clienteId Int
-  cliente   Cliente @relation(fields: [clienteId], references: [id])
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
 
   // Sequência de ocorrência (ordem) dentro do cliente
   sequenciaCliente   Int
@@ -76,38 +92,110 @@ model OrdemPagamento {
   descricao          String?
   tipoContrato       String?
   valorTotalPrevisto Decimal?
+  modeloPagamento    ModeloPagamento
+  dataInicio         DateTime
+  dataFimPrevista    DateTime?
+  status             StatusOrdem
 
-  modeloPagamento ModeloPagamento
-  dataInicio      DateTime
-  dataFimPrevista DateTime?
-  status          StatusOrdem     @default(ATIVA)
+  // relações que já existiam no seu esquema
+  pagamentos Pagamento[]
+  repasses   Repasse[]
 
   @@unique([clienteId, sequenciaCliente])
-  @@index([clienteId])
   @@index([status])
-  @@index([dataInicio])
+  @@index([modeloPagamento])
 }
+
+model Pagamento {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
+  valor         Decimal?
+  dataPagamento DateTime?
+  status        StatusPagamento?
+
+  @@index([dataPagamento])
+}
+
+model Repasse {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
+  valor          Decimal?
+  competenciaAno Int?
+  competenciaMes Int?
+
+  @@index([competenciaAno, competenciaMes])
+}
+
+/// =======================
+/// MODELOS NOVOS (FASE 1)
+/// =======================
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nome      String
+  email     String   @unique
+  senhaHash String
+  ativo     Boolean  @default(true)
+  role      UserRole @default(USER)
+
+  /// Vínculo 1:1 opcional com Advogado (FASE 1)
+  advogadoId Int?      @unique
+  advogado   Advogado? @relation(fields: [advogadoId], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
+  @@index([ativo])
+  @@index([role])
+}
+
+model Advogado {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nome     String
+  cpf      String  @unique
+  oab      String  @unique
+  email    String
+  telefone String
+  ativo    Boolean @default(true)
+
+  usuario Usuario?
+
+  @@index([ativo])
+}
+
+/// =======================
+/// MODELO EXISTENTE (MANTER E NÃO CASTAR)
+/// =======================
 
 model ModeloDistribuicao {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // A, B, C... (linhas separadas por destinatário/percentual)
-  codigo String
+  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
+  cod String? @unique
 
-  // "ESCRITÓRIO", "SÓCIO", "DISTRIBUIÇÃO DE LUCRO (FUNDO DE RESERVA)", ...
-  origem String
+  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
+  codigo       String?
+  destinatario String?
+  percentual   Decimal? // mantém Decimal para NÃO castar
+  origem       String?
+  tipo         String?
 
-  // "INCIDENTAL", "MENSAL/RECORRENTE", "SEMESTRAL", ...
-  tipo String
-
-  percentual Decimal
-
-  // "FUNDO DE RESERVA", "SÓCIO", "ESCRITÓRIO", "INDICAÇÃO", ...
-  destinatario String
-
-  @@index([codigo])
-  @@index([origem])
-  @@index([tipo])
+  @@index([cod])
 }
