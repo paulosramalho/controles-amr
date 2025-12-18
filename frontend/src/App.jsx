@@ -56,7 +56,7 @@ function Login({ onLogin }) {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center gap-3 mb-6">
-          <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
+          <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
           <div>
             <div className="text-sm font-semibold text-slate-900">AMR</div>
             <div className="text-xs text-slate-500">
@@ -151,7 +151,7 @@ function AppShell({ user, onLogout }) {
       <aside className="w-64 h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
         <div className="p-5 border-b border-slate-200">
           <div className="flex flex-col items-center justify-center">
-            <img src={logoSrc} alt="AMR" className="h-14 w-auto" />
+            <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
 
             {/* Pedido: texto abaixo da logo, centralizado */}
             <div className="mt-2 text-center">
