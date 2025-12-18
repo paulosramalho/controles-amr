@@ -50,6 +50,7 @@ function Login({ onLogin }) {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <div className="flex items-center gap-3 mb-6">
           <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
+          <p></p>
           <div>
             <div className="text-sm font-semibold text-slate-900">AMR</div>
             <div className="text-xs text-slate-500">
