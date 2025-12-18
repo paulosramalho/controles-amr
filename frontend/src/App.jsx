@@ -172,7 +172,7 @@ function AppShell({ user, onLogout }) {
           <div className="flex flex-col items-center justify-center">
             {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
                 altere o "h-14" abaixo (ex.: h-12, h-10, h-16...) */}
-             <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
+             <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
 
             {/* Pedido: texto abaixo da logo, centralizado */}
             <div className="mt-2 text-center">
