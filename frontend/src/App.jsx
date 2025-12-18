@@ -2,18 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth } from "./lib/api";
-
-import AdvogadosPage from "./pages/Configuracoes/Advogados/AdvogadosPage";
-
-/**
- * App.jsx — versão funcional (loga) + ajustes UI:
- * 1) Botão "Entrar" vira "Entrando..." após click (loading state)
- * 2) Texto "Controle de recebimentos, repasses e obrigações internas"
- *    embaixo da logo, centralizados (Login + Sidebar) — agora em 1 linha e mais destaque
- * 3) Sidebar hover mais evidente
- * 4) Rodapé da sidebar: inverte Data/Hora com Usuário/Tipo + aumenta Data/Hora ~2pt
- * 5) NÃO mexer no processo de login: mantido 100% (mesma chamada/apiFetch e payload)
- */
+import AdvogadosPage from "./pages/Advogados";
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -43,18 +32,15 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false); // UI only
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
-    if (isSubmitting) return; // evita duplo clique
+    if (isSubmitting) return;
     setError("");
     setIsSubmitting(true);
     try {
-      // ⚠️ Processo de login NÃO ALTERADO:
-      // mesma rota, mesma chamada, mesmo payload e mesmo fluxo
       const resp = await apiFetch("/auth/login", {
-      // const resp = await apiFetch("/api/auth/login", {
         method: "POST",
         body: { email, senha },
       });
@@ -71,11 +57,7 @@ function Login({ onLogin }) {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col items-center text-center">
-          {/* 🔧 Ajuste da altura da logo NO LOGIN:
-              altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
           <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
-
-          {/* Texto abaixo da logo: 1 linha, centralizado, mais destaque, mais afastado */}
           <div className="mt-5 text-[15px] font-semibold text-slate-800 tracking-wide whitespace-nowrap">
             Controle de recebimentos, repasses e obrigações internas
           </div>
@@ -148,19 +130,20 @@ function Placeholder({ title }) {
 function AppShell({ user, onLogout }) {
   const clock = useClock();
   const navigate = useNavigate();
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
 
   const menu = useMemo(
     () => [
       { to: "/dashboard", label: "Dashboard" },
       { to: "/pagamentos", label: "Pagamentos" },
       { to: "/repasses", label: "Repasses" },
-      { to: "/advogados", label: "Advogados" },
+      { to: "/advogados", label: isAdmin ? "Advogados" : "Meu Perfil" },
       { to: "/clientes", label: "Clientes" },
       { to: "/historico", label: "Histórico" },
       { to: "/relatorios", label: "Relatórios" },
       { to: "/configuracoes", label: "Configurações" },
     ],
-    []
+    [isAdmin]
   );
 
   useEffect(() => {
@@ -170,27 +153,15 @@ function AppShell({ user, onLogout }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
       <aside className="w-64 h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
         <div className="p-5 border-b border-slate-200">
           <div className="flex flex-col items-center justify-center">
-            {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
-                altere o "h-7" abaixo (ex.: h-8, h-10...) */}
             <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
-
-            {/* Texto abaixo da logo, centralizado */}
             <div className="mt-3 text-center">
-              {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
               <div className="text-xs text-slate-500 leading-tight tracking-wide">
                 Controle de recebimentos, repasses e obrigações internas
               </div>
             </div>
-
-            {/* Mantido comentado, como já combinado em rodadas anteriores:
-            <div className="mt-2 text-center text-base font-semibold text-slate-900">
-              AMR Advogados
-            </div>
-            */}
           </div>
         </div>
 
@@ -214,13 +185,11 @@ function AppShell({ user, onLogout }) {
         </nav>
 
         <div className="p-4 border-t border-slate-200">
-          {/* INVERTIDO: Data/Hora em cima (maior ~2pt) */}
           <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
           </div>
 
-          {/* Usuário/Tipo embaixo */}
           <div className="mt-1 flex items-center justify-between text-sm text-slate-600">
             <span className="truncate max-w-[160px]">{user?.nome || "—"}</span>
             <span className="font-semibold text-slate-700">{user?.role || "—"}</span>
@@ -235,15 +204,12 @@ function AppShell({ user, onLogout }) {
         </div>
       </aside>
 
-      {/* Conteúdo */}
       <main className="flex-1">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/pagamentos" element={<Placeholder title="Pagamentos" />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
-
-          <Route path="/advogados" element={<AdvogadosPage auth={auth} />} />
-
+          <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<Placeholder title="Clientes" />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
@@ -267,9 +233,6 @@ export default function App() {
     localStorage.removeItem("auth");
   }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
-
+  if (!user) return <Login onLogin={handleLogin} />;
   return <AppShell user={user} onLogout={handleLogout} />;
 }

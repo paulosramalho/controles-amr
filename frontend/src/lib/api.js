@@ -1,6 +1,9 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+const BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:4000/api";
+
 const TOKEN_KEY = "amr_token";
-const USER_KEY = "amr_user"; // opcional, mas útil
+const USER_KEY = "amr_user";
 
 export function setAuth(token, user) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -34,32 +37,36 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
-
-  // 401 => desloga automático (como você pediu)
-  if (res.status === 401) {
-    clearAuth();
-    // evita loop caso já esteja na tela de login
-    if (window.location.pathname !== "/") window.location.href = "/";
-    throw new Error("Não autenticado.");
-  }
 
   const text = await res.text();
 
-  // Se vier HTML (<!DOCTYPE...), a gente te dá o diagnóstico com começo do payload
+  let data = null;
   try {
-    return text ? JSON.parse(text) : null;
+    data = text ? JSON.parse(text) : null;
   } catch {
     throw new Error(
-      `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${text.slice(
-        0,
-        80
-      )}`
+      `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${text.slice(0, 80)}`
     );
   }
+
+  // 401 => desloga automático EXCETO no login
+  if (res.status === 401) {
+    const isLogin = path === "/auth/login";
+    if (!isLogin) {
+      clearAuth();
+      if (window.location.pathname !== "/") window.location.href = "/";
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.message || `Erro HTTP ${res.status}`);
+  }
+
+  return data;
 }
