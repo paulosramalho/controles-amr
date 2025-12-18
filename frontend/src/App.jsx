@@ -66,16 +66,15 @@ function Login({ onLogin }) {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex flex-col items-center mb-6 text-center">
           {/* 🔧 Ajuste da altura da logo NO LOGIN:
               altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
           <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
 
-          <div className="min-w-0">
-            <div className="text-xs text-slate-500 leading-snug max-w-xs">
-              Controle de recebimentos, repasses e obrigações internas
-            </div>
-          </div>
+          <div className="text-xs text-slate-500 leading-tight tracking-wide max-w-xs">
+    Controle de recebimentos, repasses e obrigações internas
+  </div>
+</div>
         </div>
 
         <h1 className="text-lg font-semibold text-slate-900">Login</h1>
@@ -173,15 +172,15 @@ function AppShell({ user, onLogout }) {
           <div className="flex flex-col items-center justify-center">
             {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
                 altere o "h-14" abaixo (ex.: h-12, h-10, h-16...) */}
-            <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
+             <img src={logoSrc} alt="AMR" className="h-6 w-auto" />
 
             {/* Pedido: texto abaixo da logo, centralizado */}
             <div className="mt-2 text-center">
              {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
-              <div className="text-xs font-bold text-slate-500 leading-snug">
-                Controle de recebimentos, repasses e obrigações internas
-              </div>
-            </div>
+              <div className="mt-2 text-center text-xs text-slate-500 leading-tight tracking-wide">
+    Controle de recebimentos, repasses e obrigações internas
+  </div>
+</div>
           </div>
 
           {/* Mantido comentado, como já combinado em rodadas anteriores:
