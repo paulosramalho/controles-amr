@@ -155,7 +155,7 @@ function AppShell({ user, onLogout }) {
 
             {/* Pedido: texto abaixo da logo, centralizado */}
             <div className="mt-2 text-center">
-              <div className="text-sm font-semibold text-slate-900">AMR</div>
+             /* <div className="text-sm font-semibold text-slate-900">AMR</div> */
               <div className="text-xs text-slate-500 leading-snug">
                 Controle de recebimentos, repasses e obrigações internas
               </div>
