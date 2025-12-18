@@ -53,8 +53,8 @@ function Login({ onLogin }) {
     try {
       // ⚠️ Processo de login NÃO ALTERADO:
       // mesma rota, mesma chamada, mesmo payload e mesmo fluxo
-      // ⚠️ Guardando por segurança ==> const resp = await apiFetch("/auth/login", {
-      const resp = await apiFetch("/api/auth/login", {
+      /const resp = await apiFetch("/auth/login", {
+      // const resp = await apiFetch("/api/auth/login", {
         method: "POST",
         body: { email, senha },
       });
