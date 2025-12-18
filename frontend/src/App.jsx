@@ -72,10 +72,9 @@ function Login({ onLogin }) {
           <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
 
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900">AMR</div>
-            <div className="text-xs text-slate-500 leading-snug">
-              Controle de recebimentos, repasses e obrigações internas
-            </div>
+            <div className="text-xs text-slate-500 leading-snug max-w-xs">
+    Controle de recebimentos, repasses e obrigações internas
+  </div>
           </div>
         </div>
 
@@ -216,7 +215,7 @@ function AppShell({ user, onLogout }) {
             <span className="truncate max-w-[160px]">{user?.nome || "—"}</span>
             <span className="font-semibold">{user?.role || "—"}</span>
           </div>
-          <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-1 flex font-bold items-center justify-between text-xs text-slate-500">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
           </div>
