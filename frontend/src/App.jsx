@@ -3,6 +3,8 @@ import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth } from "./lib/api";
 
+import AdvogadosPage from "./pages/Configuracoes/Advogados/AdvogadosPage";
+
 /**
  * App.jsx — versão funcional (loga) + ajustes UI:
  * 1) Botão "Entrar" vira "Entrando..." após click (loading state)
@@ -51,7 +53,8 @@ function Login({ onLogin }) {
     try {
       // ⚠️ Processo de login NÃO ALTERADO:
       // mesma rota, mesma chamada, mesmo payload e mesmo fluxo
-      const resp = await apiFetch("/auth/login", {
+      // ⚠️ Guardando por segurança ==> const resp = await apiFetch("/auth/login", {
+      const resp = await apiFetch("/api/auth/login", {
         method: "POST",
         body: { email, senha },
       });
@@ -238,7 +241,9 @@ function AppShell({ user, onLogout }) {
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/pagamentos" element={<Placeholder title="Pagamentos" />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
-          <Route path="/advogados" element={<Placeholder title="Advogados" />} />
+
+          <Route path="/advogados" element={<AdvogadosPage auth={auth} />} />
+
           <Route path="/clientes" element={<Placeholder title="Clientes" />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
