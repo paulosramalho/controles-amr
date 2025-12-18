@@ -71,9 +71,9 @@ function Login({ onLogin }) {
               altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
           <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
           <div className="min-w-0">
-            <P className="text-xs text-slate-500 leading-snug max-w-xs">
+            <Div className="text-xs text-slate-500 leading-snug max-w-xs">
               Controle de recebimentos, repasses e obrigações internas
-            </P>
+            </Div>
           </div>
         </div>
 
