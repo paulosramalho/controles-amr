@@ -72,10 +72,10 @@ function Login({ onLogin }) {
           <img src={logoSrc} alt="AMR" className="h-8 w-auto" />
 
           <div className="text-xs text-slate-500 leading-tight tracking-wide max-w-xs">
-    Controle de recebimentos, repasses e obrigações internas
-  </div>
-</div>
+           Controle de recebimentos, repasses e obrigações internas
+          </div>
         </div>
+       {/* </div> */}
 
         <h1 className="text-lg font-semibold text-slate-900">Login</h1>
         <p className="text-sm text-slate-600 mt-1">
@@ -129,7 +129,6 @@ function Login({ onLogin }) {
         </form>
       </div>
     </div>
-  </Div>
   );
 }
 
