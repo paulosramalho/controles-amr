@@ -281,38 +281,38 @@ app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
 app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
   const { nome, cpf, oab, email, telefone, chavePix, senha } = req.body;
 
-const cpfLimpo = onlyDigits(cpf);
-const oabNorm = String(oab || "").trim().toUpperCase();
-const emailNorm = String(email || "").trim().toLowerCase();
+  const nomeNorm = String(nome || "").trim();
+  const cpfLimpo = onlyDigits(cpf);
+  const oabNorm = String(oab || "").trim().toUpperCase();
+  const emailNorm = String(email || "").trim().toLowerCase();
 
+  // ⚠️ telefone: como você quer máscara no front, no back só normaliza ou garante string
+  const telefoneNorm = String(telefone || "");
 
-// ✅ Normalização (blindagem)
-  cpf = onlyDigits(cpf);
-  oab = String(oab || "").trim().toUpperCase();
-  email = String(email || "").trim().toLowerCase();
-  telefone = telefone ? onlyDigits(telefone) : null;
-  if (!nome || !cpf || !oab || !email || !senha) {
+  // chavePix (se existir no Prisma/DB)
+  const chavePixNorm = chavePix === undefined ? undefined : (String(chavePix || "").trim() || null);
+
+  if (!nomeNorm || !cpfLimpo || !oabNorm || !emailNorm || !senha) {
     return res.status(400).json({ message: "Campos obrigatórios ausentes." });
   }
 
-  // ✅ BUG FIX: bcrypt não existia aqui. Precisamos carregar.
   const { bcrypt } = await getAuthLibs();
   const senhaHash = await bcrypt.hash(String(senha), 10);
 
   const advogado = await prisma.advogado.create({
     data: {
-      nome,
-      cpf,
-      oab,
-      email,
-      telefone: telefone ?? null,
-      // campo novo (ok se existir no schema; se ainda não existir, comente aqui)
-      chavePix: chavePix ?? null,
+      nome: nomeNorm,
+      cpf: cpfLimpo,
+      oab: oabNorm,
+      email: emailNorm,
+      telefone: telefoneNorm,
       ativo: true,
+      ...(chavePixNorm !== undefined ? { chavePix: chavePixNorm } : {}),
+
       usuario: {
         create: {
-          nome,
-          email,
+          nome: nomeNorm,
+          email: emailNorm,
           senhaHash,
           role: "USER",
           ativo: true,
@@ -321,7 +321,7 @@ const emailNorm = String(email || "").trim().toLowerCase();
     },
   });
 
-  res.status(201).json(advogado);
+  return res.status(201).json(advogado);
 });
 
 app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
