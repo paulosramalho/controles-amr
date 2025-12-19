@@ -138,20 +138,21 @@ function AppShell({ user, onLogout }) {
   const menu = useMemo(() => {
     if (isAdmin) {
       return [
-        { to: "/dashboard", label: "Dashboard" },
-        {
-          type: "group",
-          label: "Configurações",
-          children: [
-            { to: "/advogados", label: "Advogados" },
-            { to: "/clientes", label: "Clientes" },
-            { to: "/pagamentos", label: "Pagamentos" },
-          ],
-        },
-        { to: "/repasses", label: "Repasses" },
-        { to: "/historico", label: "Histórico" },
-        { to: "/relatorios", label: "Relatórios" },
-      ];
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/repasses", label: "Repasses" },
+  { to: "/historico", label: "Histórico" },
+  { to: "/relatorios", label: "Relatórios" },
+
+  {
+    type: "group",
+    label: "Configurações",
+    children: [
+      { to: "/advogados", label: "Advogados" },
+      { to: "/clientes", label: "Clientes" },
+      { to: "/pagamentos", label: "Pagamentos" },
+    ],
+  },
+];
     }
 
     // USER
@@ -187,15 +188,24 @@ function AppShell({ user, onLogout }) {
       <button
         type="button"
         onClick={() => setOpenSettings((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase hover:text-slate-700"
+        className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
         aria-expanded={opened}
       >
         <span>{item.label}</span>
-        <span className="text-slate-400 text-sm">{opened ? "–" : "+"}</span>
+        <svg
+  viewBox="0 0 20 20"
+  className={`h-4 w-4 text-slate-400 transition-transform ${opened ? "rotate-180" : "rotate-0"}`}
+  aria-hidden="true"
+>
+  <path
+    fill="currentColor"
+    d="M5.3 7.7a1 1 0 0 1 1.4 0L10 11l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z"
+  />
+</svg>
       </button>
 
       {opened ? (
-        <div className="space-y-1">
+        <div className="space-y-1 pl-4">
           {item.children.map((child) => (
             <NavLink
               key={child.to}
