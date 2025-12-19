@@ -221,7 +221,7 @@ function AdvogadosAdmin() {
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState("");
 
-  const empty = { nome: "", cpf: "", oab: "", email: "", telefone: "", senha: "", chavePix: "" };
+  const empty = { nome: "", cpf: "", oab: "", email: "", telefone: "", senha: "", chavePix: "", confirmarSenha: "" };
   const [form, setForm] = useState(empty);
 
   const filtered = useMemo(() => {
@@ -300,12 +300,17 @@ function AdvogadosAdmin() {
         });
       } else {
         const payload = {
-          nome: String(form.nome).trim(),
-          email: String(form.email).trim(),
-          telefone: form.telefone || null,
-          chavePix: String(form.chavePix || "").trim() || null,
-          ...(form.senha ? { senha: form.senha } : {}),
-        };
+  nome: form.nome,
+  email: form.email,
+  telefone: form.telefone,
+  chavePix: form.chavePix,
+};
+
+// só manda senha se o usuário digitou
+if (form.senha) {
+  payload.senha = form.senha;
+  payload.confirmarSenha = form.confirmarSenha;
+}
         await apiFetch(`/advogados/${editing.id}`, { method: "PUT", body: payload }); // ✅ admin
       }
 
@@ -317,6 +322,8 @@ function AdvogadosAdmin() {
       setSaving(false);
     }
   }
+
+setForm((p) => ({ ...p, senha: "", confirmarSenha: "" }));
 
   async function toggleAtivo(row) {
     const novo = !row.ativo;
@@ -488,6 +495,16 @@ function AdvogadosAdmin() {
                       autoComplete="new-password"
                       value={form.senha}
                       onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+                    />
+                  </Field>
+
+                  <Field label="Confirmar senha">
+                    <Input
+                      type="password"
+                      value={form.confirmarSenha}
+                      onChange={(e) =>
+                      setForm((p) => ({ ...p, confirmarSenha: e.target.value }))
+                     }
                     />
                   </Field>
                 </div>
