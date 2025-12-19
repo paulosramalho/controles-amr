@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth } from "./lib/api";
 import AdvogadosPage from "./pages/Advogados";
+import UsuariosPage from "./pages/Usuarios";
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -278,7 +279,7 @@ function AppShell({ user, onLogout }) {
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
           <Route path="/configuracoes" element={<Placeholder title="Configurações" />} />
-          <Route path="/usuarios" element={<Placeholder title="Usuários" />} />
+          <Route path="/usuarios" element={<UsuariosPage user={user} />} />
         </Routes>
       </main>
     </div>

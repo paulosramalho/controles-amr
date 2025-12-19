@@ -2,16 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth } from "./lib/api";
-
-/**
- * App.jsx — versão funcional (loga) + ajustes UI:
- * 1) Botão "Entrar" vira "Entrando..." após click (loading state)
- * 2) Texto "Controle de recebimentos, repasses e obrigações internas"
- *    embaixo da logo, centralizados (Login + Sidebar) — agora em 1 linha e mais destaque
- * 3) Sidebar hover mais evidente
- * 4) Rodapé da sidebar: inverte Data/Hora com Usuário/Tipo + aumenta Data/Hora ~2pt
- * 5) NÃO mexer no processo de login: mantido 100% (mesma chamada/apiFetch e payload)
- */
+import AdvogadosPage from "./pages/Advogados";
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -41,16 +32,14 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false); // UI only
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
-    if (isSubmitting) return; // evita duplo clique
+    if (isSubmitting) return;
     setError("");
     setIsSubmitting(true);
     try {
-      // ⚠️ Processo de login NÃO ALTERADO:
-      // mesma rota, mesma chamada, mesmo payload e mesmo fluxo
       const resp = await apiFetch("/auth/login", {
         method: "POST",
         body: { email, senha },
@@ -68,11 +57,7 @@ function Login({ onLogin }) {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col items-center text-center">
-          {/* 🔧 Ajuste da altura da logo NO LOGIN:
-              altere o "h-10" abaixo (ex.: h-9, h-8, h-11...) */}
           <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
-
-          {/* Texto abaixo da logo: 1 linha, centralizado, mais destaque, mais afastado */}
           <div className="mt-5 text-[15px] font-semibold text-slate-800 tracking-wide whitespace-nowrap">
             Controle de recebimentos, repasses e obrigações internas
           </div>
@@ -145,20 +130,34 @@ function Placeholder({ title }) {
 function AppShell({ user, onLogout }) {
   const clock = useClock();
   const navigate = useNavigate();
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  
+  const [openSettings, setOpenSettings] = useState(false); // começa fechado
 
-  const menu = useMemo(
-    () => [
-      { to: "/dashboard", label: "Dashboard" },
-      { to: "/pagamentos", label: "Pagamentos" },
-      { to: "/repasses", label: "Repasses" },
+  // ✅ CORRIGIDO: useMemo com return fechado corretamente
+  const menu = useMemo(() => {
+    if (isAdmin) {
+      return [
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/repasses", label: "Repasses" },
+  { to: "/historico", label: "Histórico" },
+  { to: "/relatorios", label: "Relatórios" },
+
+  {
+    type: "group",
+    label: "Configurações",
+    children: [
       { to: "/advogados", label: "Advogados" },
       { to: "/clientes", label: "Clientes" },
-      { to: "/historico", label: "Histórico" },
-      { to: "/relatorios", label: "Relatórios" },
-      { to: "/configuracoes", label: "Configurações" },
+      { to: "/pagamentos", label: "Pagamentos" },
     ],
-    []
-  );
+  },
+];
+    }
+
+    // USER
+    return [{ to: "/advogados", label: "Meu Perfil Profissional" }];
+  }, [isAdmin]);
 
   useEffect(() => {
     if (location.pathname === "/") navigate("/dashboard");
@@ -167,35 +166,50 @@ function AppShell({ user, onLogout }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
       <aside className="w-64 h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
         <div className="p-5 border-b border-slate-200">
           <div className="flex flex-col items-center justify-center">
-            {/* 🔧 Ajuste da altura da logo NA SIDEBAR:
-                altere o "h-7" abaixo (ex.: h-8, h-10...) */}
             <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
-
-            {/* Texto abaixo da logo, centralizado */}
             <div className="mt-3 text-center">
-              {/* <div className="text-sm font-semibold text-slate-900">AMR</div> */}
               <div className="text-xs text-slate-500 leading-tight tracking-wide">
                 Controle de recebimentos, repasses e obrigações internas
               </div>
             </div>
-
-            {/* Mantido comentado, como já combinado em rodadas anteriores:
-            <div className="mt-2 text-center text-base font-semibold text-slate-900">
-              AMR Advogados
-            </div>
-            */}
           </div>
         </div>
 
-        <nav className="p-3 space-y-1 flex-1 overflow-auto">
-          {menu.map((item) => (
+        <nav className="p-3 space-y-2 flex-1 overflow-auto">
+          {menu.map((item) => {
+            if (item.type === "group") {
+  const opened = openSettings;
+
+  return (
+    <div key={item.label} className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpenSettings((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
+        aria-expanded={opened}
+      >
+        <span>{item.label}</span>
+        <svg
+  viewBox="0 0 20 20"
+  className={`h-4 w-4 text-slate-400 transition-transform ${opened ? "rotate-180" : "rotate-0"}`}
+  aria-hidden="true"
+>
+  <path
+    fill="currentColor"
+    d="M5.3 7.7a1 1 0 0 1 1.4 0L10 11l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z"
+  />
+</svg>
+      </button>
+
+      {opened ? (
+        <div className="space-y-1 pl-4">
+          {item.children.map((child) => (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={child.to}
+              to={child.to}
               className={({ isActive }) =>
                 `block rounded-lg px-4 py-2 text-sm transition-colors
                  ${
@@ -205,19 +219,40 @@ function AppShell({ user, onLogout }) {
                  }`
               }
             >
-              {item.label}
+              {child.label}
             </NavLink>
           ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `block rounded-lg px-4 py-2 text-sm transition-colors
+                   ${
+                     isActive
+                       ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
+                       : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
+                   }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-slate-200">
-          {/* INVERTIDO: Data/Hora em cima (maior ~2pt) */}
           <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
           </div>
 
-          {/* Usuário/Tipo embaixo */}
           <div className="mt-1 flex items-center justify-between text-sm text-slate-600">
             <span className="truncate max-w-[160px]">{user?.nome || "—"}</span>
             <span className="font-semibold text-slate-700">{user?.role || "—"}</span>
@@ -232,13 +267,12 @@ function AppShell({ user, onLogout }) {
         </div>
       </aside>
 
-      {/* Conteúdo */}
       <main className="flex-1">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/pagamentos" element={<Placeholder title="Pagamentos" />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
-          <Route path="/advogados" element={<Placeholder title="Advogados" />} />
+          <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<Placeholder title="Clientes" />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
@@ -262,9 +296,6 @@ export default function App() {
     localStorage.removeItem("auth");
   }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
-
+  if (!user) return <Login onLogin={handleLogin} />;
   return <AppShell user={user} onLogout={handleLogout} />;
 }
