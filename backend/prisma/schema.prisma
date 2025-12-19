@@ -171,6 +171,8 @@ model Advogado {
   oab      String  @unique
   email    String
   telefone String
+  chavePix String?  @db.VarChar(255)
+
   ativo    Boolean @default(true)
 
   usuario Usuario?
