@@ -167,7 +167,7 @@ function openPdfWindow({ advogado }) {
   ${
     logoSrc
       ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
-      : `<div style="width:58px;height:58px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
+      : `<div style="width:158px;height:158px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
   }
 </div>
 
