@@ -98,6 +98,15 @@ function Badge({ children, tone = "slate" }) {
 }
 
 /* ---------- PDF (print-friendly) ---------- */
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function openPdfWindow({ advogado }) {
   const nome = advogado?.nome || "—";
   const cpf = advogado?.cpf ? maskCPF(advogado.cpf) : "—";
@@ -111,7 +120,7 @@ function openPdfWindow({ advogado }) {
   <title>Relatório do Advogado</title>
   <style>
     *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-    body{ margin:0; padding:32px; color:#0f172a; }
+    body{ margin:0; padding:32px; color:#0f172a; background:#fff; }
     .top{ display:flex; align-items:center; gap:16px; border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:20px; }
     .logo{ width:64px; height:64px; object-fit:contain; }
     .h1{ font-size:18px; font-weight:700; margin:0; }
@@ -121,16 +130,18 @@ function openPdfWindow({ advogado }) {
     .row:last-child{ border-bottom:none; }
     .k{ width:140px; font-size:12px; color:#475569; font-weight:700; }
     .v{ flex:1; font-size:13px; color:#0f172a; word-break:break-word; }
-    .foot{ margin-top:18px; font-size:11px; color:#64748b; }
-    @media print {
-      body{ padding:18px; }
-      .foot{ page-break-inside:avoid; }
-    }
+    .btn{ margin-top:18px; display:inline-block; border:1px solid #cbd5e1; background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer; }
+    .foot{ margin-top:14px; font-size:11px; color:#64748b; }
+    @media print { .btn{ display:none; } body{ padding:18px; } }
   </style>
 </head>
 <body>
   <div class="top">
-    ${logoSrc ? `<img class="logo" src="${logoSrc}" alt="Logo" />` : `<div style="width:64px;height:64px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;">AMR</div>`}
+    ${
+      logoSrc
+        ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
+        : `<div style="width:64px;height:64px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;">AMR</div>`
+    }
     <div>
       <div class="h1">Amanda Maia Ramalho Advogados</div>
       <div class="sub">OAB: 1025/17</div>
@@ -152,31 +163,15 @@ function openPdfWindow({ advogado }) {
     </div>
   </div>
 
-  <div class="foot">
-    Documento gerado pelo sistema Controles-AMR.
-  </div>
+  <button class="btn" onclick="window.print()">Salvar como PDF</button>
 
-  <script>
-    // abre print automaticamente (usuário salva como PDF)
-    setTimeout(() => window.print(), 250);
-  </script>
+  <div class="foot">Documento gerado pelo sistema Controles-AMR.</div>
 </body>
 </html>`;
 
-  const w = window.open("", "_blank", "noopener,noreferrer,width=900,height=900");
-  if (!w) return alert("Seu navegador bloqueou a abertura do PDF. Permita pop-ups para este site.");
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  const url = "data:text/html;charset=utf-8," + encodeURIComponent(html);
+  const w = window.open(url, "_blank", "noopener,noreferrer,width=900,height=900");
+  if (!w) alert("Seu navegador bloqueou a abertura do PDF. Permita pop-ups para este site.");
 }
 
 /* ---------- USER: Meu Perfil Profissional ---------- */
