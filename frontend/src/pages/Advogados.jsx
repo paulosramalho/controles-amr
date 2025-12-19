@@ -127,12 +127,27 @@ function openPdfWindow({ advogado }) {
     .wrap{ max-width:720px; margin:0 auto; }
 
     /* header centralizado */
-    .header{ text-align:center; padding-bottom:18px; border-bottom:1px solid #e2e8f0; margin-bottom:20px; }
+    .header{
+  text-align:center;
+  padding-bottom:22px;
+  border-bottom:2px solid #e2e8f0;
+  margin-bottom:24px;
+}
+.brandRow{
+  display:flex;
+  justify-content:center;
+  margin-bottom:14px;
+}
     .brandRow{
       display:flex; align-items:center; justify-content:center; gap:14px;
       margin-bottom:10px;
     }
-    .logo{ width:58px; height:58px; object-fit:contain; }
+    .logo{
+  width:110px;
+  height:auto;
+  max-height:110px;
+  object-fit:contain;
+}
     .brandNameTop{ font-size:18px; font-weight:800; letter-spacing:.2px; }
 
     .line1{ font-size:16px; font-weight:800; margin:0; }
@@ -167,10 +182,9 @@ function openPdfWindow({ advogado }) {
   ${
     logoSrc
       ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
-      : `<div style="width:158px;height:158px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
+      : `<div style="width:58px;height:58px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
   }
 </div>
-
       <p class="line1">Amanda Maia Ramalho Advogados</p>
       <p class="line2">OAB: 1025/17</p>
     </div>
