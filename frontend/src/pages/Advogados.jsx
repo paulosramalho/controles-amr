@@ -3,6 +3,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { isValidEmail, isValidPhoneBR, maskPhoneBR } from "../lib/validators";
 
+/* ---------- logo (se existir) ---------- */
+let logoSrc = null;
+try {
+  logoSrc = new URL("../assets/logo.png", import.meta.url).href;
+} catch {
+  logoSrc = null;
+}
+
 /* ---------- helpers CPF (máscara + validação) ---------- */
 function onlyDigits(v = "") {
   return String(v).replace(/\D/g, "");
@@ -38,12 +46,12 @@ function isValidCPF(v = "") {
 }
 
 /* ---------- UI helpers simples ---------- */
-function Card({ title, subtitle, children, right }) {
+function Card({ title, subtitle, children, right, titleClassName = "" }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
       <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
         <div>
-          <div className="text-base font-semibold text-slate-900">{title}</div>
+          <div className={"font-semibold text-slate-900 " + titleClassName}>{title}</div>
           {subtitle ? <div className="mt-1 text-sm text-slate-600">{subtitle}</div> : null}
         </div>
         {right}
@@ -87,6 +95,88 @@ function Badge({ children, tone = "slate" }) {
       {children}
     </span>
   );
+}
+
+/* ---------- PDF (print-friendly) ---------- */
+function openPdfWindow({ advogado }) {
+  const nome = advogado?.nome || "—";
+  const cpf = advogado?.cpf ? maskCPF(advogado.cpf) : "—";
+  const chavePix = advogado?.chavePix || "—";
+
+  const html = `<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Relatório do Advogado</title>
+  <style>
+    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+    body{ margin:0; padding:32px; color:#0f172a; }
+    .top{ display:flex; align-items:center; gap:16px; border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:20px; }
+    .logo{ width:64px; height:64px; object-fit:contain; }
+    .h1{ font-size:18px; font-weight:700; margin:0; }
+    .sub{ font-size:12px; color:#475569; margin-top:4px; }
+    .box{ border:1px solid #e2e8f0; border-radius:12px; padding:16px; background:#f8fafc; }
+    .row{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #e2e8f0; }
+    .row:last-child{ border-bottom:none; }
+    .k{ width:140px; font-size:12px; color:#475569; font-weight:700; }
+    .v{ flex:1; font-size:13px; color:#0f172a; word-break:break-word; }
+    .foot{ margin-top:18px; font-size:11px; color:#64748b; }
+    @media print {
+      body{ padding:18px; }
+      .foot{ page-break-inside:avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    ${logoSrc ? `<img class="logo" src="${logoSrc}" alt="Logo" />` : `<div style="width:64px;height:64px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;">AMR</div>`}
+    <div>
+      <div class="h1">Amanda Maia Ramalho Advogados</div>
+      <div class="sub">OAB: 1025/17</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="row">
+      <div class="k">Nome completo</div>
+      <div class="v">${escapeHtml(nome)}</div>
+    </div>
+    <div class="row">
+      <div class="k">CPF</div>
+      <div class="v">${escapeHtml(cpf)}</div>
+    </div>
+    <div class="row">
+      <div class="k">Chave Pix</div>
+      <div class="v">${escapeHtml(chavePix)}</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Documento gerado pelo sistema Controles-AMR.
+  </div>
+
+  <script>
+    // abre print automaticamente (usuário salva como PDF)
+    setTimeout(() => window.print(), 250);
+  </script>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "noopener,noreferrer,width=900,height=900");
+  if (!w) return alert("Seu navegador bloqueou a abertura do PDF. Permita pop-ups para este site.");
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 /* ---------- USER: Meu Perfil Profissional ---------- */
@@ -183,6 +273,7 @@ function MeuPerfilProfissional({ user }) {
         title="Meu Perfil Profissional"
         subtitle="Atualize seus dados (nome, e-mail, telefone, chave Pix e senha)."
         right={<Badge tone="slate">{String(user?.role || "").toUpperCase()}</Badge>}
+        titleClassName="text-xl"
       >
         {err ? (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{err}</div>
@@ -272,7 +363,7 @@ function MeuPerfilProfissional({ user }) {
   );
 }
 
-/* ---------- ADMIN: lista + create + edit + status ---------- */
+/* ---------- ADMIN: lista + create + edit + status + view ---------- */
 function AdvogadosAdmin() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState("");
@@ -284,11 +375,11 @@ function AdvogadosAdmin() {
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState("");
 
+  const [openView, setOpenView] = useState(false);
+  const [viewing, setViewing] = useState(null);
+
   const empty = { nome: "", cpf: "", oab: "", email: "", telefone: "", senha: "", chavePix: "", confirmarSenha: "" };
   const [form, setForm] = useState(empty);
-
-  // Viewer de chave Pix completa (para truncar + expandir)
-  const [pixViewer, setPixViewer] = useState({ open: false, value: "" });
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -334,6 +425,11 @@ function AdvogadosAdmin() {
     });
     setFormErr("");
     setOpenForm(true);
+  }
+
+  function openDetails(row) {
+    setViewing(row);
+    setOpenView(true);
   }
 
   function validate(isCreate) {
@@ -385,7 +481,6 @@ function AdvogadosAdmin() {
           chavePix: String(form.chavePix || "").trim() || null,
         };
 
-        // só manda senha se digitou (com confirmação)
         if (String(form.senha || "").trim()) {
           payload.senha = form.senha;
           payload.confirmarSenha = form.confirmarSenha;
@@ -427,7 +522,8 @@ function AdvogadosAdmin() {
     <div className="p-6 space-y-4">
       <Card
         title="Advogados"
-        subtitle="Admin: cadastro, edição e ativação/inativação."
+        subtitle={null /* suprimido */}
+        titleClassName="text-xl"
         right={
           <button
             onClick={openCreate}
@@ -455,13 +551,10 @@ function AdvogadosAdmin() {
           <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
-                <th className="text-left px-4 py-3 font-semibold">ID</th>
-                <th className="text-left px-4 py-3 font-semibold">Nome</th>
-                <th className="text-left px-4 py-3 font-semibold">CPF</th>
                 <th className="text-left px-4 py-3 font-semibold">OAB</th>
-                <th className="text-left px-4 py-3 font-semibold">E-mail</th>
+                <th className="text-left px-4 py-3 font-semibold">Nome completo</th>
                 <th className="text-left px-4 py-3 font-semibold">Telefone</th>
-                <th className="text-left px-4 py-3 font-semibold">Chave Pix</th>
+                <th className="text-left px-4 py-3 font-semibold">E-mail</th>
                 <th className="text-left px-4 py-3 font-semibold">Status</th>
                 <th className="text-right px-4 py-3 font-semibold">Ações</th>
               </tr>
@@ -469,41 +562,26 @@ function AdvogadosAdmin() {
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-600" colSpan={9}>
+                  <td className="px-4 py-4 text-slate-600" colSpan={6}>
                     Carregando…
                   </td>
                 </tr>
               ) : filtered.length ? (
                 filtered.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">{r.id}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{r.nome}</td>
-                    <td className="px-4 py-3">{r.cpf ? maskCPF(r.cpf) : "—"}</td>
                     <td className="px-4 py-3">{r.oab || "—"}</td>
-                    <td className="px-4 py-3">{r.email || "—"}</td>
-                    <td className="px-4 py-3">{r.telefone ? maskPhoneBR(r.telefone) : "—"}</td>
-
-                    {/* Chave Pix truncada + botão expandir */}
                     <td className="px-4 py-3">
-                      {r.chavePix ? (
-                        <div className="flex items-center gap-2">
-                          <span className="max-w-[220px] truncate" title={r.chavePix}>
-                            {r.chavePix}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setPixViewer({ open: true, value: r.chavePix })}
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                            title="Ver chave completa"
-                          >
-                            +
-                          </button>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => openDetails(r)}
+                        className="font-semibold text-slate-900 hover:underline"
+                        title="Ver detalhes"
+                      >
+                        {r.nome || "—"}
+                      </button>
                     </td>
-
+                    <td className="px-4 py-3">{r.telefone ? maskPhoneBR(r.telefone) : "—"}</td>
+                    <td className="px-4 py-3">{r.email || "—"}</td>
                     <td className="px-4 py-3">
                       {r.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}
                     </td>
@@ -527,7 +605,7 @@ function AdvogadosAdmin() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-4 text-slate-600" colSpan={9}>
+                  <td className="px-4 py-4 text-slate-600" colSpan={6}>
                     Nenhum advogado encontrado.
                   </td>
                 </tr>
@@ -632,26 +710,93 @@ function AdvogadosAdmin() {
           </div>
         ) : null}
 
-        {/* modal da chave pix completa */}
-        {pixViewer.open ? (
+        {/* modal detalhes (view) */}
+        {openView && viewing ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-slate-900/40"
-              onClick={() => setPixViewer({ open: false, value: "" })}
-            />
-            <div className="relative w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-sm">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div className="text-base font-semibold text-slate-900">Chave Pix</div>
-                <button
-                  onClick={() => setPixViewer({ open: false, value: "" })}
-                  className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-                >
-                  ✕
-                </button>
+            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpenView(false)} />
+            <div className="relative w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-sm">
+              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-base font-semibold text-slate-900 truncate">{viewing.nome}</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    {viewing.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}
+                    <span className="text-xs text-slate-500">OAB: {viewing.oab || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* PDF */}
+                  <button
+                    type="button"
+                    onClick={() => openPdfWindow({ advogado: viewing })}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+                    title="Gerar PDF"
+                  >
+                    📄 PDF
+                  </button>
+                  {/* Editar */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenView(false);
+                      openEdit(viewing);
+                    }}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+                    title="Editar"
+                  >
+                    Editar
+                  </button>
+                  {/* Fechar */}
+                  <button
+                    onClick={() => setOpenView(false)}
+                    className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
+                    title="Fechar"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
+
               <div className="p-5">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 break-words">
-                  {pixViewer.value}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600">Nome completo</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.nome || "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600">OAB</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.oab || "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600">CPF</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.cpf ? maskCPF(viewing.cpf) : "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-xs font-semibold text-slate-600">Telefone</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.telefone ? maskPhoneBR(viewing.telefone) : "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+                    <div className="text-xs font-semibold text-slate-600">E-mail</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.email || "—"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+                    <div className="text-xs font-semibold text-slate-600">Chave Pix</div>
+                    <div className="mt-1 text-sm text-slate-900 break-words">{viewing.chavePix || "—"}</div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    onClick={() => setOpenView(false)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+                  >
+                    Fechar
+                  </button>
                 </div>
               </div>
             </div>
@@ -665,6 +810,5 @@ function AdvogadosAdmin() {
 /* ---------- EXPORT PRINCIPAL ---------- */
 export default function AdvogadosPage({ user }) {
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
-  // User não vê tabela (evita 403 no GET /advogados)
   return isAdmin ? <AdvogadosAdmin /> : <MeuPerfilProfissional user={user} />;
 }
