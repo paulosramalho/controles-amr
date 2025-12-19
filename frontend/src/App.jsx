@@ -145,7 +145,7 @@ function AppShell({ user, onLogout }) {
     { to: "/clientes", label: "Clientes" },
     { to: "/pagamentos", label: "Pagamentos" },
   ],
-}
+},
 
   // USER
   return [
