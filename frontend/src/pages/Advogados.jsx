@@ -164,14 +164,29 @@ function openPdfWindow({ advogado }) {
   </div>
 
   <button class="btn" onclick="window.print()">Salvar como PDF</button>
-
   <div class="foot">Documento gerado pelo sistema Controles-AMR.</div>
 </body>
 </html>`;
 
-  const url = "data:text/html;charset=utf-8," + encodeURIComponent(html);
-  const w = window.open(url, "_blank", "noopener,noreferrer,width=900,height=900");
-  if (!w) alert("Seu navegador bloqueou a abertura do PDF. Permita pop-ups para este site.");
+  // ✅ mais confiável que data: URL
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  // tenta abrir nova aba
+  const w = window.open(url, "_blank");
+  if (!w) {
+    // fallback: abre via "click" em anchor (às vezes passa onde window.open falha)
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // limpa a URL depois (dá tempo da nova aba carregar)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /* ---------- USER: Meu Perfil Profissional ---------- */
