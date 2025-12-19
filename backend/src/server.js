@@ -388,6 +388,34 @@ app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// Admin — Ativar/Inativar Advogado (soft delete)
+app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ativo } = req.body;
+
+    if (typeof ativo !== "boolean") {
+      return res.status(400).json({ message: "Campo 'ativo' deve ser boolean." });
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data: {
+        ativo,
+        usuario: {
+          update: { ativo },
+        },
+      },
+      include: { usuario: true },
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar status." });
+  }
+});
+
 // USER — Meu Perfil Profissional
 app.get("/api/advogados/me", requireAuth, async (req, res) => {
   if (!req.user?.advogadoId) {
