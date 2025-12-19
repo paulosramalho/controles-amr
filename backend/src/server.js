@@ -281,6 +281,11 @@ app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
 app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
   const { nome, cpf, oab, email, telefone, chavePix, senha } = req.body;
 
+const cpfLimpo = onlyDigits(cpf);
+const oabNorm = String(oab || "").trim().toUpperCase();
+const emailNorm = String(email || "").trim().toLowerCase();
+
+
 // ✅ Normalização (blindagem)
   cpf = onlyDigits(cpf);
   oab = String(oab || "").trim().toUpperCase();
