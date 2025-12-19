@@ -151,7 +151,7 @@ function openPdfWindow({ advogado }) {
     .brandNameTop{ font-size:18px; font-weight:800; letter-spacing:.2px; }
 
     .line1{ font-size:16px; font-weight:800; margin:0; }
-    .line2{ font-size:12px; color:#475569; margin:6px 0 0; font-weight:700; }
+    .line2{ font-size:16px; color:#475569; margin:6px 0 0; font-weight:700; }
 
     /* box */
     .box{ border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#f8fafc; }
