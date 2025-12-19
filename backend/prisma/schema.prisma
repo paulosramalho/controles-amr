@@ -56,6 +56,12 @@ enum TipoAdvogado {
   OUTRO
 }
 
+enum TipoUsuario {
+  ADVOGADO
+  USUARIO
+  ESTAGIARIO
+}
+
 /// =======================
 /// MODELOS EXISTENTES (NÃO REMOVER)
 /// =======================
@@ -153,12 +159,20 @@ model Usuario {
   ativo     Boolean  @default(true)
   role      UserRole @default(USER)
 
+  // ✅ novo
+  tipoUsuario TipoUsuario @default(USUARIO)
+
+  // ✅ para usuário comum/estagiário (advogado usa dados do Advogado, se vinculado)
+  cpf      String? @unique
+  telefone String?
+
   /// Vínculo 1:1 opcional com Advogado (FASE 1)
   advogadoId Int?      @unique
   advogado   Advogado? @relation(fields: [advogadoId], references: [id], onUpdate: Cascade, onDelete: SetNull)
 
   @@index([ativo])
   @@index([role])
+  @@index([tipoUsuario])
 }
 
 model Advogado {
