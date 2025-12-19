@@ -862,29 +862,41 @@ function normalizeTelefone(v) {
 app.get("/api/usuarios", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const usuarios = await prisma.usuario.findMany({
-      orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+  orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+  select: {
+    id: true,
+    nome: true,
+    email: true,
+    role: true,
+    tipoUsuario: true,
+    cpf: true,
+    telefone: true,
+    advogadoId: true,
+    ativo: true,
+    createdAt: true,
+    updatedAt: true,
+    advogado: {
       select: {
-        id: true,
-        nome: true,
-        email: true,
-        role: true,
-        tipoUsuario: true,
         cpf: true,
         telefone: true,
-        advogadoId: true,
-        ativo: true,
-        createdAt: true,
-        updatedAt: true,
+        email: true,
+        nome: true,
       },
-    });
+    },
+  },
+});
+
 
     res.json(
-      usuarios.map((u) => ({
-        ...u,
-        createdAtBR: formatDateBR(u.createdAt),
-        updatedAtBR: formatDateBR(u.updatedAt),
-      }))
-    );
+  usuarios.map((u) => ({
+    ...u,
+    cpf: u.cpf ?? u.advogado?.cpf ?? null,
+    telefone: u.telefone ?? u.advogado?.telefone ?? null,
+    email: u.email ?? u.advogado?.email ?? null,
+    createdAtBR: formatDateBR(u.createdAt),
+    updatedAtBR: formatDateBR(u.updatedAt),
+  }))
+);
   } catch (err) {
     console.error("Erro ao listar usuarios:", err);
     res.status(500).json({ message: "Erro ao listar usuários." });
