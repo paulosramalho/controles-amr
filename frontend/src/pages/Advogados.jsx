@@ -76,12 +76,16 @@ function MeuPerfilProfissional({ user }) {
       const a = await apiFetch("/advogados/me", { method: "GET" }); // ✅ backend
       setPerfil(a);
       setForm({
-        nome: a?.nome || "",
-        email: a?.email || "",
-        telefone: a?.telefone || "",
-        chavePix: a?.chavePix || "",
-        senha: "",
-      });
+  nome: row.nome || "",
+  cpf: row.cpf || "",
+  oab: row.oab || "",
+  email: row.email || "",
+  telefone: row.telefone || "",
+  senha: "",
+  confirmarSenha: "",
+  chavePix: row.chavePix || "",
+});
+
     } catch (e) {
       setErr(e?.message || "Falha ao carregar seu perfil.");
     } finally {
@@ -278,52 +282,57 @@ function AdvogadosAdmin() {
   }
 
   async function save() {
-    if (saving) return;
-    setFormErr("");
-    const v = validate(!editing);
-    if (v) return setFormErr(v);
+  if (saving) return;
+  setFormErr("");
+  const v = validate(!editing);
+  if (v) return setFormErr(v);
 
-    setSaving(true);
-    try {
-      if (!editing) {
-        await apiFetch("/advogados", {
-          method: "POST",
-          body: {
-            nome: String(form.nome).trim(),
-            cpf: form.cpf,
-            oab: form.oab,
-            email: String(form.email).trim(),
-            telefone: form.telefone || null,
-            chavePix: String(form.chavePix || "").trim() || null,
-            senha: form.senha,
-          },
-        });
-      } else {
-        const payload = {
-  nome: form.nome,
-  email: form.email,
-  telefone: form.telefone,
-  chavePix: form.chavePix,
-};
+  setSaving(true);
+  try {
+    if (!editing) {
+      await apiFetch("/advogados", {
+        method: "POST",
+        body: {
+          nome: String(form.nome).trim(),
+          cpf: form.cpf,
+          oab: form.oab,
+          email: String(form.email).trim(),
+          telefone: form.telefone || "",
+          chavePix: String(form.chavePix || "").trim() || null,
+          senha: form.senha,
+        },
+      });
+    } else {
+      const payload = {
+        nome: String(form.nome).trim(),
+        email: String(form.email).trim(),
+        telefone: form.telefone || "",
+        chavePix: String(form.chavePix || "").trim() || null,
+      };
 
-// só manda senha se o usuário digitou
-if (form.senha) {
-  payload.senha = form.senha;
-  payload.confirmarSenha = form.confirmarSenha;
-}
-        await apiFetch(`/advogados/${editing.id}`, { method: "PUT", body: payload }); // ✅ admin
+      // só manda senha se digitou (e manda confirmação)
+      if (String(form.senha || "").trim()) {
+        payload.senha = form.senha;
+        payload.confirmarSenha = form.confirmarSenha;
       }
 
-      setOpenForm(false);
-      await load();
-    } catch (e) {
-      setFormErr(e?.message || "Falha ao salvar.");
-    } finally {
-      setSaving(false);
-    }
-  }
+      await apiFetch(`/advogados/${editing.id}`, {
+        method: "PUT",
+        body: payload,
+      });
 
-setForm((p) => ({ ...p, senha: "", confirmarSenha: "" }));
+      // limpa campos de senha após salvar edição
+      setForm((p) => ({ ...p, senha: "", confirmarSenha: "" }));
+    }
+
+    setOpenForm(false);
+    await load();
+  } catch (e) {
+    setFormErr(e?.message || "Falha ao salvar.");
+  } finally {
+    setSaving(false);
+  }
+}
 
   async function toggleAtivo(row) {
     const novo = !row.ativo;
