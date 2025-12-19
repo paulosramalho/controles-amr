@@ -131,6 +131,8 @@ function AppShell({ user, onLogout }) {
   const clock = useClock();
   const navigate = useNavigate();
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  
+  const [openSettings, setOpenSettings] = useState(false); // começa fechado
 
   // ✅ CORRIGIDO: useMemo com return fechado corretamente
   const menu = useMemo(() => {
@@ -178,33 +180,43 @@ function AppShell({ user, onLogout }) {
         <nav className="p-3 space-y-2 flex-1 overflow-auto">
           {menu.map((item) => {
             if (item.type === "group") {
-              return (
-                <div key={item.label} className="mt-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase">
-                    {item.label}
-                  </div>
+  const opened = openSettings;
 
-                  <div className="space-y-1">
-                    {item.children.map((child) => (
-                      <NavLink
-                        key={child.to}
-                        to={child.to}
-                        className={({ isActive }) =>
-                          `block rounded-lg px-4 py-2 text-sm transition-colors
-                           ${
-                             isActive
-                               ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
-                               : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
-                           }`
-                        }
-                      >
-                        {child.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
+  return (
+    <div key={item.label} className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpenSettings((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-slate-500 uppercase hover:text-slate-700"
+        aria-expanded={opened}
+      >
+        <span>{item.label}</span>
+        <span className="text-slate-400 text-sm">{opened ? "–" : "+"}</span>
+      </button>
+
+      {opened ? (
+        <div className="space-y-1">
+          {item.children.map((child) => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              className={({ isActive }) =>
+                `block rounded-lg px-4 py-2 text-sm transition-colors
+                 ${
+                   isActive
+                     ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
+                     : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
+                 }`
+              }
+            >
+              {child.label}
+            </NavLink>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
             return (
               <NavLink
