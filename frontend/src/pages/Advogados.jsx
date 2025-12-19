@@ -143,9 +143,9 @@ function openPdfWindow({ advogado }) {
       margin-bottom:10px;
     }
     .logo{
-  width:220px;
+  width:320px;
   height:auto;
-  max-height:220px;
+  max-height:320px;
   object-fit:contain;
 }
     .brandNameTop{ font-size:18px; font-weight:800; letter-spacing:.2px; }
