@@ -132,26 +132,29 @@ function AppShell({ user, onLogout }) {
   const navigate = useNavigate();
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
 
+  // ✅ CORRIGIDO: useMemo com return fechado corretamente
   const menu = useMemo(() => {
-  if (isAdmin) {
-    return [
-      { to: "/dashboard", label: "Dashboard" },
+    if (isAdmin) {
+      return [
+        { to: "/dashboard", label: "Dashboard" },
+        {
+          type: "group",
+          label: "Configurações",
+          children: [
+            { to: "/advogados", label: "Advogados" },
+            { to: "/clientes", label: "Clientes" },
+            { to: "/pagamentos", label: "Pagamentos" },
+          ],
+        },
+        { to: "/repasses", label: "Repasses" },
+        { to: "/historico", label: "Histórico" },
+        { to: "/relatorios", label: "Relatórios" },
+      ];
+    }
 
-      {
-  type: "group",
-  label: "Configurações",
-  children: [
-    { to: "/advogados", label: "Advogados" },
-    { to: "/clientes", label: "Clientes" },
-    { to: "/pagamentos", label: "Pagamentos" },
-  ],
-},
-
-  // USER
-  return [
-    { to: "/advogados", label: "Meu Perfil Profissional" },
-  ];
-}, [isAdmin]);
+    // USER
+    return [{ to: "/advogados", label: "Meu Perfil Profissional" }];
+  }, [isAdmin]);
 
   useEffect(() => {
     if (location.pathname === "/") navigate("/dashboard");
@@ -173,19 +176,40 @@ function AppShell({ user, onLogout }) {
         </div>
 
         <nav className="p-3 space-y-2 flex-1 overflow-auto">
-  {menu.map((item) => {
-    if (item.type === "group") {
-      return (
-        <div key={item.label} className="mt-2">
-          <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase">
-            {item.label}
-          </div>
+          {menu.map((item) => {
+            if (item.type === "group") {
+              return (
+                <div key={item.label} className="mt-2">
+                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase">
+                    {item.label}
+                  </div>
 
-          <div className="space-y-1">
-            {item.children.map((child) => (
+                  <div className="space-y-1">
+                    {item.children.map((child) => (
+                      <NavLink
+                        key={child.to}
+                        to={child.to}
+                        className={({ isActive }) =>
+                          `block rounded-lg px-4 py-2 text-sm transition-colors
+                           ${
+                             isActive
+                               ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
+                               : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
+                           }`
+                        }
+                      >
+                        {child.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
               <NavLink
-                key={child.to}
-                to={child.to}
+                key={item.to}
+                to={item.to}
                 className={({ isActive }) =>
                   `block rounded-lg px-4 py-2 text-sm transition-colors
                    ${
@@ -195,32 +219,11 @@ function AppShell({ user, onLogout }) {
                    }`
                 }
               >
-                {child.label}
+                {item.label}
               </NavLink>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <NavLink
-        key={item.to}
-        to={item.to}
-        className={({ isActive }) =>
-          `block rounded-lg px-4 py-2 text-sm transition-colors
-           ${
-             isActive
-               ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
-               : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
-           }`
-        }
-      >
-        {item.label}
-      </NavLink>
-    );
-  })}
-</nav>
+            );
+          })}
+        </nav>
 
         <div className="p-4 border-t border-slate-200">
           <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
