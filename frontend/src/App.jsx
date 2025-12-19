@@ -150,6 +150,7 @@ function AppShell({ user, onLogout }) {
       { to: "/advogados", label: "Advogados" },
       { to: "/clientes", label: "Clientes" },
       { to: "/pagamentos", label: "Pagamentos" },
+      { to: "/usuarios", label: "Usuários" },
     ],
   },
 ];
@@ -277,6 +278,7 @@ function AppShell({ user, onLogout }) {
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
           <Route path="/configuracoes" element={<Placeholder title="Configurações" />} />
+          <Route path="/usuarios" element={<Placeholder title="Usuários" />} />
         </Routes>
       </main>
     </div>
