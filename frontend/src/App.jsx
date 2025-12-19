@@ -138,20 +138,14 @@ function AppShell({ user, onLogout }) {
       { to: "/dashboard", label: "Dashboard" },
 
       {
-        type: "group",
-        label: "Configurações",
-        children: [
-          { to: "/advogados", label: "Advogados" },
-          { to: "/clientes", label: "Clientes" },
-          { to: "/pagamentos", label: "Pagamentos" },
-        ],
-      },
-
-      { to: "/repasses", label: "Repasses" },
-      { to: "/historico", label: "Histórico" },
-      { to: "/relatorios", label: "Relatórios" },
-    ];
-  }
+  type: "group",
+  label: "Configurações",
+  children: [
+    { to: "/advogados", label: "Advogados" },
+    { to: "/clientes", label: "Clientes" },
+    { to: "/pagamentos", label: "Pagamentos" },
+  ],
+},
 
   // USER
   return [
@@ -186,6 +180,7 @@ function AppShell({ user, onLogout }) {
           <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase">
             {item.label}
           </div>
+
           <div className="space-y-1">
             {item.children.map((child) => (
               <NavLink
