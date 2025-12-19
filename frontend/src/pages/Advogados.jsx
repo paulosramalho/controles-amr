@@ -108,74 +108,104 @@ function escapeHtml(str) {
 }
 
 function openPdfWindow({ advogado }) {
-  const nome = advogado?.nome || "—";
+  const nomeAdv = advogado?.nome ? String(advogado.nome).trim() : "Advogado";
   const cpf = advogado?.cpf ? maskCPF(advogado.cpf) : "—";
   const chavePix = advogado?.chavePix || "—";
+
+  // título/“nome sugerido” do PDF
+  const titulo = `Dados para Pix - ${nomeAdv}`;
 
   const html = `<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Relatório do Advogado</title>
+  <title>${escapeHtml(titulo)}</title>
   <style>
     *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
     body{ margin:0; padding:32px; color:#0f172a; background:#fff; }
-    .top{ display:flex; align-items:center; gap:16px; border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:20px; }
-    .logo{ width:64px; height:64px; object-fit:contain; }
-    .h1{ font-size:18px; font-weight:700; margin:0; }
-    .sub{ font-size:12px; color:#475569; margin-top:4px; }
-    .box{ border:1px solid #e2e8f0; border-radius:12px; padding:16px; background:#f8fafc; }
-    .row{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #e2e8f0; }
+    .wrap{ max-width:720px; margin:0 auto; }
+
+    /* header centralizado */
+    .header{ text-align:center; padding-bottom:18px; border-bottom:1px solid #e2e8f0; margin-bottom:20px; }
+    .brandRow{
+      display:flex; align-items:center; justify-content:center; gap:14px;
+      margin-bottom:10px;
+    }
+    .logo{ width:58px; height:58px; object-fit:contain; }
+    .brandNameTop{ font-size:18px; font-weight:800; letter-spacing:.2px; }
+
+    .line1{ font-size:16px; font-weight:800; margin:0; }
+    .line2{ font-size:12px; color:#475569; margin:6px 0 0; font-weight:700; }
+
+    /* box */
+    .box{ border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#f8fafc; }
+    .row{ display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #e2e8f0; }
     .row:last-child{ border-bottom:none; }
-    .k{ width:140px; font-size:12px; color:#475569; font-weight:700; }
+    .k{ width:150px; font-size:12px; color:#475569; font-weight:800; }
     .v{ flex:1; font-size:13px; color:#0f172a; word-break:break-word; }
-    .btn{ margin-top:18px; display:inline-block; border:1px solid #cbd5e1; background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer; }
-    .foot{ margin-top:14px; font-size:11px; color:#64748b; }
-    @media print { .btn{ display:none; } body{ padding:18px; } }
+
+    /* actions */
+    .actions{ margin-top:18px; display:flex; justify-content:center; gap:10px; }
+    .btn{
+      border:1px solid #cbd5e1; background:#0f172a; color:#fff;
+      padding:10px 14px; border-radius:12px; font-size:12px; font-weight:800; cursor:pointer;
+    }
+    .btn.secondary{ background:#fff; color:#0f172a; }
+    .foot{ margin-top:14px; font-size:11px; color:#64748b; text-align:center; }
+
+    @media print {
+      body{ padding:18px; }
+      .actions{ display:none; }
+    }
   </style>
 </head>
 <body>
-  <div class="top">
-    ${
-      logoSrc
-        ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
-        : `<div style="width:64px;height:64px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;">AMR</div>`
-    }
-    <div>
-      <div class="h1">Amanda Maia Ramalho Advogados</div>
-      <div class="sub">OAB: 1025/17</div>
-    </div>
-  </div>
+  <div class="wrap">
+    <div class="header">
+      <div class="brandRow">
+        ${
+          logoSrc
+            ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
+            : `<div style="width:58px;height:58px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
+        }
+        <div class="brandNameTop">Amanda Maia Ramalho Advogados</div>
+      </div>
 
-  <div class="box">
-    <div class="row">
-      <div class="k">Nome completo</div>
-      <div class="v">${escapeHtml(nome)}</div>
+      <p class="line1">Amanda Maia Ramalho Advogados</p>
+      <p class="line2">OAB: 1025/17</p>
     </div>
-    <div class="row">
-      <div class="k">CPF</div>
-      <div class="v">${escapeHtml(cpf)}</div>
-    </div>
-    <div class="row">
-      <div class="k">Chave Pix</div>
-      <div class="v">${escapeHtml(chavePix)}</div>
-    </div>
-  </div>
 
-  <button class="btn" onclick="window.print()">Salvar como PDF</button>
-  <div class="foot">Documento gerado pelo sistema Controles-AMR.</div>
+    <div class="box">
+      <div class="row">
+        <div class="k">Nome completo</div>
+        <div class="v">${escapeHtml(nomeAdv)}</div>
+      </div>
+      <div class="row">
+        <div class="k">CPF</div>
+        <div class="v">${escapeHtml(cpf)}</div>
+      </div>
+      <div class="row">
+        <div class="k">Chave Pix</div>
+        <div class="v">${escapeHtml(chavePix)}</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" onclick="window.print()">Salvar como PDF</button>
+      <button class="btn secondary" onclick="window.close()">Fechar</button>
+    </div>
+
+    <div class="foot">Documento gerado pelo sistema Controles-AMR.</div>
+  </div>
 </body>
 </html>`;
 
-  // ✅ mais confiável que data: URL
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
 
-  // tenta abrir nova aba
   const w = window.open(url, "_blank");
   if (!w) {
-    // fallback: abre via "click" em anchor (às vezes passa onde window.open falha)
     const a = document.createElement("a");
     a.href = url;
     a.target = "_blank";
@@ -185,7 +215,6 @@ function openPdfWindow({ advogado }) {
     a.remove();
   }
 
-  // limpa a URL depois (dá tempo da nova aba carregar)
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
