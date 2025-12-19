@@ -34,6 +34,11 @@ function onlyDigits(v = "") {
   return String(v).replace(/\D/g, "");
 }
 
+const normCPF = (v) => onlyDigits(v); // 11 dígitos esperado
+const normPhone = (v) => onlyDigits(v); // 11 dígitos esperado
+const normEmail = (v) => String(v || "").trim().toLowerCase();
+const normOAB = (v) => String(v || "").trim().toUpperCase();
+const normPix = (v) => (v === undefined ? undefined : (String(v || "").trim() || null));
 // Datas sempre DD/MM/AAAA (quando exibidas)
 function formatDateBR(date) {
   if (!date) return null;
@@ -287,7 +292,7 @@ app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
   const emailNorm = String(email || "").trim().toLowerCase();
 
   // ⚠️ telefone: como você quer máscara no front, no back só normaliza ou garante string
-  const telefoneNorm = String(telefone || "");
+  const telefoneNorm = normPhone(telefone);
 
   // chavePix (se existir no Prisma/DB)
   const chavePixNorm = chavePix === undefined ? undefined : (String(chavePix || "").trim() || null);
@@ -331,11 +336,9 @@ app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
 
     // Normalização
     const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
-    const emailNorm = email !== undefined ? String(email).trim().toLowerCase() : undefined;
-    const telNorm =
-      telefone !== undefined ? (telefone ? onlyDigits(telefone) : "") : undefined;
-    const pixNorm =
-      chavePix !== undefined ? (String(chavePix || "").trim() || null) : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
 
     // Senha com confirmação
     if (senha !== undefined && String(senha).length > 0) {
@@ -388,6 +391,82 @@ app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// USER — Meu Perfil Profissional
+app.get("/api/advogados/me", requireAuth, async (req, res) => {
+  if (!req.user?.advogadoId) {
+    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+  }
+
+  const advogado = await prisma.advogado.findUnique({
+    where: { id: Number(req.user.advogadoId) },
+  });
+
+  if (!advogado) return res.status(404).json({ message: "Advogado não encontrado." });
+  return res.json(advogado);
+});
+
+app.put("/api/advogados/me", requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.advogadoId) {
+      return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+    }
+
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
+
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
+
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    // Espelha no Usuario (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(req.user.advogadoId) },
+      data,
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "E-mail já cadastrado." });
+    }
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar perfil." });
+  }
+});
+
 // Admin — Ativar/Inativar Advogado (soft delete)
 app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -402,11 +481,8 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
       where: { id: Number(id) },
       data: {
         ativo,
-        usuario: {
-          update: { ativo },
-        },
+        usuario: { update: { ativo } },
       },
-      include: { usuario: true },
     });
 
     return res.json(advogado);
