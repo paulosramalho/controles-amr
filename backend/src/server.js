@@ -325,85 +325,150 @@ app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
 });
 
 app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { nome, email, telefone, chavePix, senha } = req.body;
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
 
-  const data = {
-    ...(nome !== undefined ? { nome } : {}),
-    ...(email !== undefined ? { email } : {}),
-    ...(telefone !== undefined ? { telefone } : {}),
-    ...(chavePix !== undefined ? { chavePix } : {}),
-  };
+    // Normalização
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? String(email).trim().toLowerCase() : undefined;
+    const telNorm =
+      telefone !== undefined ? (telefone ? onlyDigits(telefone) : "") : undefined;
+    const pixNorm =
+      chavePix !== undefined ? (String(chavePix || "").trim() || null) : undefined;
 
-  if (senha) {
-    const { bcrypt } = await getAuthLibs();
-    data.usuario = {
-      update: { senhaHash: await bcrypt.hash(String(senha), 10) },
+    // Senha com confirmação
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
     };
+
+    // Se mudou nome/email, espelha no Usuario vinculado (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data,
+    });
+
+    res.json(advogado);
+  } catch (err) {
+    // Unique violations etc.
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar advogado." });
   }
-
-  const advogado = await prisma.advogado.update({
-    where: { id: Number(id) },
-    data,
-  });
-
-  res.json(advogado);
 });
 
-app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { ativo } = req.body;
-
-  await prisma.advogado.update({
-    where: { id: Number(id) },
-    data: {
-      ativo: Boolean(ativo),
-      usuario: { update: { ativo: Boolean(ativo) } },
-    },
-  });
-
-  res.json({ success: true });
-});
-
+// USER — Meu Perfil Profissional
 app.get("/api/advogados/me", requireAuth, async (req, res) => {
-  if (!req.user.advogadoId) {
+  if (!req.user?.advogadoId) {
     return res.status(404).json({ message: "Usuário não vinculado a advogado." });
   }
 
   const advogado = await prisma.advogado.findUnique({
-    where: { id: req.user.advogadoId },
+    where: { id: Number(req.user.advogadoId) },
   });
 
-  res.json(advogado);
+  if (!advogado) {
+    return res.status(404).json({ message: "Advogado não encontrado." });
+  }
+
+  return res.json(advogado);
 });
 
 app.put("/api/advogados/me", requireAuth, async (req, res) => {
-  const { nome, email, telefone, chavePix, senha } = req.body;
+  try {
+    if (!req.user?.advogadoId) {
+      return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+    }
 
-  if (!req.user.advogadoId) {
-    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
-  }
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
 
-  const data = {
-    ...(nome !== undefined ? { nome } : {}),
-    ...(email !== undefined ? { email } : {}),
-    ...(telefone !== undefined ? { telefone } : {}),
-    ...(chavePix !== undefined ? { chavePix } : {}),
-  };
+    // Normalização
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? String(email).trim().toLowerCase() : undefined;
+    const telNorm =
+      telefone !== undefined ? (telefone ? onlyDigits(telefone) : "") : undefined;
+    const pixNorm =
+      chavePix !== undefined ? (String(chavePix || "").trim() || null) : undefined;
 
-  if (senha) {
-    const { bcrypt } = await getAuthLibs();
-    data.usuario = {
-      update: { senhaHash: await bcrypt.hash(String(senha), 10) },
+    // Senha com confirmação
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
     };
+
+    // Espelha no Usuario (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(req.user.advogadoId) },
+      data,
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "E-mail já cadastrado." });
+    }
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar perfil." });
   }
-
-  const advogado = await prisma.advogado.update({
-    where: { id: req.user.advogadoId },
-    data,
-  });
-
-  res.json(advogado);
 });
 
 /* =========================
