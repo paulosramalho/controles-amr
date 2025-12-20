@@ -509,6 +509,8 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor recebido</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -527,6 +529,8 @@ useEffect(() => {
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorRecebido)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal - (c.valorRecebido || 0))}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
