@@ -15,7 +15,6 @@ try {
 function onlyDigits(v = "") {
   return String(v).replace(/\D/g, "");
 }
-
 function maskCPF(v = "") {
   const d = onlyDigits(v).slice(0, 11);
   const a = d.slice(0, 3);
@@ -27,7 +26,6 @@ function maskCPF(v = "") {
   if (d.length <= 9) return `${a}.${b}.${c}`;
   return `${a}.${b}.${c}-${e}`;
 }
-
 function isValidCPF(v = "") {
   const cpf = onlyDigits(v);
   if (cpf.length !== 11) return false;
@@ -97,6 +95,33 @@ function Badge({ children, tone = "slate" }) {
   );
 }
 
+function Toggle({ label, checked, onChange, hint }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-slate-800">{label}</div>
+          {hint ? <div className="mt-0.5 text-xs text-slate-600">{hint}</div> : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(!checked)}
+          className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
+            checked ? "bg-slate-900" : "bg-slate-300"
+          }`}
+          aria-pressed={checked}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+              checked ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- PDF (print-friendly) ---------- */
 function escapeHtml(str) {
   return String(str ?? "")
@@ -111,7 +136,6 @@ function openPdfWindow({ advogado }) {
   const nomeAdv = advogado?.nome ? String(advogado.nome).trim() : "Advogado";
   const cpf = advogado?.cpf ? maskCPF(advogado.cpf) : "—";
   const chavePix = advogado?.chavePix || "—";
-
   const titulo = `Dados para Pix - ${nomeAdv}`;
 
   const html = `<!doctype html>
@@ -397,7 +421,19 @@ function AdvogadosAdmin() {
   const [openView, setOpenView] = useState(false);
   const [viewing, setViewing] = useState(null);
 
-  const empty = { nome: "", cpf: "", oab: "", email: "", telefone: "", senha: "", chavePix: "", confirmarSenha: "" };
+  // ✅ toggle: criar usuário ao cadastrar advogado (somente no CREATE)
+  const [criarUsuario, setCriarUsuario] = useState(false);
+
+  const empty = {
+    nome: "",
+    cpf: "",
+    oab: "",
+    email: "",
+    telefone: "",
+    senha: "",
+    chavePix: "",
+    confirmarSenha: "",
+  };
   const [form, setForm] = useState(empty);
 
   const filtered = useMemo(() => {
@@ -428,6 +464,7 @@ function AdvogadosAdmin() {
     setForm(empty);
     setFormErr("");
     setCpfLiveError("");
+    setCriarUsuario(false); // default: NÃO cria usuário
     setOpenForm(true);
   }
 
@@ -443,7 +480,8 @@ function AdvogadosAdmin() {
       confirmarSenha: "",
       chavePix: row.chavePix || "",
     });
-    setCpfLiveError(""); // CPF está travado no edit, mas mantém limpo
+    setCriarUsuario(false); // não se aplica no edit
+    setCpfLiveError("");
     setFormErr("");
     setOpenForm(true);
   }
@@ -474,10 +512,17 @@ function AdvogadosAdmin() {
       if (cpfLiveError) return "CPF inválido.";
       if (!isValidCPF(form.cpf)) return "CPF inválido.";
       if (!String(form.oab).trim()) return "Informe a OAB.";
-      if (!String(form.senha).trim()) return "Informe a senha inicial.";
+
+      // ✅ senha só se criar usuário
+      if (criarUsuario) {
+        if (!String(form.senha).trim()) return "Informe a senha inicial (para o usuário).";
+        if (String(form.senha).trim().length < 8) return "Senha deve ter no mínimo 8 caracteres.";
+        if (String(form.confirmarSenha || "") !== String(form.senha || "")) return "As senhas não conferem.";
+      }
     }
 
-    if (String(form.senha || "").trim()) {
+    // EDIT: troca de senha opcional (como já estava)
+    if (!isCreate && String(form.senha || "").trim()) {
       if (String(form.senha).trim().length < 8) return "Senha deve ter no mínimo 8 caracteres.";
       if (String(form.confirmarSenha || "") !== String(form.senha || "")) return "As senhas não conferem.";
     }
@@ -488,24 +533,32 @@ function AdvogadosAdmin() {
   async function save() {
     if (saving) return;
     setFormErr("");
-    const v = validate(!editing);
+
+    const isCreate = !editing;
+    const v = validate(isCreate);
     if (v) return setFormErr(v);
 
     setSaving(true);
     try {
-      if (!editing) {
-        await apiFetch("/advogados", {
-          method: "POST",
-          body: {
-            nome: String(form.nome).trim(),
-            cpf: form.cpf,
-            oab: form.oab,
-            email: String(form.email).trim(),
-            telefone: form.telefone || "",
-            chavePix: String(form.chavePix || "").trim() || null,
-            senha: form.senha,
-          },
-        });
+      if (isCreate) {
+        const body = {
+          nome: String(form.nome).trim(),
+          cpf: form.cpf,
+          oab: String(form.oab || "").trim(),
+          email: String(form.email).trim(),
+          telefone: form.telefone || "",
+          chavePix: String(form.chavePix || "").trim() || null,
+
+          // ✅ novo
+          criarUsuario: !!criarUsuario,
+        };
+
+        if (criarUsuario) {
+          body.senha = form.senha;
+          body.confirmarSenha = form.confirmarSenha;
+        }
+
+        await apiFetch("/advogados", { method: "POST", body });
       } else {
         const payload = {
           nome: String(form.nome).trim(),
@@ -519,10 +572,7 @@ function AdvogadosAdmin() {
           payload.confirmarSenha = form.confirmarSenha;
         }
 
-        await apiFetch(`/advogados/${editing.id}`, {
-          method: "PUT",
-          body: payload,
-        });
+        await apiFetch(`/advogados/${editing.id}`, { method: "PUT", body: payload });
       }
 
       setOpenForm(false);
@@ -615,9 +665,7 @@ function AdvogadosAdmin() {
                     </td>
                     <td className="px-4 py-3">{r.telefone ? maskPhoneBR(r.telefone) : "—"}</td>
                     <td className="px-4 py-3">{r.email || "—"}</td>
-                    <td className="px-4 py-3">
-                      {r.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}
-                    </td>
+                    <td className="px-4 py-3">{r.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <button
@@ -654,17 +702,24 @@ function AdvogadosAdmin() {
             <div className="relative w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-sm">
               <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
                 <div className="text-base font-semibold text-slate-900">{editing ? "Editar advogado" : "Novo advogado"}</div>
-                <button
-                  onClick={() => (saving ? null : setOpenForm(false))}
-                  className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-                >
+                <button onClick={() => (saving ? null : setOpenForm(false))} className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100">
                   ✕
                 </button>
               </div>
               <div className="p-5">
                 {formErr ? (
-                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-                    {formErr}
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{formErr}</div>
+                ) : null}
+
+                {/* ✅ toggle só no cadastro */}
+                {!editing ? (
+                  <div className="mb-4">
+                    <Toggle
+                      label='Criar usuário para este advogado? (tipo "ADVOGADO")'
+                      checked={criarUsuario}
+                      onChange={setCriarUsuario}
+                      hint="Se marcado, cria também um registro em Usuários e habilita login. Se desmarcado, salva apenas em Advogados."
+                    />
                   </div>
                 ) : null}
 
@@ -678,22 +733,14 @@ function AdvogadosAdmin() {
                   </Field>
 
                   <Field label="Telefone/WhatsApp" hint="Formato: (99) 9 9999-9999">
-                    <Input
-                      value={form.telefone}
-                      inputMode="numeric"
-                      onChange={(e) => setForm((p) => ({ ...p, telefone: maskPhoneBR(e.target.value) }))}
-                    />
+                    <Input value={form.telefone} inputMode="numeric" onChange={(e) => setForm((p) => ({ ...p, telefone: maskPhoneBR(e.target.value) }))} />
                   </Field>
 
                   <Field label="Chave Pix">
                     <Input value={form.chavePix} onChange={(e) => setForm((p) => ({ ...p, chavePix: e.target.value }))} />
                   </Field>
 
-                  <Field
-                    label="CPF"
-                    hint="Obrigatório no cadastro"
-                    error={!editing ? cpfLiveError : ""}
-                  >
+                  <Field label="CPF" hint="Obrigatório no cadastro" error={!editing ? cpfLiveError : ""}>
                     <Input
                       value={form.cpf}
                       onChange={(e) => (editing ? null : handleCpfChange(e.target.value))}
@@ -707,23 +754,54 @@ function AdvogadosAdmin() {
                     <Input value={form.oab} onChange={(e) => setForm((p) => ({ ...p, oab: e.target.value }))} disabled={!!editing} />
                   </Field>
 
-                  <Field label="Senha" hint={editing ? "Preencha para trocar." : "Senha inicial (mín. 8)."}>
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      value={form.senha}
-                      onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
-                    />
-                  </Field>
+                  {/* ✅ senha só quando criar usuário (no CREATE) / no EDIT continua opcional */}
+                  {!editing ? (
+                    criarUsuario ? (
+                      <>
+                        <Field label="Senha (para o usuário)" hint="Senha inicial (mín. 8).">
+                          <Input
+                            type="password"
+                            autoComplete="new-password"
+                            value={form.senha}
+                            onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+                          />
+                        </Field>
 
-                  <Field label="Confirmar senha" hint={editing ? "Obrigatório se trocar a senha." : "Confirme a senha inicial."}>
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      value={form.confirmarSenha}
-                      onChange={(e) => setForm((p) => ({ ...p, confirmarSenha: e.target.value }))}
-                    />
-                  </Field>
+                        <Field label="Confirmar senha" hint="Confirme a senha inicial.">
+                          <Input
+                            type="password"
+                            autoComplete="new-password"
+                            value={form.confirmarSenha}
+                            onChange={(e) => setForm((p) => ({ ...p, confirmarSenha: e.target.value }))}
+                          />
+                        </Field>
+                      </>
+                    ) : (
+                      <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                        <b>Usuário não será criado.</b> Este advogado ficará apenas cadastrado em “Advogados” (sem login).
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      <Field label="Senha" hint="Preencha para trocar.">
+                        <Input
+                          type="password"
+                          autoComplete="new-password"
+                          value={form.senha}
+                          onChange={(e) => setForm((p) => ({ ...p, senha: e.target.value }))}
+                        />
+                      </Field>
+
+                      <Field label="Confirmar senha" hint="Obrigatório se trocar a senha.">
+                        <Input
+                          type="password"
+                          autoComplete="new-password"
+                          value={form.confirmarSenha}
+                          onChange={(e) => setForm((p) => ({ ...p, confirmarSenha: e.target.value }))}
+                        />
+                      </Field>
+                    </>
+                  )}
                 </div>
 
                 <div className="mt-5 flex justify-end gap-2">
@@ -781,11 +859,7 @@ function AdvogadosAdmin() {
                   >
                     Editar
                   </button>
-                  <button
-                    onClick={() => setOpenView(false)}
-                    className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-                    title="Fechar"
-                  >
+                  <button onClick={() => setOpenView(false)} className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100" title="Fechar">
                     ✕
                   </button>
                 </div>

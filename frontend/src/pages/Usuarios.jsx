@@ -72,11 +72,7 @@ function Modal({ open, title, onClose, children, footer }) {
       <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-slate-200">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="text-base font-semibold text-slate-900">{title}</div>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
-            type="button"
-          >
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" type="button">
             ✕
           </button>
         </div>
@@ -100,7 +96,11 @@ function Input({ label, value, onChange, type = "text", placeholder, disabled, h
         placeholder={placeholder}
         disabled={disabled}
       />
-      {error ? <div className="mt-1 text-xs text-red-700">{error}</div> : hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+      {error ? (
+        <div className="mt-1 text-xs text-red-700">{error}</div>
+      ) : hint ? (
+        <div className="mt-1 text-xs text-slate-500">{hint}</div>
+      ) : null}
     </label>
   );
 }
@@ -287,8 +287,6 @@ export default function UsuariosPage({ user }) {
       setCpfLiveError("");
       return;
     }
-
-    // critica na hora: quando completar 11 dígitos
     if (d.length === 11 && !isValidCPF(masked)) setCpfLiveError("CPF inválido.");
     else setCpfLiveError("");
   }
@@ -348,65 +346,53 @@ export default function UsuariosPage({ user }) {
     <div className="p-6">
       <Card
         title="Usuários"
-        subtitle={null /* suprimido */}
+        subtitle={null}
         right={
-          <div className="flex items-center gap-2">
-            <div className="hidden md:block">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar por nome, e-mail, CPF…"
-                className="w-[320px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-70"
-              disabled={loading}
-              title="Atualizar"
-            >
-              Atualizar
-            </button>
-
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-70"
-              disabled={loading}
-            >
-              + Novo usuário
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-70"
+            disabled={loading}
+          >
+            + Novo usuário
+          </button>
         }
       >
-        {/* busca mobile */}
-        <div className="md:hidden mb-3">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nome, e-mail, CPF…"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-          />
-        </div>
-
         {error ? (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         ) : null}
 
-        <div className="overflow-auto rounded-2xl border border-slate-200">
-          <table className="min-w-[900px] w-full text-sm">
+        {/* ✅ buscar + atualizar no topo (igual Advogados) */}
+        <div className="flex items-center gap-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nome, e-mail, CPF ou telefone…"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+          />
+          <button
+            onClick={load}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition disabled:opacity-70"
+            disabled={loading}
+            title="Atualizar"
+          >
+            Atualizar
+          </button>
+        </div>
+
+        <div className="mt-4 overflow-auto rounded-2xl border border-slate-200">
+          <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
+                {/* ✅ ordem pedida */}
                 <th className="text-left font-semibold px-4 py-3">Nome</th>
+                <th className="text-left font-semibold px-4 py-3">CPF</th>
+                <th className="text-left font-semibold px-4 py-3">Telefone</th>
                 <th className="text-left font-semibold px-4 py-3">E-mail</th>
                 <th className="text-left font-semibold px-4 py-3">Tipo</th>
                 <th className="text-left font-semibold px-4 py-3">Perfil</th>
-                <th className="text-left font-semibold px-4 py-3">CPF</th>
-                <th className="text-left font-semibold px-4 py-3">Telefone</th>
                 <th className="text-left font-semibold px-4 py-3">Status</th>
                 <th className="text-right font-semibold px-4 py-3">Ações</th>
               </tr>
@@ -428,28 +414,18 @@ export default function UsuariosPage({ user }) {
                 filtered.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-slate-900">{u.nome}</td>
+                    <td className="px-4 py-3 text-slate-700">{u.cpf ? maskCPF(u.cpf) : "—"}</td>
+                    <td className="px-4 py-3 text-slate-700">{u.telefone ? maskPhoneBR(u.telefone) : "—"}</td>
                     <td className="px-4 py-3 text-slate-700">{u.email}</td>
                     <td className="px-4 py-3">
-                      <Badge
-                        tone={
-                          u.tipoUsuario === "ADVOGADO"
-                            ? "blue"
-                            : u.tipoUsuario === "ESTAGIARIO"
-                            ? "amber"
-                            : "slate"
-                        }
-                      >
+                      <Badge tone={u.tipoUsuario === "ADVOGADO" ? "blue" : u.tipoUsuario === "ESTAGIARIO" ? "amber" : "slate"}>
                         {u.tipoUsuario || "—"}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <Badge tone={u.role === "ADMIN" ? "blue" : "slate"}>{u.role}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{u.cpf ? maskCPF(u.cpf) : "—"}</td>
-                    <td className="px-4 py-3 text-slate-700">{u.telefone ? maskPhoneBR(u.telefone) : "—"}</td>
-                    <td className="px-4 py-3">
-                      {u.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
-                    </td>
+                    <td className="px-4 py-3">{u.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <button
@@ -523,9 +499,7 @@ export default function UsuariosPage({ user }) {
             placeholder="999.999.999-99"
             error={
               cpfLiveError ||
-              (cpfTouched && (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") && !cpf
-                ? "CPF é obrigatório."
-                : "")
+              (cpfTouched && (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") && !cpf ? "CPF é obrigatório." : "")
             }
             hint="O sistema valida o CPF automaticamente ao completar 11 dígitos."
           />
@@ -536,11 +510,8 @@ export default function UsuariosPage({ user }) {
             onChange={(v) => {
               setTipoUsuario(v);
               const d = onlyDigits(cpf);
-              if ((v === "USUARIO" || v === "ESTAGIARIO") && d.length === 11 && !isValidCPF(cpf)) {
-                setCpfLiveError("CPF inválido.");
-              } else {
-                setCpfLiveError("");
-              }
+              if ((v === "USUARIO" || v === "ESTAGIARIO") && d.length === 11 && !isValidCPF(cpf)) setCpfLiveError("CPF inválido.");
+              else setCpfLiveError("");
             }}
             options={tipoOptions}
           />
@@ -565,16 +536,10 @@ export default function UsuariosPage({ user }) {
           />
 
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            <b>Regras:</b> CPF é obrigatório para <b>Usuário</b> e <b>Estagiário</b>. Para <b>Advogado</b>, informe o{" "}
-            <b>ID do Advogado</b> para vincular.
+            <b>Regras:</b> CPF é obrigatório para <b>Usuário</b> e <b>Estagiário</b>. Para <b>Advogado</b>, informe o <b>ID do Advogado</b> para vincular.
           </div>
 
-          <Input
-            label={editing ? "Nova senha (opcional)" : "Senha"}
-            value={senha}
-            onChange={setSenha}
-            type="password"
-          />
+          <Input label={editing ? "Nova senha (opcional)" : "Senha"} value={senha} onChange={setSenha} type="password" />
           <Input
             label={editing ? "Confirmar nova senha" : "Confirmar senha"}
             value={senhaConfirmacao}
