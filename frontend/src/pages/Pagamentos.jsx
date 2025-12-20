@@ -3,6 +3,37 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 /* ---------------- helpers ---------------- */
+function DateInput({ label, value, onChange, disabled, className = "" }) {
+  // value: "DD/MM/AAAA"  |  input[type=date] usa "YYYY-MM-DD"
+  const toISO = (ddmmyyyy) => {
+    if (!ddmmyyyy) return "";
+    const m = String(ddmmyyyy).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return "";
+    const [, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const fromISO = (iso) => {
+    if (!iso) return "";
+    const [yyyy, mm, dd] = iso.split("-");
+    if (!yyyy || !mm || !dd) return "";
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  return (
+    <label className={`block ${className}`}>
+      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <input
+        type="date"
+        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        value={toISO(value)}
+        onChange={(e) => onChange(fromISO(e.target.value))}
+        disabled={disabled}
+      />
+    </label>
+  );
+}
+
 function onlyDigits(v = "") {
   return String(v ?? "").replace(/\D/g, "");
 }
@@ -247,6 +278,12 @@ export default function PagamentosPage({ user }) {
     if (!isAdmin) return;
     load();
   }, [isAdmin]); // eslint-disable-line
+
+useEffect(() => {
+  if (!openParcelas || !selectedContrato) return;
+  const fresh = rows.find((r) => r.id === selectedContrato.id);
+  if (fresh) setSelectedContrato(fresh);
+}, [rows, openParcelas, selectedContrato]);
 
   function resetNovo() {
     setClienteId("");
@@ -598,13 +635,12 @@ export default function PagamentosPage({ user }) {
         {/* detalhamento conforme forma */}
         {formaPagamento === "AVISTA" ? (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Vencimento (à vista)"
-              value={avistaVenc}
-              onChange={setAvistaVenc}
-              placeholder="DD/MM/AAAA"
-              disabled={loading}
-            />
+            <DateInput
+  label="Vencimento (à vista)"
+  value={avistaVenc}
+  onChange={setAvistaVenc}
+  disabled={loading}
+/>
           </div>
         ) : null}
 
@@ -618,13 +654,13 @@ export default function PagamentosPage({ user }) {
               disabled={loading}
               inputMode="numeric"
             />
-            <Input
-              label="1º vencimento"
-              value={parcelasPrimeiroVenc}
-              onChange={setParcelasPrimeiroVenc}
-              placeholder="DD/MM/AAAA"
-              disabled={loading}
-            />
+            <DateInput
+  label="1º vencimento"
+  value={parcelasPrimeiroVenc}
+  onChange={setParcelasPrimeiroVenc}
+  disabled={loading}
+/>
+
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
               O backend divide o valor automaticamente e ajusta os centavos.
             </div>
@@ -649,13 +685,20 @@ export default function PagamentosPage({ user }) {
                 </div>
               </label>
 
-              <Input
-                label="Vencimento da entrada"
-                value={entradaVenc}
-                onChange={setEntradaVenc}
-                placeholder="DD/MM/AAAA"
-                disabled={loading}
-              />
+              <DateInput
+  label="Vencimento da entrada"
+  value={entradaVenc}
+  onChange={setEntradaVenc}
+  disabled={loading}
+/>
+
+<DateInput
+  label="1º vencimento (parcelas)"
+  value={entradaParcelasPrimeiroVenc}
+  onChange={setEntradaParcelasPrimeiroVenc}
+  disabled={loading}
+/>
+
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
                 A entrada fica como parcela nº 1.
@@ -801,22 +844,13 @@ export default function PagamentosPage({ user }) {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label className="block">
-  <div className="text-sm font-medium text-slate-700">Data do recebimento</div>
-  <input
-    type="date"
-    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-    value={
-      confData
-        ? confData.split("/").reverse().join("-")
-        : ""
-    }
-    onChange={(e) => {
-      const [y, m, d] = e.target.value.split("-");
-      setConfData(`${d}/${m}/${y}`);
-    }}
-    disabled={confirming}
-  />
+  <DateInput
+  label="Data do recebimento"
+  value={confData}
+  onChange={setConfData}
+  disabled={confirming}
+/>
+
 </label>
           <Select label="Meio" value={confMeio} onChange={setConfMeio} disabled={confirming}>
             <option value="PIX">PIX</option>
