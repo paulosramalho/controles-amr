@@ -443,6 +443,13 @@ useEffect(() => {
     return rows;
   }, [rows]);
 
+
+  // Totais do contrato selecionado (para o modal de parcelas)
+  const parcelasDoContrato = selectedContrato?.parcelas || [];
+  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
+  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
+  const diferencaTotais = totalRecebido - totalPrevisto;
+
   // SearchRow padrão
   const searchRow = (
     <div className="flex items-center gap-3">
@@ -464,13 +471,6 @@ useEffect(() => {
   );
 
   if (!isAdmin) {
-  // Totais do contrato selecionado (para o modal de parcelas)
-  const parcelasDoContrato = selectedContrato?.parcelas || [];
-  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
-  const diferencaTotais = totalRecebido - totalPrevisto;
-
-
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -858,7 +858,7 @@ useEffect(() => {
       {/* ---------- Modal: Confirmar recebimento ---------- */}
       <Modal
         open={confOpen}
-        title={confParcela ? `Confirmar recebimento — Parcela #${confParcela.numero}` : "Confirmar recebimento"}
+        title={confParcela ? `Receber Parcela — Parcela #${confParcela.numero}` : "Receber Parcela"}
         onClose={() => setConfOpen(false)}
         footer={
           <div className="flex items-center justify-end gap-2">
