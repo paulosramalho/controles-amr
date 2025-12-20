@@ -410,6 +410,7 @@ export default function ClientesPage({ user }) {
             Atualizar
           </button>
         </div>
+    /div>
   );
 
   return (
