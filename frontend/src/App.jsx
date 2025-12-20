@@ -6,6 +6,8 @@ import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
 import AdvogadosPage from "./pages/Advogados";
 import UsuariosPage from "./pages/Usuarios";
 import ClientesPage from "./pages/Clientes";
+import PagamentosPage from "./pages/Pagamentos";
+
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -283,7 +285,7 @@ function AppShell({ user, onLogout }) {
       <main className="ml-64 h-screen overflow-y-auto">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
-          <Route path="/pagamentos" element={<Placeholder title="Pagamentos" />} />
+          <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />
