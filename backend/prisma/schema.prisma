@@ -7,20 +7,198 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// ======================================================
-/// FASE 1 — COMPATIBILIDADE TOTAL
-/// ------------------------------------------------------
-/// Regras:
-/// - NÃO remover enums existentes no banco
-/// - NÃO remover tabelas/colunas existentes no banco
-/// - NÃO alterar tipos que forcem cast destrutivo (ex.: Decimal -> Double)
-/// - Nesta fase: apenas ADICIONAR estruturas novas (Advogado + vínculo)
-/// - Limpeza/renome/remoções: somente em FASE 3
-/// ======================================================
+model Cliente {
+  id              Int              @id @default(autoincrement())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  cpfCnpj         String           @unique
+  nomeRazaoSocial String
+  email           String?
+  telefone        String?
+  observacoes     String?
+  ativo           Boolean          @default(true)
+  ordens          OrdemPagamento[]
+  contratos        ContratoPagamento[]
 
-/// =======================
-/// ENUMS (MANTIDOS + COMPLETOS)
-/// =======================
+  @@index([ativo])
+  @@index([nomeRazaoSocial])
+}
+
+model OrdemPagamento {
+  id                 Int             @id @default(autoincrement())
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  clienteId          Int
+  sequenciaCliente   Int
+  codigoInterno      String?
+  descricao          String?
+  tipoContrato       String?
+  valorTotalPrevisto Decimal?
+  modeloPagamento    ModeloPagamento
+  dataInicio         DateTime
+  dataFimPrevista    DateTime?
+  status             StatusOrdem
+  cliente            Cliente         @relation(fields: [clienteId], references: [id])
+  pagamentos         Pagamento[]
+  repasses           Repasse[]
+
+  @@unique([clienteId, sequenciaCliente])
+  @@index([status])
+  @@index([modeloPagamento])
+}
+
+model Pagamento {
+  id               Int              @id @default(autoincrement())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  dataPagamento    DateTime?
+  status           StatusPagamento?
+  ordemPagamentoId Int?
+  valor            Decimal?
+  ordemPagamento   OrdemPagamento?  @relation(fields: [ordemPagamentoId], references: [id])
+
+  @@index([dataPagamento])
+}
+
+// =========================
+// NOVO — PAGAMENTOS (CONTRATOS + PARCELAS)
+// =========================
+
+enum FormaPagamentoContrato {
+  AVISTA
+  ENTRADA_PARCELAS
+  PARCELADO
+}
+
+enum StatusParcela {
+  PREVISTA
+  RECEBIDA
+  CANCELADA
+}
+
+enum MeioRecebimento {
+  PIX
+  TED
+  BOLETO
+  CARTAO
+  DINHEIRO
+  OUTRO
+}
+
+model ContratoPagamento {
+  id             Int                    @id @default(autoincrement())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  // Número do contrato (global, único)
+  numeroContrato String                 @unique @db.VarChar(60)
+
+  clienteId      Int
+  cliente        Cliente                @relation(fields: [clienteId], references: [id])
+
+  valorTotal     Decimal                @db.Decimal(12, 2)
+  formaPagamento FormaPagamentoContrato
+
+  observacoes    String?                @db.Text
+  ativo          Boolean                @default(true)
+
+  parcelas       ParcelaContrato[]
+
+  @@index([clienteId])
+  @@index([formaPagamento])
+  @@index([ativo])
+}
+
+model ParcelaContrato {
+  id                Int              @id @default(autoincrement())
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  contratoId        Int
+  contrato          ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  numero            Int              // 1..N (ordem)
+  vencimento        DateTime
+  valorPrevisto     Decimal          @db.Decimal(12, 2)
+
+  status            StatusParcela     @default(PREVISTA)
+
+  dataRecebimento   DateTime?
+  valorRecebido     Decimal?          @db.Decimal(12, 2)
+  meioRecebimento   MeioRecebimento?
+
+  observacoes       String?           @db.Text
+
+  @@unique([contratoId, numero])
+  @@index([vencimento])
+  @@index([status])
+}
+
+model Repasse {
+  id               Int             @id @default(autoincrement())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  valor            Decimal?
+  competenciaAno   Int?
+  competenciaMes   Int?
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  @@index([competenciaAno, competenciaMes])
+}
+
+model Usuario {
+  id          Int         @id @default(autoincrement())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  nome        String
+  email       String      @unique
+  senhaHash   String
+  ativo       Boolean     @default(true)
+  /// Vínculo 1:1 opcional com Advogado (FASE 1)
+  advogadoId  Int?        @unique
+  role        UserRole    @default(USER)
+  cpf         String?     @unique
+  telefone    String?
+  tipoUsuario TipoUsuario @default(USUARIO)
+  advogado    Advogado?   @relation(fields: [advogadoId], references: [id])
+
+  @@index([ativo])
+  @@index([role])
+  @@index([tipoUsuario])
+}
+
+model Advogado {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  nome      String
+  cpf       String   @unique
+  email     String
+  telefone  String
+  ativo     Boolean  @default(true)
+  oab       String   @unique
+  chavePix  String?  @db.VarChar(255)
+  usuario   Usuario?
+
+  @@index([ativo])
+}
+
+model ModeloDistribuicao {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
+  codigo       String?
+  origem       String?
+  tipo         String?
+  percentual   Decimal?
+  destinatario String?
+  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
+  cod          String?  @unique
+
+  @@index([cod])
+}
 
 enum UserRole {
   ADMIN
@@ -42,11 +220,11 @@ enum StatusOrdem {
 
 enum StatusPagamento {
   PREVISTO
-  EM_ABERTO
-  PARCIAL
   PAGO
   ATRASADO
   CANCELADO
+  EM_ABERTO
+  PARCIAL
 }
 
 enum TipoAdvogado {
@@ -60,158 +238,4 @@ enum TipoUsuario {
   ADVOGADO
   USUARIO
   ESTAGIARIO
-}
-
-/// =======================
-/// MODELOS EXISTENTES (NÃO REMOVER)
-/// =======================
-
-model Cliente {
-  id              Int      @id @default(autoincrement())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  cpfCnpj         String
-  nomeRazaoSocial String
-  email           String?
-  telefone        String?
-  observacoes     String?
-  ativo           Boolean  @default(true)
-
-  ordens OrdemPagamento[]
-
-  // (se você já colocou unique no cpfCnpj em migração anterior, manter compatível aqui)
-  @@unique([cpfCnpj])
-  @@index([ativo])
-  @@index([nomeRazaoSocial])
-}
-
-model OrdemPagamento {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  clienteId Int
-  cliente   Cliente  @relation(fields: [clienteId], references: [id])
-
-  // Sequência de ocorrência (ordem) dentro do cliente
-  sequenciaCliente   Int
-  codigoInterno      String?
-  descricao          String?
-  tipoContrato       String?
-  valorTotalPrevisto Decimal?
-  modeloPagamento    ModeloPagamento
-  dataInicio         DateTime
-  dataFimPrevista    DateTime?
-  status             StatusOrdem
-
-  // relações que já existiam no seu esquema
-  pagamentos Pagamento[]
-  repasses   Repasse[]
-
-  @@unique([clienteId, sequenciaCliente])
-  @@index([status])
-  @@index([modeloPagamento])
-}
-
-model Pagamento {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  ordemPagamentoId Int?
-  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
-
-  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
-  valor         Decimal?
-  dataPagamento DateTime?
-  status        StatusPagamento?
-
-  @@index([dataPagamento])
-}
-
-model Repasse {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  ordemPagamentoId Int?
-  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
-
-  // (mantenha seus campos reais aqui; deixo o mínimo compatível)
-  valor          Decimal?
-  competenciaAno Int?
-  competenciaMes Int?
-
-  @@index([competenciaAno, competenciaMes])
-}
-
-/// =======================
-/// MODELOS NOVOS (FASE 1)
-/// =======================
-
-model Usuario {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  nome      String
-  email     String   @unique
-  senhaHash String
-  ativo     Boolean  @default(true)
-  role      UserRole @default(USER)
-
-  // ✅ novo
-  tipoUsuario TipoUsuario @default(USUARIO)
-
-  // ✅ para usuário comum/estagiário (advogado usa dados do Advogado, se vinculado)
-  cpf      String? @unique
-  telefone String?
-
-  /// Vínculo 1:1 opcional com Advogado (FASE 1)
-  advogadoId Int?      @unique
-  advogado   Advogado? @relation(fields: [advogadoId], references: [id], onUpdate: Cascade, onDelete: SetNull)
-
-  @@index([ativo])
-  @@index([role])
-  @@index([tipoUsuario])
-}
-
-model Advogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  nome     String
-  cpf      String  @unique
-  oab      String  @unique
-  email    String
-  telefone String
-  chavePix String?  @db.VarChar(255)
-
-  ativo    Boolean @default(true)
-
-  usuario Usuario?
-
-  @@index([ativo])
-}
-
-/// =======================
-/// MODELO EXISTENTE (MANTER E NÃO CASTAR)
-/// =======================
-
-model ModeloDistribuicao {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
-  cod String? @unique
-
-  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
-  codigo       String?
-  destinatario String?
-  percentual   Decimal? // mantém Decimal para NÃO castar
-  origem       String?
-  tipo         String?
-
-  @@index([cod])
 }

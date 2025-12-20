@@ -95,6 +95,70 @@ function formatBRL(v) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Parse de moeda/valor (R$) — aceita:
+// - number (ex.: 1234.56)
+// - string "1.234,56" ou "1234,56" ou "1234.56"
+// - string só dígitos (ex.: "123456" => R$ 1.234,56)  ✅ padrão de máscara do front
+function moneyToCents(input) {
+  if (input === null || input === undefined || input === "") return null;
+
+  // number
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) return null;
+    return BigInt(Math.round(input * 100));
+  }
+
+  const s0 = String(input).trim();
+  if (!s0) return null;
+
+  // só dígitos: já é centavos
+  if (/^\d+$/.test(s0)) return BigInt(s0);
+
+  // BR: "1.234,56"
+  if (s0.includes(",")) {
+    const s = s0.replace(/\./g, "");
+    const [intPart, decPartRaw = ""] = s.split(",");
+    const decPart = (decPartRaw + "00").slice(0, 2);
+    const all = (onlyDigits(intPart) || "0") + decPart;
+    return BigInt(all);
+  }
+
+  // EN: "1234.56"
+  if (s0.includes(".")) {
+    const [intPart, decPartRaw = ""] = s0.split(".");
+    const decPart = (onlyDigits(decPartRaw) + "00").slice(0, 2);
+    const all = (onlyDigits(intPart) || "0") + decPart;
+    return BigInt(all);
+  }
+
+  // fallback: tenta dígitos
+  const d = onlyDigits(s0);
+  return d ? BigInt(d) : null;
+}
+
+function centsToDecimalString(cents) {
+  if (cents === null || cents === undefined) return null;
+  const c = BigInt(cents);
+  const neg = c < 0n;
+  const abs = neg ? -c : c;
+  const intPart = abs / 100n;
+  const decPart = abs % 100n;
+  return `${neg ? "-" : ""}${intPart.toString()}.${decPart.toString().padStart(2, "0")}`;
+}
+
+// Divide um total em N parcelas, distribuindo o "resto" em +1 centavo nas primeiras parcelas
+function splitCents(totalCents, n) {
+  const total = BigInt(totalCents);
+  const N = BigInt(n);
+  const base = total / N;
+  const rem = total % N;
+  const out = [];
+  for (let i = 0n; i < N; i++) {
+    out.push(base + (i < rem ? 1n : 0n));
+  }
+  return out;
+}
+
 /**
  * Serializa registros sem quebrar contrato:
  * - mantém datas originais
@@ -1416,6 +1480,320 @@ app.put("/api/usuarios/me", requireAuth, async (req, res) => {
 /* =========================
    404 + Error handler (sempre JSON)
 ========================= */
+// =========================
+// PAGAMENTOS (CONTRATOS + PARCELAS) — Admin only (por enquanto)
+// =========================
+
+// Listar contratos (com cliente + parcelas)
+app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const q = (req.query.q || "").toString().trim();
+
+    const where = q
+      ? {
+          OR: [
+            { numeroContrato: { contains: q, mode: "insensitive" } },
+            { cliente: { nomeRazaoSocial: { contains: q, mode: "insensitive" } } },
+            { cliente: { cpfCnpj: { contains: onlyDigits(q) } } },
+          ],
+        }
+      : undefined;
+
+    const contratos = await prisma.contratoPagamento.findMany({
+      where,
+      include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+      orderBy: [{ createdAt: "desc" }],
+      take: 200,
+    });
+
+    const out = contratos.map((c) => {
+      const parcelas = c.parcelas || [];
+      const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
+      const totalRecebido = recebidas.reduce(
+        (acc, p) => acc + Number(p.valorRecebido || 0),
+        0
+      );
+
+      return {
+        id: c.id,
+        numeroContrato: c.numeroContrato,
+        clienteId: c.clienteId,
+        cliente: serializeCliente({ ...c.cliente, ordens: [] }),
+        valorTotal: c.valorTotal,
+        formaPagamento: c.formaPagamento,
+        ativo: c.ativo,
+        observacoes: c.observacoes,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        parcelas,
+        resumo: {
+          qtdParcelas: parcelas.length,
+          qtdRecebidas: recebidas.length,
+          totalRecebido,
+        },
+      };
+    });
+
+    res.json(out);
+  } catch (err) {
+    console.error("Erro ao listar contratos:", err);
+    res.status(500).json({ message: "Erro ao listar pagamentos (contratos)." });
+  }
+});
+
+// Criar contrato + gerar parcelas
+// Body esperado (flexível):
+// {
+//   clienteId, numeroContrato, valorTotal, formaPagamento,
+//   avista?: { vencimento },
+//   entrada?: { valor, vencimento },
+//   parcelas?: { quantidade, primeiroVencimento, valorParcela? },
+//   observacoes?
+// }
+app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const {
+      clienteId,
+      numeroContrato,
+      valorTotal,
+      formaPagamento,
+      avista,
+      entrada,
+      parcelas,
+      observacoes,
+    } = req.body || {};
+
+    if (!clienteId) return res.status(400).json({ message: "Informe o cliente." });
+    if (!numeroContrato) return res.status(400).json({ message: "Informe o número do contrato." });
+
+    const cliente = await prisma.cliente.findUnique({ where: { id: Number(clienteId) } });
+    if (!cliente) return res.status(404).json({ message: "Cliente não encontrado." });
+
+    const totalCents = moneyToCents(valorTotal);
+    if (totalCents === null) return res.status(400).json({ message: "Informe o valor total do contrato." });
+    if (totalCents <= 0n) return res.status(400).json({ message: "O valor total precisa ser maior que zero." });
+
+    const fp = (formaPagamento || "").toString().trim().toUpperCase();
+    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+      return res.status(400).json({
+        message: "Forma de pagamento inválida. Use AVISTA, ENTRADA_PARCELAS ou PARCELADO.",
+      });
+    }
+
+    const parseDate = (v, field) => {
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDate(avista?.vencimento, "avista.vencimento");
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: totalCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+
+      const primeiroVenc = parseDate(parcelas?.primeiroVencimento, "parcelas.primeiroVencimento");
+
+      let valoresCents;
+      if (parcelas?.valorParcela !== undefined && parcelas?.valorParcela !== null && parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== totalCents) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do valor total. Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(totalCents, qtd);
+      }
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = new Date(primeiroVenc);
+        venc.setMonth(venc.getMonth() + i);
+        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(entrada?.valor);
+      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= totalCents) return res.status(400).json({ message: "A entrada deve ser menor que o valor total." });
+
+      const eVenc = parseDate(entrada?.vencimento, "entrada.vencimento");
+
+      const qtd = Number(parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
+
+      const primeiroVenc = parseDate(parcelas?.primeiroVencimento, "parcelas.primeiroVencimento");
+
+      const restante = totalCents - eValorCents;
+
+      let valoresCents;
+      if (parcelas?.valorParcela !== undefined && parcelas?.valorParcela !== null && parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== restante) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do restante (total - entrada). Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(restante, qtd);
+      }
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = new Date(primeiroVenc);
+        venc.setMonth(venc.getMonth() + i);
+        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const contrato = await tx.contratoPagamento.create({
+        data: {
+          clienteId: Number(clienteId),
+          numeroContrato: String(numeroContrato).trim(),
+          valorTotal: centsToDecimalString(totalCents),
+          formaPagamento: fp,
+          observacoes: observacoes ? String(observacoes) : null,
+        },
+      });
+
+      const parcelasData = parcelasPlan.map((p) => ({
+        contratoId: contrato.id,
+        numero: p.numero,
+        vencimento: p.vencimento,
+        valorPrevisto: centsToDecimalString(p.valorCents),
+      }));
+
+      await tx.parcelaContrato.createMany({ data: parcelasData });
+
+      return tx.contratoPagamento.findUnique({
+        where: { id: contrato.id },
+        include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+      });
+    });
+
+    res.status(201).json(created);
+  } catch (err) {
+    if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
+    console.error("Erro ao criar contrato:", err);
+    res.status(500).json({ message: err?.message || "Erro ao criar contrato." });
+  }
+});
+
+// Atualizar contrato (não mexe automaticamente nas parcelas — por segurança)
+app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { numeroContrato, valorTotal, formaPagamento, observacoes } = req.body || {};
+
+    const data = {};
+
+    if (numeroContrato !== undefined) data.numeroContrato = String(numeroContrato).trim();
+
+    if (valorTotal !== undefined) {
+      const cents = moneyToCents(valorTotal);
+      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor total inválido." });
+      data.valorTotal = centsToDecimalString(cents);
+    }
+
+    if (formaPagamento !== undefined) {
+      const fp = String(formaPagamento).trim().toUpperCase();
+      if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+        return res.status(400).json({ message: "Forma de pagamento inválida." });
+      }
+      data.formaPagamento = fp;
+    }
+
+    if (observacoes !== undefined) data.observacoes = observacoes ? String(observacoes) : null;
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data,
+      include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
+    if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
+    console.error("Erro ao atualizar contrato:", err);
+    res.status(500).json({ message: "Erro ao atualizar contrato." });
+  }
+});
+
+// Ativar/Inativar contrato (soft)
+app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.contratoPagamento.findUnique({ where: { id } });
+    if (!current) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data: { ativo: !current.ativo },
+    });
+
+    res.json({ message: updated.ativo ? "Contrato reativado." : "Contrato inativado.", contrato: updated });
+  } catch (err) {
+    console.error("Erro ao ativar/inativar contrato:", err);
+    res.status(500).json({ message: "Erro ao ativar/inativar contrato." });
+  }
+});
+
+// Confirmar recebimento de uma parcela
+app.patch("/api/parcelas/:id/confirmar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { dataRecebimento, valorRecebido, meioRecebimento, observacoes } = req.body || {};
+
+    const parcela = await prisma.parcelaContrato.findUnique({ where: { id } });
+    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+
+    const dt = dataRecebimento ? parseDateInput(dataRecebimento) : new Date();
+    if (!dt) return res.status(400).json({ message: "Data de recebimento inválida (DD/MM/AAAA)." });
+
+    // se não vier valorRecebido, assume o previsto
+    const cents = moneyToCents(valorRecebido ?? parcela.valorPrevisto?.toString?.() ?? parcela.valorPrevisto);
+    if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor recebido inválido." });
+
+    const meio = meioRecebimento ? String(meioRecebimento).trim().toUpperCase() : null;
+    if (meio && !["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio)) {
+      return res.status(400).json({ message: "Meio de recebimento inválido." });
+    }
+
+    const updated = await prisma.parcelaContrato.update({
+      where: { id },
+      data: {
+        status: "RECEBIDA",
+        dataRecebimento: dt,
+        valorRecebido: centsToDecimalString(cents),
+        meioRecebimento: meio,
+        observacoes: observacoes ? String(observacoes) : null,
+      },
+    });
+
+    res.json({ message: "Parcela confirmada como recebida.", parcela: updated });
+  } catch (err) {
+    console.error("Erro ao confirmar parcela:", err);
+    res.status(500).json({ message: "Erro ao confirmar parcela." });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
 });

@@ -13,7 +13,6 @@ const PORT = process.env.PORT || 4000;
 // Prisma
 const prisma = new PrismaClient();
 
-app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -25,6 +24,11 @@ function onlyDigits(v = "") {
   return String(v).replace(/\D/g, "");
 }
 
+const normCPF = (v) => onlyDigits(v); // 11 dígitos esperado
+const normPhone = (v) => onlyDigits(v); // 11 dígitos esperado
+const normEmail = (v) => String(v || "").trim().toLowerCase();
+const normOAB = (v) => String(v || "").trim().toUpperCase();
+const normPix = (v) => (v === undefined ? undefined : (String(v || "").trim() || null));
 // Datas sempre DD/MM/AAAA (quando exibidas)
 function formatDateBR(date) {
   if (!date) return null;
@@ -128,6 +132,13 @@ function calcAnoMes(date) {
   return `${y}-${m}`;
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "ADMIN") {
+    return res.status(403).json({ message: "Acesso restrito a administradores." });
+  }
+  next();
+}
+
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
 ========================= */
@@ -159,6 +170,11 @@ function publicUser(u) {
     email: u.email,
     role: u.role,
     ativo: u.ativo,
+    tipoUsuario: u.tipoUsuario ?? null,
+    cpf: u.cpf ?? null,
+    telefone: u.telefone ?? null,
+    // ✅ IMPORTANTE: precisa existir para /api/advogados/me
+    advogadoId: u.advogadoId ?? null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
     createdAtBR: formatDateBR(u.createdAt),
@@ -184,7 +200,6 @@ async function attachUserIfPresent(req, _res, next) {
     // Se o schema ainda não tiver Usuario, não quebra
     if (!prisma.usuario) return next();
 
-    // ✅ CORREÇÃO CRÍTICA:
     // payload.sub vem como string (ex: "1") e o Prisma espera Int.
     const userId = Number(payload.sub);
     if (!Number.isFinite(userId)) return next();
@@ -226,6 +241,281 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+const allowedOrigins = [
+  "https://controles-amr.vercel.app",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // requests sem origin (ex.: healthcheck/curl) passam
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
+
+// garantir preflight para todas as rotas
+app.options("*", cors());
+
+/* =========================
+   ADVOGADOS — ROTAS (Admin + User)
+   Observação:
+   - Admin: CRUD (soft delete via ativo)
+   - User: /me (editar seus próprios dados)
+========================= */
+
+// ✅ BUG FIX: era "authRequired" (inexistente). O certo é requireAuth.
+app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
+  const advogados = await prisma.advogado.findMany({
+    orderBy: { nome: "asc" },
+  });
+  res.json(advogados);
+});
+
+app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { nome, cpf, oab, email, telefone, chavePix, criarUsuario, senha, confirmarSenha } = req.body;
+
+    const nomeNorm = String(nome || "").trim();
+    const cpfLimpo = normCPF(cpf);
+    const oabNorm = normOAB(oab);
+    const emailNorm = normEmail(email);
+    const telefoneNorm = normPhone(telefone);
+    const pixNorm = normPix(chavePix);
+
+    const criar = Boolean(criarUsuario);
+
+    // Obrigatórios do Advogado
+    if (!nomeNorm || !cpfLimpo || !oabNorm || !emailNorm) {
+      return res.status(400).json({ message: "Informe nome, CPF, OAB e e-mail." });
+    }
+    if (!isValidCPF(cpfLimpo)) {
+      return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    // Se for criar usuário junto, exige senha + confirmação
+    if (criar) {
+      if (!String(senha || "").trim()) {
+        return res.status(400).json({ message: "Informe a senha inicial (para o usuário)." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+    }
+
+    const data = {
+      nome: nomeNorm,
+      cpf: cpfLimpo,
+      oab: oabNorm,
+      email: emailNorm,
+      telefone: telefoneNorm,
+      ativo: true,
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    if (criar) {
+      const { bcrypt } = await getAuthLibs();
+      const senhaHash = await bcrypt.hash(String(senha), 10);
+      data.usuario = {
+  create: {
+    nome: nomeNorm,
+    email: emailNorm,
+    senhaHash,
+    role: "USER",
+    ativo: true,
+
+    // ✅ AQUI: força o tipo correto
+    tipoUsuario: "ADVOGADO",
+  },
+};
+
+    }
+
+    const advogado = await prisma.advogado.create({ data });
+    return res.status(201).json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+
+    // Duplicidades (CPF/OAB/Email)
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao cadastrar advogado." });
+  }
+});
+
+app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
+
+    // Normalização
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
+
+    // Senha com confirmação
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    // Se mudou nome/email, espelha no Usuario vinculado (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data,
+    });
+
+    res.json(advogado);
+  } catch (err) {
+    // Unique violations etc.
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar advogado." });
+  }
+});
+
+// USER — Meu Perfil Profissional
+app.get("/api/advogados/me", requireAuth, async (req, res) => {
+  if (!req.user?.advogadoId) {
+    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+  }
+
+  const advogado = await prisma.advogado.findUnique({
+    where: { id: Number(req.user.advogadoId) },
+  });
+
+  if (!advogado) return res.status(404).json({ message: "Advogado não encontrado." });
+  return res.json(advogado);
+});
+
+app.put("/api/advogados/me", requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.advogadoId) {
+      return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+    }
+
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
+
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
+
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    // Espelha no Usuario (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(req.user.advogadoId) },
+      data,
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "E-mail já cadastrado." });
+    }
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar perfil." });
+  }
+});
+
+// Admin — Ativar/Inativar Advogado (soft delete)
+app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ativo } = req.body;
+
+    if (typeof ativo !== "boolean") {
+      return res.status(400).json({ message: "Campo 'ativo' deve ser boolean." });
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data: {
+        ativo,
+        usuario: { update: { ativo } },
+      },
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar status." });
+  }
+});
+
 /* =========================
    AUTH — ROTAS
 ========================= */
@@ -251,11 +541,10 @@ app.post("/api/auth/login", async (req, res) => {
     const ok = await bcrypt.compare(senha, u.senhaHash);
     if (!ok) return res.status(401).json({ message: "Credenciais inválidas." });
 
-    const token = jwt.sign(
-      { role: u.role },
-      JWT_SECRET,
-      { subject: String(u.id), expiresIn: JWT_EXPIRES_IN }
-    );
+    const token = jwt.sign({ role: u.role }, JWT_SECRET, {
+      subject: String(u.id),
+      expiresIn: JWT_EXPIRES_IN,
+    });
 
     return res.json({ token, user: publicUser(u) });
   } catch (err) {
@@ -350,17 +639,165 @@ app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
    DADOS — ROTAS
 ========================= */
 
-app.get("/api/clients", async (_req, res) => {
+// ===== CLIENTES (Admin only) — CRUD + Soft delete =====
+
+// helpers locais (CPF/CNPJ)
+function isValidCNPJ(cnpj) {
+  const s = onlyDigits(cnpj);
+  if (s.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(s)) return false;
+
+  const calc = (base, weights) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * weights[i];
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  const d1 = calc(s.slice(0, 12), w1);
+  const d2 = calc(s.slice(0, 12) + String(d1), w2);
+
+  return d1 === Number(s[12]) && d2 === Number(s[13]);
+}
+
+function isValidCpfCnpj(doc) {
+  const d = onlyDigits(doc);
+  if (d.length === 11) return isValidCPF(d);
+  if (d.length === 14) return isValidCNPJ(d);
+  return false;
+}
+
+function normalizeCpfCnpj(doc) {
+  return onlyDigits(doc);
+}
+
+// ✅ GET /api/clients — Admin only
+app.get("/api/clients", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const clientes = await prisma.cliente.findMany({
       orderBy: { nomeRazaoSocial: "asc" },
     });
+
+    // serializeCliente espera ordens no objeto (mesmo que vazio)
     res.json(clientes.map((c) => serializeCliente({ ...c, ordens: [] })));
   } catch (err) {
     console.error("Erro ao listar clientes:", err);
     res.status(500).json({ message: "Erro ao listar clientes" });
   }
 });
+
+// ✅ POST /api/clients — cria só o cliente (sem ordem)
+app.post("/api/clients", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const cpfCnpj = normalizeCpfCnpj(req.body?.cpfCnpj || "");
+    const nomeRazaoSocial = String(req.body?.nomeRazaoSocial || "").trim();
+    const email = req.body?.email ? normEmail(req.body.email) : null;
+    const telefone = req.body?.telefone ? normPhone(req.body.telefone) : null;
+    const observacoes = req.body?.observacoes ? String(req.body.observacoes).trim() : null;
+
+    if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+    if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    if (!nomeRazaoSocial) return res.status(400).json({ message: "Informe Nome/Razão Social." });
+
+    // telefone: se veio algo e não for 10/11 dígitos, rejeita
+    if (req.body?.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    const created = await prisma.cliente.create({
+      data: {
+        cpfCnpj,
+        nomeRazaoSocial,
+        email,
+        telefone,
+        observacoes,
+        ativo: true,
+      },
+    });
+
+    return res.status(201).json(serializeCliente({ ...created, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao criar cliente:", err);
+    return res.status(500).json({ message: "Erro ao criar cliente." });
+  }
+});
+
+// ✅ PUT /api/clients/:id — edita dados
+app.put("/api/clients/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const cpfCnpj = req.body?.cpfCnpj !== undefined ? normalizeCpfCnpj(req.body.cpfCnpj) : undefined;
+    const nomeRazaoSocial =
+      req.body?.nomeRazaoSocial !== undefined ? String(req.body.nomeRazaoSocial || "").trim() : undefined;
+
+    const email = req.body?.email !== undefined ? (req.body.email ? normEmail(req.body.email) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normPhone(req.body.telefone) : null) : undefined;
+
+    const observacoes =
+      req.body?.observacoes !== undefined ? (req.body.observacoes ? String(req.body.observacoes).trim() : null) : undefined;
+
+    if (cpfCnpj !== undefined) {
+      if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+      if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    }
+    if (nomeRazaoSocial !== undefined && !nomeRazaoSocial) {
+      return res.status(400).json({ message: "Informe Nome/Razão Social." });
+    }
+    if (req.body?.telefone !== undefined && req.body.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    const updated = await prisma.cliente.update({
+      where: { id },
+      data: {
+        ...(cpfCnpj !== undefined ? { cpfCnpj } : {}),
+        ...(nomeRazaoSocial !== undefined ? { nomeRazaoSocial } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(telefone !== undefined ? { telefone } : {}),
+        ...(observacoes !== undefined ? { observacoes } : {}),
+      },
+    });
+
+    return res.json(serializeCliente({ ...updated, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao atualizar cliente:", err);
+    return res.status(500).json({ message: "Erro ao atualizar cliente." });
+  }
+});
+
+// ✅ PATCH /api/clients/:id/toggle — Ativar/Inativar (soft delete)
+app.patch("/api/clients/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const current = await prisma.cliente.findUnique({ where: { id }, select: { ativo: true } });
+    if (!current) return res.status(404).json({ message: "Cliente não encontrado." });
+
+    const updated = await prisma.cliente.update({
+      where: { id },
+      data: { ativo: !current.ativo },
+    });
+
+    return res.json({ id: updated.id, ativo: updated.ativo });
+  } catch (err) {
+    console.error("Erro ao alternar status do cliente:", err);
+    return res.status(500).json({ message: "Erro ao ativar/inativar cliente." });
+  }
+});
+
 
 app.get("/api/orders", async (_req, res) => {
   try {
@@ -383,8 +820,9 @@ app.get("/api/orders", async (_req, res) => {
 
 app.get("/api/config/distribution-models", async (_req, res) => {
   try {
+    // ⚠️ Ajuste aqui se o campo for "cod" no schema atual:
     const modelos = await prisma.modeloDistribuicao.findMany({
-      orderBy: [{ codigo: "asc" }, { id: "asc" }],
+      orderBy: [{ cod: "asc" }, { id: "asc" }],
     });
     res.json(modelos);
   } catch (err) {
@@ -469,7 +907,7 @@ app.post("/api/clients-and-orders", async (req, res) => {
   }
 });
 
-app.get("/api/clients-with-orders", async (req, res) => {
+app.get("/api/clients-with-orders", requireAuth, requireAdmin, async (req, res) => {
   const search = req.query.q ?? req.query.search;
   const status = req.query.status;
   const fromDate = req.query.fromDate;
@@ -563,6 +1001,428 @@ app.get("/api/dashboard/summary", async (_req, res) => {
     console.error("Erro no dashboard:", err);
     res.status(500).json({ message: "Erro ao carregar dashboard" });
   }
+});
+
+/* =========================
+   USUÁRIOS (ADMIN) + ME (USER)
+========================= */
+
+// CPF validation (backend)
+function isValidCPF(cpf) {
+  const s = onlyDigits(cpf);
+  if (s.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(s)) return false;
+
+  const calc = (base, factor) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (factor - i);
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const d1 = calc(s.slice(0, 9), 10);
+  const d2 = calc(s.slice(0, 10), 11);
+  return d1 === Number(s[9]) && d2 === Number(s[10]);
+}
+
+function normalizeEmail(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function normalizeTelefone(v) {
+  const d = onlyDigits(v);
+  if (!d) return null;
+  // BR: 10 (fixo) ou 11 (celular)
+  if (d.length !== 10 && d.length !== 11) return null;
+  return d;
+}
+
+// ADMIN: list
+app.get("/api/usuarios", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const usuarios = await prisma.usuario.findMany({
+  orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+  select: {
+    id: true,
+    nome: true,
+    email: true,
+    role: true,
+    tipoUsuario: true,
+    cpf: true,
+    telefone: true,
+    advogadoId: true,
+    ativo: true,
+    createdAt: true,
+    updatedAt: true,
+    advogado: {
+      select: {
+        cpf: true,
+        telefone: true,
+        email: true,
+        nome: true,
+      },
+    },
+  },
+});
+
+
+    res.json(
+  usuarios.map((u) => ({
+    ...u,
+    cpf: u.cpf ?? u.advogado?.cpf ?? null,
+    telefone: u.telefone ?? u.advogado?.telefone ?? null,
+    email: u.email ?? u.advogado?.email ?? null,
+    createdAtBR: formatDateBR(u.createdAt),
+    updatedAtBR: formatDateBR(u.updatedAt),
+  }))
+);
+  } catch (err) {
+    console.error("Erro ao listar usuarios:", err);
+    res.status(500).json({ message: "Erro ao listar usuários." });
+  }
+});
+
+// ADMIN: create
+app.post("/api/usuarios", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = String(req.body?.nome || "").trim();
+    const email = normalizeEmail(req.body?.email);
+    const role = String(req.body?.role || "USER").toUpperCase();
+    const tipoUsuario = String(req.body?.tipoUsuario || "USUARIO").toUpperCase();
+
+    const cpf = req.body?.cpf ? onlyDigits(req.body.cpf) : null;
+    const telefone = req.body?.telefone ? normalizeTelefone(req.body.telefone) : null;
+
+    const advogadoId = req.body?.advogadoId ? Number(req.body.advogadoId) : null;
+
+    const senha = String(req.body?.senha || "");
+    const senhaConfirmacao = String(req.body?.senhaConfirmacao || "");
+
+    if (!nome) return res.status(400).json({ message: "Informe o nome." });
+    if (!email) return res.status(400).json({ message: "Informe o e-mail." });
+    if (!["ADMIN", "USER"].includes(role)) return res.status(400).json({ message: "Role inválido." });
+    if (!["ADVOGADO", "USUARIO", "ESTAGIARIO"].includes(tipoUsuario))
+      return res.status(400).json({ message: "Tipo de usuário inválido." });
+
+    // CPF obrigatório para usuário comum/estagiário
+    if (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") {
+      if (!cpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    } else if (cpf && !isValidCPF(cpf)) {
+      return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    if (req.body?.telefone && !telefone) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    // ADVOGADO precisa estar vinculado
+    if (tipoUsuario === "ADVOGADO") {
+      if (!advogadoId || !Number.isFinite(advogadoId)) {
+        return res.status(400).json({ message: "Para tipo Advogado, informe advogadoId." });
+      }
+      const adv = await prisma.advogado.findUnique({ where: { id: advogadoId } });
+      if (!adv) return res.status(400).json({ message: "Advogado não encontrado para vinculação." });
+    }
+
+    if (!senha || senha.length < 8) {
+      return res.status(400).json({ message: "Senha obrigatória (mínimo 8 caracteres)." });
+    }
+    if (senha !== senhaConfirmacao) {
+      return res.status(400).json({ message: "As senhas não conferem." });
+    }
+
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+
+    const novo = await prisma.usuario.create({
+      data: {
+        nome,
+        email,
+        role,
+        tipoUsuario,
+        cpf,
+        telefone,
+        advogadoId,
+        senhaHash,
+        ativo: true,
+      },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        advogadoId: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(201).json({
+      ...novo,
+      createdAtBR: formatDateBR(novo.createdAt),
+      updatedAtBR: formatDateBR(novo.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao criar usuario:", err);
+    res.status(500).json({ message: "Erro ao criar usuário." });
+  }
+});
+
+// ADMIN: update
+app.put("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = req.body?.nome !== undefined ? String(req.body.nome || "").trim() : undefined;
+    const email = req.body?.email !== undefined ? normalizeEmail(req.body.email) : undefined;
+    const role = req.body?.role !== undefined ? String(req.body.role || "").toUpperCase() : undefined;
+    const tipoUsuario =
+      req.body?.tipoUsuario !== undefined ? String(req.body.tipoUsuario || "").toUpperCase() : undefined;
+
+    const cpf = req.body?.cpf !== undefined ? (req.body.cpf ? onlyDigits(req.body.cpf) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normalizeTelefone(req.body.telefone) : null) : undefined;
+
+    const advogadoId =
+      req.body?.advogadoId !== undefined ? (req.body.advogadoId ? Number(req.body.advogadoId) : null) : undefined;
+
+    const senha = req.body?.senha ? String(req.body.senha) : "";
+    const senhaConfirmacao = req.body?.senhaConfirmacao ? String(req.body.senhaConfirmacao) : "";
+
+    if (role !== undefined && !["ADMIN", "USER"].includes(role)) {
+      return res.status(400).json({ message: "Role inválido." });
+    }
+    if (tipoUsuario !== undefined && !["ADVOGADO", "USUARIO", "ESTAGIARIO"].includes(tipoUsuario)) {
+      return res.status(400).json({ message: "Tipo de usuário inválido." });
+    }
+    if (cpf !== undefined && cpf && !isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    if (req.body?.telefone !== undefined && req.body.telefone && !telefone)
+      return res.status(400).json({ message: "Telefone inválido." });
+
+    const current = await prisma.usuario.findUnique({ where: { id }, select: { tipoUsuario: true, cpf: true, advogadoId: true } });
+    if (!current) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    const finalTipo = tipoUsuario ?? current.tipoUsuario;
+    const finalCpf = cpf === undefined ? current.cpf : cpf;
+
+    if (finalTipo === "USUARIO" || finalTipo === "ESTAGIARIO") {
+      if (!finalCpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(finalCpf)) return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    if (finalTipo === "ADVOGADO") {
+      const advIdEffective = advogadoId === undefined ? current.advogadoId : advogadoId;
+      if (!advIdEffective) return res.status(400).json({ message: "Para tipo Advogado, informe advogadoId." });
+      const adv = await prisma.advogado.findUnique({ where: { id: advIdEffective } });
+      if (!adv) return res.status(400).json({ message: "Advogado não encontrado para vinculação." });
+    }
+
+    const data = {
+      ...(nome !== undefined ? { nome } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(tipoUsuario !== undefined ? { tipoUsuario } : {}),
+      ...(cpf !== undefined ? { cpf } : {}),
+      ...(telefone !== undefined ? { telefone } : {}),
+      ...(advogadoId !== undefined ? { advogadoId } : {}),
+    };
+
+    if (senha || senhaConfirmacao) {
+      if (!senha || senha.length < 8) return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+      if (senha !== senhaConfirmacao) return res.status(400).json({ message: "As senhas não conferem." });
+      data.senhaHash = await bcrypt.hash(String(senha), 10);
+    }
+
+    const updated = await prisma.usuario.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        advogadoId: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({
+      ...updated,
+      createdAtBR: formatDateBR(updated.createdAt),
+      updatedAtBR: formatDateBR(updated.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao atualizar usuario:", err);
+    res.status(500).json({ message: "Erro ao atualizar usuário." });
+  }
+});
+
+// ADMIN: ativar/inativar
+app.patch("/api/usuarios/:id/ativo", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const ativo = Boolean(req.body?.ativo);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const u = await prisma.usuario.update({
+      where: { id },
+      data: { ativo },
+      select: { id: true, ativo: true },
+    });
+
+    res.json(u);
+  } catch (err) {
+    console.error("Erro ao mudar ativo usuario:", err);
+    res.status(500).json({ message: "Erro ao alterar status." });
+  }
+});
+
+// USER: me (somente para usuário NÃO vinculado a advogado)
+app.get("/api/usuarios/me", requireAuth, async (req, res) => {
+  try {
+    if (req.user?.advogadoId) {
+      return res.status(400).json({ message: "Perfil de advogado deve ser acessado em /api/advogados/me." });
+    }
+    const u = await prisma.usuario.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!u || !u.ativo) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    res.json({
+      ...u,
+      createdAtBR: formatDateBR(u.createdAt),
+      updatedAtBR: formatDateBR(u.updatedAt),
+    });
+  } catch (err) {
+    console.error("Erro ao ler usuario/me:", err);
+    res.status(500).json({ message: "Erro ao carregar perfil." });
+  }
+});
+
+app.put("/api/usuarios/me", requireAuth, async (req, res) => {
+  try {
+    if (req.user?.advogadoId) {
+      return res.status(400).json({ message: "Perfil de advogado deve ser atualizado em /api/advogados/me." });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = req.body?.nome !== undefined ? String(req.body.nome || "").trim() : undefined;
+    const email = req.body?.email !== undefined ? normalizeEmail(req.body.email) : undefined;
+    const cpf = req.body?.cpf !== undefined ? (req.body.cpf ? onlyDigits(req.body.cpf) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normalizeTelefone(req.body.telefone) : null) : undefined;
+
+    const senha = req.body?.senha ? String(req.body.senha) : "";
+    const senhaConfirmacao = req.body?.senhaConfirmacao ? String(req.body.senhaConfirmacao) : "";
+
+    if (cpf !== undefined && cpf && !isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    if (req.body?.telefone !== undefined && req.body.telefone && !telefone)
+      return res.status(400).json({ message: "Telefone inválido." });
+
+    const current = await prisma.usuario.findUnique({
+      where: { id: req.user.id },
+      select: { tipoUsuario: true, cpf: true, ativo: true },
+    });
+    if (!current || !current.ativo) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    const finalTipo = current.tipoUsuario;
+    const finalCpf = cpf === undefined ? current.cpf : cpf;
+
+    if (finalTipo === "USUARIO" || finalTipo === "ESTAGIARIO") {
+      if (!finalCpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(finalCpf)) return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    const data = {
+      ...(nome !== undefined ? { nome } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(cpf !== undefined ? { cpf } : {}),
+      ...(telefone !== undefined ? { telefone } : {}),
+    };
+
+    if (senha || senhaConfirmacao) {
+      if (!senha || senha.length < 8) return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+      if (senha !== senhaConfirmacao) return res.status(400).json({ message: "As senhas não conferem." });
+      data.senhaHash = await bcrypt.hash(String(senha), 10);
+    }
+
+    const updated = await prisma.usuario.update({
+      where: { id: req.user.id },
+      data,
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({
+      ...updated,
+      createdAtBR: formatDateBR(updated.createdAt),
+      updatedAtBR: formatDateBR(updated.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao atualizar usuario/me:", err);
+    res.status(500).json({ message: "Erro ao atualizar perfil." });
+  }
+});
+
+/* =========================
+   404 + Error handler (sempre JSON)
+========================= */
+app.use((req, res) => {
+  res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
+});
+
+app.use((err, _req, res, _next) => {
+  console.error("Erro não tratado:", err);
+  res.status(500).json({ message: "Erro interno do servidor." });
 });
 
 app.listen(PORT, () => {
