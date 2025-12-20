@@ -529,8 +529,30 @@ useEffect(() => {
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.totalRecebido)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal - (c.totalRecebido || 0))}</td>
+                    {(() => {
+  const totalRecebidoLinha =
+    Number(
+      c?.resumo?.totalRecebido ??
+      (c?.parcelas || [])
+        .filter((p) => p.status === "RECEBIDA")
+        .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
+    ) || 0;
+
+  const valorTotalLinha = Number(c?.valorTotal || 0) || 0;
+  const pendenteLinha = Math.max(0, valorTotalLinha - totalRecebidoLinha);
+
+  return (
+    <>
+      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+        R$ {formatBRLFromDecimal(totalRecebidoLinha)}
+      </td>
+
+      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+        R$ {formatBRLFromDecimal(pendenteLinha)}
+      </td>
+    </>
+  );
+})()}
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
