@@ -513,7 +513,7 @@ export default function ClientesPage({ user }) {
         anchorEl={obsBtnRefs.current[c.id]}
         onClose={() => setObsOpenId(null)}
       >
-        <div className="px-4 py-3 border-b border-slate-200 flex items-left justify-between gap-3">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-left">
           <div className="text-sm font-semibold text-slate-900">Observações</div>
           <button
             type="button"
