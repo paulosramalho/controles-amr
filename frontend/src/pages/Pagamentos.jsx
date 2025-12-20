@@ -502,6 +502,7 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -515,11 +516,15 @@ useEffect(() => {
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
                 const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
+                const recebidoTotal = (c?.parcelas || []).reduce((acc, p) => acc + (p.status === "RECEBIDA" ? Number(p.valorRecebido || 0) : 0), 0);
+                const pendente = Math.max(0, Number(c.valorTotal || 0) - recebidoTotal);
+
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(pendente)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -553,7 +558,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={8}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -814,6 +819,38 @@ useEffect(() => {
               </tbody>
             </table>
           </div>
+
+          {/* Totais */}
+          {(() => {
+            const ps = selectedContrato?.parcelas || [];
+            const previsto = ps.reduce((acc, p) => acc + (p.status !== "CANCELADA" ? Number(p.valorPrevisto || 0) : 0), 0);
+            const recebido = ps.reduce((acc, p) => acc + (p.status === "RECEBIDA" ? Number(p.valorRecebido || 0) : 0), 0);
+            const diff = recebido - previsto;
+            const diffTone = Math.abs(diff) < 0.005 ? "slate" : diff > 0 ? "blue" : "red";
+            return (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-semibold text-slate-600">Previsto</div>
+                    <div className="text-sm font-semibold text-slate-900 whitespace-nowrap">R$ {formatBRLFromDecimal(previsto)}</div>
+                  </div>
+                  <div className="hidden md:block h-4 w-px bg-slate-300" />
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-semibold text-slate-600">Recebido</div>
+                    <div className="text-sm font-semibold text-slate-900 whitespace-nowrap">R$ {formatBRLFromDecimal(recebido)}</div>
+                  </div>
+                  <div className="hidden md:block h-4 w-px bg-slate-300" />
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-semibold text-slate-600">Diferença</div>
+                    <Badge tone={diffTone}>
+                      {diff >= 0 ? "+" : "-"}R$ {formatBRLFromDecimal(Math.abs(diff))}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
         )}
       </Modal>
 
@@ -837,9 +874,7 @@ useEffect(() => {
               onClick={confirmarRecebimento}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-70"
               disabled={confirming}
-            >
-              Confirmar
-            </button>
+            >Receber Parcela</button>
           </div>
         }
       >
