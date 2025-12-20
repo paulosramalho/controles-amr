@@ -87,23 +87,25 @@ function Modal({ open, title, onClose, children, footer }) {
   );
 }
 
-function Input({ label, value, onChange, type = "text", placeholder, disabled }) {
+function Input({ label, value, onChange, type = "text", placeholder, disabled, hint, error }) {
   return (
     <label className="block">
       <div className="text-sm font-medium text-slate-700">{label}</div>
       <input
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2 disabled:bg-slate-50
+          ${error ? "border-red-300 focus:ring-red-100" : "border-slate-300 focus:ring-slate-200"}`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         type={type}
         placeholder={placeholder}
         disabled={disabled}
       />
+      {error ? <div className="mt-1 text-xs text-red-700">{error}</div> : hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
     </label>
   );
 }
 
-function Select({ label, value, onChange, options, disabled }) {
+function Select({ label, value, onChange, options, disabled, hint }) {
   return (
     <label className="block">
       <div className="text-sm font-medium text-slate-700">{label}</div>
@@ -119,6 +121,7 @@ function Select({ label, value, onChange, options, disabled }) {
           </option>
         ))}
       </select>
+      {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
     </label>
   );
 }
@@ -141,6 +144,9 @@ export default function UsuariosPage({ user }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
 
+  // busca + atualizar
+  const [q, setQ] = useState("");
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -153,6 +159,10 @@ export default function UsuariosPage({ user }) {
   const [advogadoId, setAdvogadoId] = useState("");
   const [senha, setSenha] = useState("");
   const [senhaConfirmacao, setSenhaConfirmacao] = useState("");
+
+  // validação “na hora”
+  const [cpfLiveError, setCpfLiveError] = useState("");
+  const [cpfTouched, setCpfTouched] = useState(false);
 
   const tipoOptions = useMemo(
     () => [
@@ -180,6 +190,28 @@ export default function UsuariosPage({ user }) {
     load();
   }, []);
 
+  const filtered = useMemo(() => {
+    const term = String(q || "").trim().toLowerCase();
+    if (!term) return rows;
+
+    const termDigits = onlyDigits(term);
+
+    return rows.filter((u) => {
+      const nomeL = String(u?.nome || "").toLowerCase();
+      const emailL = String(u?.email || "").toLowerCase();
+      const cpfD = onlyDigits(u?.cpf || "");
+      const telD = onlyDigits(u?.telefone || "");
+      const tipoL = String(u?.tipoUsuario || "").toLowerCase();
+
+      return (
+        nomeL.includes(term) ||
+        emailL.includes(term) ||
+        tipoL.includes(term) ||
+        (termDigits && (cpfD.includes(termDigits) || telD.includes(termDigits)))
+      );
+    });
+  }, [rows, q]);
+
   function resetForm() {
     setNome("");
     setEmail("");
@@ -190,6 +222,8 @@ export default function UsuariosPage({ user }) {
     setAdvogadoId("");
     setSenha("");
     setSenhaConfirmacao("");
+    setCpfLiveError("");
+    setCpfTouched(false);
   }
 
   function openCreate() {
@@ -209,6 +243,8 @@ export default function UsuariosPage({ user }) {
     setAdvogadoId(u?.advogadoId ? String(u.advogadoId) : "");
     setSenha("");
     setSenhaConfirmacao("");
+    setCpfLiveError("");
+    setCpfTouched(false);
     setOpen(true);
   }
 
@@ -221,6 +257,9 @@ export default function UsuariosPage({ user }) {
     if (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") {
       if (!cpf) return "CPF é obrigatório para Usuário/Estagiário.";
       if (!isValidCPF(cpf)) return "CPF inválido.";
+    } else {
+      // Se preencher CPF mesmo sendo ADVOGADO, valida também
+      if (cpf && !isValidCPF(cpf)) return "CPF inválido.";
     }
 
     if (tipoUsuario === "ADVOGADO") {
@@ -238,6 +277,24 @@ export default function UsuariosPage({ user }) {
     }
 
     return null;
+  }
+
+  function handleCpfChange(v) {
+    const masked = maskCPF(v);
+    setCpf(masked);
+
+    const d = onlyDigits(masked);
+    if (!d) {
+      setCpfLiveError("");
+      return;
+    }
+
+    // critica na hora: quando completar 11 dígitos
+    if (d.length === 11 && !isValidCPF(masked)) {
+      setCpfLiveError("CPF inválido.");
+    } else {
+      setCpfLiveError("");
+    }
   }
 
   async function save() {
@@ -297,16 +354,47 @@ export default function UsuariosPage({ user }) {
         title="Usuários"
         subtitle="Admin: cadastro, edição e ativação/inativação."
         right={
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-70"
-            disabled={loading}
-          >
-            + Novo usuário
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="hidden md:block">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar por nome, e-mail, CPF ou OAB…"
+                className="w-[320px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={load}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-70"
+              disabled={loading}
+              title="Atualizar"
+            >
+              Atualizar
+            </button>
+
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-xl bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-70"
+              disabled={loading}
+            >
+              + Novo usuário
+            </button>
+          </div>
         }
       >
+        {/* busca mobile */}
+        <div className="md:hidden mb-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nome, e-mail, CPF ou OAB…"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+          />
+        </div>
+
         {error ? (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -334,19 +422,27 @@ export default function UsuariosPage({ user }) {
                     Carregando...
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-600" colSpan={8}>
-                    Nenhum usuário cadastrado.
+                    Nenhum usuário encontrado.
                   </td>
                 </tr>
               ) : (
-                rows.map((u) => (
+                filtered.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-slate-900">{u.nome}</td>
                     <td className="px-4 py-3 text-slate-700">{u.email}</td>
                     <td className="px-4 py-3">
-                      <Badge tone={u.tipoUsuario === "ADVOGADO" ? "blue" : u.tipoUsuario === "ESTAGIARIO" ? "amber" : "slate"}>
+                      <Badge
+                        tone={
+                          u.tipoUsuario === "ADVOGADO"
+                            ? "blue"
+                            : u.tipoUsuario === "ESTAGIARIO"
+                            ? "amber"
+                            : "slate"
+                        }
+                      >
                         {u.tipoUsuario || "—"}
                       </Badge>
                     </td>
@@ -427,14 +523,30 @@ export default function UsuariosPage({ user }) {
           <Input
             label="CPF (obrigatório p/ Usuário/Estagiário)"
             value={cpf}
-            onChange={(v) => setCpf(maskCPF(v))}
+            onChange={handleCpfChange}
             placeholder="999.999.999-99"
+            error={
+              cpfLiveError ||
+              (cpfTouched && (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") && !cpf
+                ? "CPF é obrigatório."
+                : "")
+            }
+            hint="O sistema valida o CPF automaticamente ao completar 11 dígitos."
           />
 
           <Select
             label="Tipo de usuário"
             value={tipoUsuario}
-            onChange={setTipoUsuario}
+            onChange={(v) => {
+              setTipoUsuario(v);
+              // revalida CPF quando troca o tipo
+              const d = onlyDigits(cpf);
+              if ((v === "USUARIO" || v === "ESTAGIARIO") && d.length === 11 && !isValidCPF(cpf)) {
+                setCpfLiveError("CPF inválido.");
+              } else {
+                setCpfLiveError("");
+              }
+            }}
             options={tipoOptions}
           />
 
@@ -454,6 +566,7 @@ export default function UsuariosPage({ user }) {
             onChange={(v) => setAdvogadoId(onlyDigits(v))}
             placeholder="Ex.: 12"
             disabled={tipoUsuario !== "ADVOGADO"}
+            hint={tipoUsuario === "ADVOGADO" ? "Vincule ao registro existente em Advogados." : ""}
           />
 
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
@@ -472,6 +585,18 @@ export default function UsuariosPage({ user }) {
             onChange={setSenhaConfirmacao}
             type="password"
           />
+        </div>
+
+        {/* marca touched pra obrigatoriedade */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setCpfTouched(true)}
+            className="hidden"
+            aria-hidden="true"
+          >
+            _
+          </button>
         </div>
       </Modal>
     </div>
