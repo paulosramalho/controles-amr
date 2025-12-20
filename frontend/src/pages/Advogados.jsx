@@ -112,7 +112,6 @@ function openPdfWindow({ advogado }) {
   const cpf = advogado?.cpf ? maskCPF(advogado.cpf) : "—";
   const chavePix = advogado?.chavePix || "—";
 
-  // título/“nome sugerido” do PDF
   const titulo = `Dados para Pix - ${nomeAdv}`;
 
   const html = `<!doctype html>
@@ -125,67 +124,32 @@ function openPdfWindow({ advogado }) {
     *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
     body{ margin:0; padding:32px; color:#0f172a; background:#fff; }
     .wrap{ max-width:720px; margin:0 auto; }
-
-    /* header centralizado */
-    .header{
-  text-align:center;
-  padding-bottom:22px;
-  border-bottom:2px solid #e2e8f0;
-  margin-bottom:24px;
-}
-.brandRow{
-  display:flex;
-  justify-content:center;
-  margin-bottom:14px;
-}
-    .brandRow{
-      display:flex; align-items:center; justify-content:center; gap:14px;
-      margin-bottom:10px;
-    }
-    .logo{
-  width:320px;
-  height:auto;
-  max-height:320px;
-  object-fit:contain;
-}
-    .brandNameTop{ font-size:18px; font-weight:800; letter-spacing:.2px; }
-
-    .line1{ font-size:16px; font-weight:800; margin:0; }
+    .header{ text-align:center; padding-bottom:22px; border-bottom:2px solid #e2e8f0; margin-bottom:24px; }
+    .brandRow{ display:flex; justify-content:center; margin-bottom:14px; }
+    .logo{ width:320px; height:auto; max-height:320px; object-fit:contain; }
     .line2{ font-size:16px; color:#475569; margin:6px 0 0; font-weight:700; }
-
-    /* box */
     .box{ border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#f8fafc; }
     .row{ display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #e2e8f0; }
     .row:last-child{ border-bottom:none; }
     .k{ width:150px; font-size:12px; color:#475569; font-weight:800; }
     .v{ flex:1; font-size:13px; color:#0f172a; word-break:break-word; }
-
-    /* actions */
     .actions{ margin-top:18px; display:flex; justify-content:center; gap:10px; }
-    .btn{
-      border:1px solid #cbd5e1; background:#0f172a; color:#fff;
-      padding:10px 14px; border-radius:12px; font-size:12px; font-weight:800; cursor:pointer;
-    }
+    .btn{ border:1px solid #cbd5e1; background:#0f172a; color:#fff; padding:10px 14px; border-radius:12px; font-size:12px; font-weight:800; cursor:pointer; }
     .btn.secondary{ background:#fff; color:#0f172a; }
     .foot{ margin-top:14px; font-size:11px; color:#64748b; text-align:center; }
-
-    @media print {
-      body{ padding:18px; }
-      .actions{ display:none; }
-    }
+    @media print { body{ padding:18px; } .actions{ display:none; } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="header">
       <div class="brandRow">
-  ${
-    logoSrc
-      ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
-      : `<div style="width:58px;height:58px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
-  }
-</div>
-      
+        ${
+          logoSrc
+            ? `<img class="logo" src="${logoSrc}" alt="Logo" />`
+            : `<div style="width:58px;height:58px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;">AMR</div>`
+        }
+      </div>
       <p class="line2">OAB: 1025/17</p>
     </div>
 
@@ -273,7 +237,6 @@ function MeuPerfilProfissional({ user }) {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function validate() {
@@ -386,7 +349,8 @@ function MeuPerfilProfissional({ user }) {
                     <b>OAB:</b> {perfil?.oab || "—"}
                   </div>
                   <div className="flex items-center gap-2">
-                    <b>Status:</b> {perfil?.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}
+                    <b>Status:</b>{" "}
+                    {perfil?.ativo ? <Badge tone="green">ATIVO</Badge> : <Badge tone="red">INATIVO</Badge>}
                   </div>
                 </div>
               </div>
@@ -427,6 +391,9 @@ function AdvogadosAdmin() {
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState("");
 
+  // ✅ CPF live
+  const [cpfLiveError, setCpfLiveError] = useState("");
+
   const [openView, setOpenView] = useState(false);
   const [viewing, setViewing] = useState(null);
 
@@ -460,6 +427,7 @@ function AdvogadosAdmin() {
     setEditing(null);
     setForm(empty);
     setFormErr("");
+    setCpfLiveError("");
     setOpenForm(true);
   }
 
@@ -475,6 +443,7 @@ function AdvogadosAdmin() {
       confirmarSenha: "",
       chavePix: row.chavePix || "",
     });
+    setCpfLiveError(""); // CPF está travado no edit, mas mantém limpo
     setFormErr("");
     setOpenForm(true);
   }
@@ -484,6 +453,17 @@ function AdvogadosAdmin() {
     setOpenView(true);
   }
 
+  function handleCpfChange(v) {
+    const masked = maskCPF(v);
+    setForm((p) => ({ ...p, cpf: masked }));
+
+    const d = onlyDigits(masked);
+    if (!d) return setCpfLiveError("");
+
+    if (d.length === 11 && !isValidCPF(masked)) setCpfLiveError("CPF inválido.");
+    else setCpfLiveError("");
+  }
+
   function validate(isCreate) {
     if (!String(form.nome).trim()) return "Informe o nome.";
     if (!isValidEmail(form.email)) return "Informe um e-mail válido.";
@@ -491,6 +471,7 @@ function AdvogadosAdmin() {
 
     if (isCreate) {
       if (!onlyDigits(form.cpf)) return "Informe o CPF.";
+      if (cpfLiveError) return "CPF inválido.";
       if (!isValidCPF(form.cpf)) return "CPF inválido.";
       if (!String(form.oab).trim()) return "Informe a OAB.";
       if (!String(form.senha).trim()) return "Informe a senha inicial.";
@@ -517,7 +498,7 @@ function AdvogadosAdmin() {
           method: "POST",
           body: {
             nome: String(form.nome).trim(),
-            cpf: form.cpf, // pode ir mascarado; backend limpa
+            cpf: form.cpf,
             oab: form.oab,
             email: String(form.email).trim(),
             telefone: form.telefone || "",
@@ -574,7 +555,7 @@ function AdvogadosAdmin() {
     <div className="p-6 space-y-4">
       <Card
         title="Advogados"
-        subtitle={null /* suprimido */}
+        subtitle={null}
         titleClassName="text-xl"
         right={
           <button
@@ -708,10 +689,14 @@ function AdvogadosAdmin() {
                     <Input value={form.chavePix} onChange={(e) => setForm((p) => ({ ...p, chavePix: e.target.value }))} />
                   </Field>
 
-                  <Field label="CPF" hint="Obrigatório no cadastro">
+                  <Field
+                    label="CPF"
+                    hint="Obrigatório no cadastro"
+                    error={!editing ? cpfLiveError : ""}
+                  >
                     <Input
                       value={form.cpf}
-                      onChange={(e) => setForm((p) => ({ ...p, cpf: maskCPF(e.target.value) }))}
+                      onChange={(e) => (editing ? null : handleCpfChange(e.target.value))}
                       disabled={!!editing}
                       inputMode="numeric"
                       placeholder="000.000.000-00"
@@ -777,7 +762,6 @@ function AdvogadosAdmin() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* PDF */}
                   <button
                     type="button"
                     onClick={() => openPdfWindow({ advogado: viewing })}
@@ -786,7 +770,6 @@ function AdvogadosAdmin() {
                   >
                     📄 PDF
                   </button>
-                  {/* Editar */}
                   <button
                     type="button"
                     onClick={() => {
@@ -798,7 +781,6 @@ function AdvogadosAdmin() {
                   >
                     Editar
                   </button>
-                  {/* Fechar */}
                   <button
                     onClick={() => setOpenView(false)}
                     className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"

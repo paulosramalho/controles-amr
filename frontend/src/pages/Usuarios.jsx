@@ -258,7 +258,6 @@ export default function UsuariosPage({ user }) {
       if (!cpf) return "CPF é obrigatório para Usuário/Estagiário.";
       if (!isValidCPF(cpf)) return "CPF inválido.";
     } else {
-      // Se preencher CPF mesmo sendo ADVOGADO, valida também
       if (cpf && !isValidCPF(cpf)) return "CPF inválido.";
     }
 
@@ -290,11 +289,8 @@ export default function UsuariosPage({ user }) {
     }
 
     // critica na hora: quando completar 11 dígitos
-    if (d.length === 11 && !isValidCPF(masked)) {
-      setCpfLiveError("CPF inválido.");
-    } else {
-      setCpfLiveError("");
-    }
+    if (d.length === 11 && !isValidCPF(masked)) setCpfLiveError("CPF inválido.");
+    else setCpfLiveError("");
   }
 
   async function save() {
@@ -352,14 +348,14 @@ export default function UsuariosPage({ user }) {
     <div className="p-6">
       <Card
         title="Usuários"
-        subtitle="Admin: cadastro, edição e ativação/inativação."
+        subtitle={null /* suprimido */}
         right={
           <div className="flex items-center gap-2">
             <div className="hidden md:block">
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar por nome, e-mail, CPF ou OAB…"
+                placeholder="Buscar por nome, e-mail, CPF…"
                 className="w-[320px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               />
             </div>
@@ -390,7 +386,7 @@ export default function UsuariosPage({ user }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nome, e-mail, CPF ou OAB…"
+            placeholder="Buscar por nome, e-mail, CPF…"
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
           />
         </div>
@@ -539,7 +535,6 @@ export default function UsuariosPage({ user }) {
             value={tipoUsuario}
             onChange={(v) => {
               setTipoUsuario(v);
-              // revalida CPF quando troca o tipo
               const d = onlyDigits(cpf);
               if ((v === "USUARIO" || v === "ESTAGIARIO") && d.length === 11 && !isValidCPF(cpf)) {
                 setCpfLiveError("CPF inválido.");
@@ -570,7 +565,8 @@ export default function UsuariosPage({ user }) {
           />
 
           <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            <b>Regras:</b> CPF é obrigatório para <b>Usuário</b> e <b>Estagiário</b>. Para <b>Advogado</b>, informe o <b>ID do Advogado</b> para vincular.
+            <b>Regras:</b> CPF é obrigatório para <b>Usuário</b> e <b>Estagiário</b>. Para <b>Advogado</b>, informe o{" "}
+            <b>ID do Advogado</b> para vincular.
           </div>
 
           <Input
@@ -587,14 +583,8 @@ export default function UsuariosPage({ user }) {
           />
         </div>
 
-        {/* marca touched pra obrigatoriedade */}
         <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setCpfTouched(true)}
-            className="hidden"
-            aria-hidden="true"
-          >
+          <button type="button" onClick={() => setCpfTouched(true)} className="hidden" aria-hidden="true">
             _
           </button>
         </div>
