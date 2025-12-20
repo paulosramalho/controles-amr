@@ -276,38 +276,54 @@ app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
   res.json(advogados);
 });
 
-app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
-  const { nome, cpf, oab, email, telefone, chavePix, senha } = req.body;
+post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { nome, cpf, oab, email, telefone, chavePix, criarUsuario, senha, confirmarSenha } = req.body;
 
-  const nomeNorm = String(nome || "").trim();
-  const cpfLimpo = onlyDigits(cpf);
-  const oabNorm = String(oab || "").trim().toUpperCase();
-  const emailNorm = String(email || "").trim().toLowerCase();
+    const nomeNorm = String(nome || "").trim();
+    const cpfLimpo = normCPF(cpf);
+    const oabNorm = normOAB(oab);
+    const emailNorm = normEmail(email);
+    const telefoneNorm = normPhone(telefone);
+    const pixNorm = normPix(chavePix);
 
-  // ⚠️ telefone: como você quer máscara no front, no back só normaliza ou garante string
-  const telefoneNorm = normPhone(telefone);
+    const criar = Boolean(criarUsuario);
 
-  // chavePix (se existir no Prisma/DB)
-  const chavePixNorm = chavePix === undefined ? undefined : (String(chavePix || "").trim() || null);
+    // Obrigatórios do Advogado
+    if (!nomeNorm || !cpfLimpo || !oabNorm || !emailNorm) {
+      return res.status(400).json({ message: "Informe nome, CPF, OAB e e-mail." });
+    }
+    if (!isValidCPF(cpfLimpo)) {
+      return res.status(400).json({ message: "CPF inválido." });
+    }
 
-  if (!nomeNorm || !cpfLimpo || !oabNorm || !emailNorm || !senha) {
-    return res.status(400).json({ message: "Campos obrigatórios ausentes." });
-  }
+    // Se for criar usuário junto, exige senha + confirmação
+    if (criar) {
+      if (!String(senha || "").trim()) {
+        return res.status(400).json({ message: "Informe a senha inicial (para o usuário)." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+    }
 
-  const { bcrypt } = await getAuthLibs();
-  const senhaHash = await bcrypt.hash(String(senha), 10);
-
-  const advogado = await prisma.advogado.create({
-    data: {
+    const data = {
       nome: nomeNorm,
       cpf: cpfLimpo,
       oab: oabNorm,
       email: emailNorm,
       telefone: telefoneNorm,
       ativo: true,
-      ...(chavePixNorm !== undefined ? { chavePix: chavePixNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
 
-      usuario: {
+    if (criar) {
+      const { bcrypt } = await getAuthLibs();
+      const senhaHash = await bcrypt.hash(String(senha), 10);
+      data.usuario = {
         create: {
           nome: nomeNorm,
           email: emailNorm,
@@ -315,11 +331,22 @@ app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
           role: "USER",
           ativo: true,
         },
-      },
-    },
-  });
+      };
+    }
 
-  return res.status(201).json(advogado);
+    const advogado = await prisma.advogado.create({ data });
+    return res.status(201).json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+
+    // Duplicidades (CPF/OAB/Email)
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao cadastrar advogado." });
+  }
 });
 
 app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
