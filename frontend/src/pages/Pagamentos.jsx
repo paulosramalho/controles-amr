@@ -850,8 +850,6 @@ useEffect(() => {
   onChange={setConfData}
   disabled={confirming}
 />
-
-</label>
           <Select label="Meio" value={confMeio} onChange={setConfMeio} disabled={confirming}>
             <option value="PIX">PIX</option>
             <option value="TED">TED</option>
