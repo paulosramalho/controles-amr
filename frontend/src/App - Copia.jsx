@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
-import { apiFetch, setAuth } from "./lib/api";
+import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
+
 import AdvogadosPage from "./pages/Advogados";
+import UsuariosPage from "./pages/Usuarios";
+import ClientesPage from "./pages/Clientes";
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -44,7 +47,8 @@ function Login({ onLogin }) {
         method: "POST",
         body: { email, senha },
       });
-      setAuth(resp.token);
+      // salva token e user
+      setAuth(resp.token, resp.user);
       onLogin(resp.user);
     } catch (err) {
       setError(err?.message || "Erro no login");
@@ -127,46 +131,78 @@ function Placeholder({ title }) {
   );
 }
 
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-4 w-4 transition-transform ${open ? "rotate-90" : "rotate-0"}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
 function AppShell({ user, onLogout }) {
   const clock = useClock();
   const navigate = useNavigate();
-  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
-  
-  const [openSettings, setOpenSettings] = useState(false); // começa fechado
+  const location = useLocation();
 
-  // ✅ CORRIGIDO: useMemo com return fechado corretamente
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  const [openSettings, setOpenSettings] = useState(false);
+
   const menu = useMemo(() => {
     if (isAdmin) {
       return [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/repasses", label: "Repasses" },
-  { to: "/historico", label: "Histórico" },
-  { to: "/relatorios", label: "Relatórios" },
+        { to: "/dashboard", label: "Dashboard" },
+        { to: "/repasses", label: "Repasses" },
+        { to: "/historico", label: "Histórico" },
+        { to: "/relatorios", label: "Relatórios" },
 
-  {
-    type: "group",
-    label: "Configurações",
-    children: [
-      { to: "/advogados", label: "Advogados" },
-      { to: "/clientes", label: "Clientes" },
-      { to: "/pagamentos", label: "Pagamentos" },
-    ],
-  },
-];
+        // ✅ Configurações como ÚLTIMO item (abaixo de Relatórios)
+        {
+          type: "group",
+          label: "Configurações",
+          children: [
+            { to: "/advogados", label: "Advogados" },
+            { to: "/clientes", label: "Clientes" },
+            { to: "/pagamentos", label: "Pagamentos" },
+            { to: "/usuarios", label: "Usuários" },
+          ],
+        },
+      ];
     }
 
     // USER
     return [{ to: "/advogados", label: "Meu Perfil Profissional" }];
   }, [isAdmin]);
 
+  // ✅ default route inteligente
   useEffect(() => {
-    if (location.pathname === "/") navigate("/dashboard");
+    if (location.pathname === "/") {
+      navigate(isAdmin ? "/dashboard" : "/advogados", { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Classe ativa (azul mais escuro)
+  const navClass = ({ isActive }) =>
+    `block rounded-lg px-4 py-2 text-sm transition-colors
+     ${
+       isActive
+         ? "bg-blue-200 text-blue-950 font-semibold ring-1 ring-blue-200"
+         : "text-slate-700 hover:bg-blue-50 hover:text-slate-900 hover:ring-1 hover:ring-blue-100"
+     }`;
+
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <aside className="w-64 h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
+    <div className="min-h-screen bg-slate-50">
+      {/* ✅ Sidebar fixa */}
+      <aside className="fixed left-0 top-0 w-64 h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
         <div className="p-5 border-b border-slate-200">
           <div className="flex flex-col items-center justify-center">
             <img src={logoSrc} alt="AMR" className="h-7 w-auto" />
@@ -181,66 +217,42 @@ function AppShell({ user, onLogout }) {
         <nav className="p-3 space-y-2 flex-1 overflow-auto">
           {menu.map((item) => {
             if (item.type === "group") {
-  const opened = openSettings;
+              const opened = openSettings;
 
-  return (
-    <div key={item.label} className="mt-2">
-      <button
-        type="button"
-        onClick={() => setOpenSettings((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
-        aria-expanded={opened}
-      >
-        <span>{item.label}</span>
-        <svg
-  viewBox="0 0 20 20"
-  className={`h-4 w-4 text-slate-400 transition-transform ${opened ? "rotate-180" : "rotate-0"}`}
-  aria-hidden="true"
->
-  <path
-    fill="currentColor"
-    d="M5.3 7.7a1 1 0 0 1 1.4 0L10 11l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z"
-  />
-</svg>
-      </button>
+              return (
+                <div key={item.label} className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSettings((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+                    aria-expanded={opened}
+                  >
+                    <span>{item.label}</span>
+                    <span className="text-slate-500">
+                      <Chevron open={opened} />
+                    </span>
+                  </button>
 
-      {opened ? (
-        <div className="space-y-1 pl-4">
-          {item.children.map((child) => (
-            <NavLink
-              key={child.to}
-              to={child.to}
-              className={({ isActive }) =>
-                `block rounded-lg px-4 py-2 text-sm transition-colors
-                 ${
-                   isActive
-                     ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
-                     : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
-                 }`
-              }
-            >
-              {child.label}
-            </NavLink>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+                  {opened ? (
+                    <div className="space-y-1 mt-1">
+                      {item.children.map((child) => (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          className={navClass}
+                          style={{ paddingLeft: 28 }} // ✅ "um pouco mais para a direita"
+                        >
+                          {child.label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
 
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `block rounded-lg px-4 py-2 text-sm transition-colors
-                   ${
-                     isActive
-                       ? "bg-slate-200 text-slate-900 font-semibold ring-1 ring-slate-200"
-                       : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 hover:ring-1 hover:ring-slate-200"
-                   }`
-                }
-              >
+              <NavLink key={item.to} to={item.to} className={navClass}>
                 {item.label}
               </NavLink>
             );
@@ -267,16 +279,19 @@ function AppShell({ user, onLogout }) {
         </div>
       </aside>
 
-      <main className="flex-1">
+      {/* ✅ Conteúdo com scroll independente */}
+      <main className="ml-64 h-screen overflow-y-auto">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/pagamentos" element={<Placeholder title="Pagamentos" />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
-          <Route path="/clientes" element={<Placeholder title="Clientes" />} />
+          <Route path="/clientes" element={<ClientesPage user={user} />} />
+          <Route path="/usuarios" element={<UsuariosPage user={user} />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
           <Route path="/configuracoes" element={<Placeholder title="Configurações" />} />
+          <Route path="*" element={<Placeholder title="Página não encontrada" />} />
         </Routes>
       </main>
     </div>
@@ -292,9 +307,18 @@ export default function App() {
 
   function handleLogout() {
     setUser(null);
+    clearAuth?.();
     localStorage.removeItem("token");
     localStorage.removeItem("auth");
   }
+
+  // ✅ restaura sessão se já tiver token + user
+  useEffect(() => {
+    const token = getToken?.();
+    const storedUser = getUser?.();
+    if (token && storedUser && !user) setUser(storedUser);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!user) return <Login onLogin={handleLogin} />;
   return <AppShell user={user} onLogout={handleLogout} />;
