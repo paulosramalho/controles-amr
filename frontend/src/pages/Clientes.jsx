@@ -84,16 +84,20 @@ function isValidCpfCnpj(v = "") {
   return false;
 }
 
+function truncateMiddleOrEnd(text, max = 26) {
+  const s = String(text || "");
+  if (!s) return "";
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 3)) + "...";
+}
+
 /* ---------- UI helpers ---------- */
-function Card({ title, subtitle, children, right }) {
+function Card({ title, subtitle, children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xl font-semibold text-slate-900">{title}</div>
-          {subtitle ? <div className="mt-1 text-sm text-slate-600">{subtitle}</div> : null}
-        </div>
-        {right}
+      <div className="px-5 py-4 border-b border-slate-200">
+        <div className="text-xl font-semibold text-slate-900">{title}</div>
+        {subtitle ? <div className="mt-1 text-sm text-slate-600">{subtitle}</div> : null}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -150,18 +154,28 @@ function Input({ label, value, onChange, type = "text", placeholder, disabled })
   );
 }
 
-function Textarea({ label, value, onChange, placeholder, disabled }) {
+function Textarea({ label, value, onChange, placeholder, disabled, readOnly }) {
   return (
     <label className="block">
       <div className="text-sm font-medium text-slate-700">{label}</div>
       <textarea
-        className="mt-1 w-full min-h-[90px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className="mt-1 w-full min-h-[120px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
+        readOnly={readOnly}
       />
     </label>
+  );
+}
+
+function InfoLine({ label, value }) {
+  return (
+    <div className="flex flex-col">
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="text-sm text-slate-900">{value || "—"}</div>
+    </div>
   );
 }
 
@@ -185,8 +199,13 @@ export default function ClientesPage({ user }) {
 
   const [q, setQ] = useState("");
 
+  // modal criar/editar
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  // modal detalhes (somente leitura)
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewing, setViewing] = useState(null);
 
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [nomeRazaoSocial, setNomeRazaoSocial] = useState("");
@@ -220,12 +239,14 @@ export default function ClientesPage({ user }) {
       const nome = String(c?.nomeRazaoSocial || "");
       const em = String(c?.email || "");
       const tel = String(c?.telefone || "");
+      const obs = String(c?.observacoes || "");
       return (
         doc.toLowerCase().includes(term) ||
         maskCpfCnpj(doc).toLowerCase().includes(term) ||
         nome.toLowerCase().includes(term) ||
         em.toLowerCase().includes(term) ||
-        maskPhoneBR(tel).toLowerCase().includes(term)
+        maskPhoneBR(tel).toLowerCase().includes(term) ||
+        obs.toLowerCase().includes(term)
       );
     });
   }, [rows, q]);
@@ -252,6 +273,11 @@ export default function ClientesPage({ user }) {
     setTelefone(c?.telefone ? maskPhoneBR(c.telefone) : "");
     setObservacoes(c?.observacoes || "");
     setOpen(true);
+  }
+
+  function openView(c) {
+    setViewing(c);
+    setViewOpen(true);
   }
 
   function validate() {
@@ -313,44 +339,51 @@ export default function ClientesPage({ user }) {
     }
   }
 
+  const controls = (
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <input
+          className="w-[360px] max-w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+          placeholder="Buscar por nome, e-mail, CPF/CNPJ…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button
+          type="button"
+          onClick={load}
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+          disabled={loading}
+        >
+          Atualizar
+        </button>
+      </div>
+
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={openCreate}
+          className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
+          disabled={loading}
+        >
+          + Novo Cliente
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6">
-      <Card
-        title="Clientes"
-        right={
-          <div className="flex items-center gap-2">
-            <input
-              className="w-[320px] max-w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Buscar por nome, e-mail, CPF/CNPJ…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
-              disabled={loading}
-            >
-              Atualizar
-            </button>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
-              disabled={loading}
-            >
-              + Novo Cliente
-            </button>
-          </div>
-        }
-      >
+      <Card title="Clientes">
+        {/* ✅ Buscar + Atualizar “descidos” (igual padrão) */}
+        {controls}
+
         {error ? (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
             {error}
           </div>
         ) : null}
 
-        <div className="overflow-auto rounded-xl border border-slate-200">
+        <div className="mt-4 overflow-auto rounded-xl border border-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
@@ -358,50 +391,90 @@ export default function ClientesPage({ user }) {
                 <th className="text-left px-4 py-3 font-semibold">Nome/Razão Social</th>
                 <th className="text-left px-4 py-3 font-semibold">Telefone</th>
                 <th className="text-left px-4 py-3 font-semibold">E-mail</th>
+                <th className="text-left px-4 py-3 font-semibold">Obs.</th>
                 <th className="text-left px-4 py-3 font-semibold">Status</th>
                 <th className="text-left px-4 py-3 font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filtered.map((c) => (
-                <tr key={c.id} className="bg-white">
-                  <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">
-                    {maskCpfCnpj(c?.cpfCnpj || "") || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-800">{c?.nomeRazaoSocial || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                    {c?.telefone ? maskPhoneBR(c.telefone) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{c?.email || "—"}</td>
-                  <td className="px-4 py-3">
-                    {c?.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+              {filtered.map((c) => {
+                const obs = String(c?.observacoes || "").trim();
+                const hasObs = Boolean(obs);
+
+                return (
+                  <tr key={c.id} className="bg-white">
+                    <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">
+                      {maskCpfCnpj(c?.cpfCnpj || "") || "—"}
+                    </td>
+
+                    <td className="px-4 py-3 text-slate-800">
+                      {/* ✅ Clique no nome abre modal de detalhes */}
                       <button
                         type="button"
-                        onClick={() => openEdit(c)}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                        disabled={loading}
+                        onClick={() => openView(c)}
+                        className="text-left font-semibold text-slate-900 hover:underline"
+                        title="Ver detalhes"
                       >
-                        Editar
+                        {c?.nomeRazaoSocial || "—"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleAtivo(c)}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                        disabled={loading}
-                      >
-                        {c?.ativo ? "Inativar" : "Ativar"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+
+                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                      {c?.telefone ? maskPhoneBR(c.telefone) : "—"}
+                    </td>
+
+                    <td className="px-4 py-3 text-slate-700">{c?.email || "—"}</td>
+
+                    {/* ✅ Observações: truncado + botão "+" pra expandir */}
+                    <td className="px-4 py-3 text-slate-700">
+                      <div className="flex items-center gap-2">
+                        <span className="max-w-[240px] inline-block">
+                          {hasObs ? truncateMiddleOrEnd(obs, 28) : "—"}
+                        </span>
+                        {hasObs ? (
+                          <button
+                            type="button"
+                            onClick={() => openView(c)}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                            title="Ver observações completas"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      {c?.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(c)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                          disabled={loading}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleAtivo(c)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                          disabled={loading}
+                        >
+                          {c?.ativo ? "Inativar" : "Ativar"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={6}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
                     {loading ? "Carregando..." : "Nenhum cliente encontrado."}
                   </td>
                 </tr>
@@ -411,6 +484,7 @@ export default function ClientesPage({ user }) {
         </div>
       </Card>
 
+      {/* Modal criar/editar */}
       <Modal
         open={open}
         title={editing ? "Editar Cliente" : "Novo Cliente"}
@@ -484,6 +558,53 @@ export default function ClientesPage({ user }) {
               ? "Documento OK."
               : "Documento inválido (verifique CPF/CNPJ)."
             : "Informe CPF/CNPJ para validar."}
+        </div>
+      </Modal>
+
+      {/* Modal detalhes (somente leitura) */}
+      <Modal
+        open={viewOpen}
+        title="Detalhes do Cliente"
+        onClose={() => setViewOpen(false)}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setViewOpen(false);
+                if (viewing) openEdit(viewing);
+              }}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewOpen(false)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+            >
+              Fechar
+            </button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InfoLine label="CPF/CNPJ" value={maskCpfCnpj(viewing?.cpfCnpj || "")} />
+          <InfoLine label="Status" value={viewing?.ativo ? "Ativo" : "Inativo"} />
+          <InfoLine label="Nome/Razão Social" value={viewing?.nomeRazaoSocial || "—"} />
+          <InfoLine label="E-mail" value={viewing?.email || "—"} />
+          <InfoLine label="Telefone" value={viewing?.telefone ? maskPhoneBR(viewing.telefone) : "—"} />
+          <InfoLine label="ID" value={viewing?.id ? String(viewing.id) : "—"} />
+        </div>
+
+        <div className="mt-4">
+          <Textarea
+            label="Observações"
+            value={String(viewing?.observacoes || "")}
+            onChange={() => {}}
+            readOnly
+            placeholder="—"
+          />
         </div>
       </Modal>
     </div>
