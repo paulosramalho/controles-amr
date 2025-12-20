@@ -502,7 +502,7 @@ export default function ClientesPage({ user }) {
         type="button"
         ref={(el) => (obsBtnRefs.current[c.id] = el)}
         onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
-        className="inline-flex items-center justify-left rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
         title="Ver observações"
       >
         📝
@@ -513,7 +513,7 @@ export default function ClientesPage({ user }) {
         anchorEl={obsBtnRefs.current[c.id]}
         onClose={() => setObsOpenId(null)}
       >
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-left justify-between gap-3">
           <div className="text-sm font-semibold text-slate-900">Observações</div>
           <button
             type="button"
