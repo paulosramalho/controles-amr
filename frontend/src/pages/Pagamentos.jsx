@@ -569,27 +569,6 @@ useEffect(() => {
             </tbody>
           </table>
         </div>
-
-          {/* Totais */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <div>
-              <div className="text-slate-500">Total previsto</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
-            </div>
-
-            <div>
-              <div className="text-slate-500">Total recebido</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
-            </div>
-
-            <div>
-              <div className="text-slate-500">Diferença</div>
-              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
-                R$ {formatBRLFromDecimal(diferencaTotais)}
-              </div>
-            </div>
-          </div>
-
       </Card>
 
       {/* ---------- Modal: Novo Contrato ---------- */}
@@ -842,6 +821,25 @@ useEffect(() => {
                 ) : null}
               </tbody>
             </table>
+          </div>
+{/* Totais */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div>
+              <div className="text-slate-500">Total previsto</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Total recebido</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diferença</div>
+              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
+                R$ {formatBRLFromDecimal(diferencaTotais)}
+              </div>
+            </div>
           </div>
         )}
       </Modal>
