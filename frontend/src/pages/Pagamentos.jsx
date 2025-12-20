@@ -463,13 +463,14 @@ useEffect(() => {
     </div>
   );
 
+  if (!isAdmin) {
+  // Totais do contrato selecionado (para o modal de parcelas)
   const parcelasDoContrato = selectedContrato?.parcelas || [];
-  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorPrevisto || 0), 0);
-  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorRecebido || 0), 0);
+  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
+  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
   const diferencaTotais = totalRecebido - totalPrevisto;
 
 
-  if (!isAdmin) {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -508,7 +509,6 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
-                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -520,14 +520,13 @@ useEffect(() => {
               {filtered.map((c) => {
                 const status = computeStatusContrato(c);
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
-                                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
+                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(Math.max(0, Number(c.valorTotal || 0) - (c?.parcelas || []).reduce((s, p) => s + Number(p.valorRecebido || 0), 0)))}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -765,79 +764,91 @@ useEffect(() => {
         {!selectedContrato ? (
           <div className="text-sm text-slate-600">Selecione um contrato.</div>
         ) : (
-          <div className="overflow-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[900px] w-full text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">#</th>
-                  <th className="text-left px-4 py-3 font-semibold">Vencimento</th>
-                  <th className="text-left px-4 py-3 font-semibold">Previsto</th>
-                  <th className="text-left px-4 py-3 font-semibold">Status</th>
-                  <th className="text-left px-4 py-3 font-semibold">Recebido</th>
-                  <th className="text-left px-4 py-3 font-semibold">Meio</th>
-                  <th className="text-right px-4 py-3 font-semibold">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {(selectedContrato.parcelas || []).map((p) => (
-                  <tr key={p.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
-                    <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
-                    <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                    <td className="px-4 py-3">
-                      {p.status === "RECEBIDA" ? <Badge tone="green">Recebida</Badge> : p.status === "CANCELADA" ? <Badge tone="red">Cancelada</Badge> : <Badge tone="blue">Prevista</Badge>}
-                    </td>
-                    <td className="px-4 py-3 text-slate-800">
-                      {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
-                      {p.dataRecebimento ? (
-                        <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        {p.status === "PREVISTA" ? (
-                          <button
-                            type="button"
-                            onClick={() => openConfirmParcela(p)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                          >
-                            Receber Parcela
-                          </button>
-                        ) : (
-                          <span className="text-slate-400 text-sm">—</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
-                {!(selectedContrato.parcelas || []).length ? (
+          <div className="space-y-4">
+            <div className="overflow-auto rounded-2xl border border-slate-200">
+              <table className="min-w-[900px] w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700">
                   <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
-                      Nenhuma parcela cadastrada.
-                    </td>
+                    <th className="text-left px-4 py-3 font-semibold">#</th>
+                    <th className="text-left px-4 py-3 font-semibold">Vencimento</th>
+                    <th className="text-left px-4 py-3 font-semibold">Previsto</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Recebido</th>
+                    <th className="text-left px-4 py-3 font-semibold">Meio</th>
+                    <th className="text-right px-4 py-3 font-semibold">Ações</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-{/* Totais */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <div>
-              <div className="text-slate-500">Total previsto</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {(selectedContrato.parcelas || []).map((p) => (
+                    <tr key={p.id} className="bg-white">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
+                      <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
+                      <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
+                      <td className="px-4 py-3">
+                        {p.status === "RECEBIDA" ? (
+                          <Badge tone="green">Recebida</Badge>
+                        ) : p.status === "CANCELADA" ? (
+                          <Badge tone="red">Cancelada</Badge>
+                        ) : (
+                          <Badge tone="blue">Prevista</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-800">
+                        {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
+                        {p.dataRecebimento ? (
+                          <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          {p.status === "PREVISTA" ? (
+                            <button
+                              type="button"
+                              onClick={() => openConfirmParcela(p)}
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            >
+                              Receber Parcela
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-sm">—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!(selectedContrato.parcelas || []).length ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                        Nenhuma parcela cadastrada.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
 
-            <div>
-              <div className="text-slate-500">Total recebido</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
-            </div>
+            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div>
+                <div className="text-slate-500">Total previsto</div>
+                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+              </div>
 
-            <div>
-              <div className="text-slate-500">Diferença</div>
-              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
-                R$ {formatBRLFromDecimal(diferencaTotais)}
+              <div>
+                <div className="text-slate-500">Total recebido</div>
+                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+              </div>
+
+              <div>
+                <div className="text-slate-500">Diferença</div>
+                <div
+                  className={`font-semibold ${
+                    diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"
+                  }`}
+                >
+                  R$ {formatBRLFromDecimal(diferencaTotais)}
+                </div>
               </div>
             </div>
           </div>
