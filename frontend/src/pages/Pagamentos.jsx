@@ -443,7 +443,19 @@ useEffect(() => {
     return rows;
   }, [rows]);
 
-  // SearchRow padrão
+    const parcelasDoContrato = selectedContrato?.parcelas || [];
+
+  const totalPrevisto = useMemo(() => {
+    return parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorPrevisto || 0), 0);
+  }, [parcelasDoContrato]);
+
+  const totalRecebido = useMemo(() => {
+    return parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorRecebido || 0), 0);
+  }, [parcelasDoContrato]);
+
+  const diferencaTotais = totalRecebido - totalPrevisto;
+
+// SearchRow padrão
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
@@ -821,35 +833,22 @@ useEffect(() => {
           </div>
 
           {/* Totais */}
-          {(() => {
-            const ps = selectedContrato?.parcelas || [];
-            const previsto = ps.reduce((acc, p) => acc + (p.status !== "CANCELADA" ? Number(p.valorPrevisto || 0) : 0), 0);
-            const recebido = ps.reduce((acc, p) => acc + (p.status === "RECEBIDA" ? Number(p.valorRecebido || 0) : 0), 0);
-            const diff = recebido - previsto;
-            const diffTone = Math.abs(diff) < 0.005 ? "slate" : diff > 0 ? "blue" : "red";
-            return (
-              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs font-semibold text-slate-600">Previsto</div>
-                    <div className="text-sm font-semibold text-slate-900 whitespace-nowrap">R$ {formatBRLFromDecimal(previsto)}</div>
-                  </div>
-                  <div className="hidden md:block h-4 w-px bg-slate-300" />
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs font-semibold text-slate-600">Recebido</div>
-                    <div className="text-sm font-semibold text-slate-900 whitespace-nowrap">R$ {formatBRLFromDecimal(recebido)}</div>
-                  </div>
-                  <div className="hidden md:block h-4 w-px bg-slate-300" />
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs font-semibold text-slate-600">Diferença</div>
-                    <Badge tone={diffTone}>
-                      {diff >= 0 ? "+" : "-"}R$ {formatBRLFromDecimal(Math.abs(diff))}
-                    </Badge>
-                  </div>
-                </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div>
+              <div className="text-slate-500">Total previsto</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+            </div>
+            <div>
+              <div className="text-slate-500">Total recebido</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+            </div>
+            <div>
+              <div className="text-slate-500">Diferença</div>
+              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
+                R$ {formatBRLFromDecimal(diferencaTotais)}
               </div>
-            );
-          })()}
+            </div>
+          </div>
 
         )}
       </Modal>
