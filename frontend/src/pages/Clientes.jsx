@@ -513,7 +513,7 @@ export default function ClientesPage({ user }) {
         anchorEl={obsBtnRefs.current[c.id]}
         onClose={() => setObsOpenId(null)}
       >
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-left">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-slate-900">Observações</div>
           <button
             type="button"
@@ -524,7 +524,7 @@ export default function ClientesPage({ user }) {
             ✕
           </button>
         </div>
-        <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap">{obs}</div>
+        <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap text-left">{obs}</div>
       </Popover>
     </>
   ) : (
