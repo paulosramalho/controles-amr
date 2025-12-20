@@ -324,14 +324,18 @@ app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
       const { bcrypt } = await getAuthLibs();
       const senhaHash = await bcrypt.hash(String(senha), 10);
       data.usuario = {
-        create: {
-          nome: nomeNorm,
-          email: emailNorm,
-          senhaHash,
-          role: "USER",
-          ativo: true,
-        },
-      };
+  create: {
+    nome: nomeNorm,
+    email: emailNorm,
+    senhaHash,
+    role: "USER",
+    ativo: true,
+
+    // ✅ AQUI: força o tipo correto
+    tipoUsuario: "ADVOGADO",
+  },
+};
+
     }
 
     const advogado = await prisma.advogado.create({ data });
