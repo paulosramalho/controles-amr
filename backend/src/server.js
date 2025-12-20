@@ -276,7 +276,7 @@ app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
   res.json(advogados);
 });
 
-post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { nome, cpf, oab, email, telefone, chavePix, criarUsuario, senha, confirmarSenha } = req.body;
 
