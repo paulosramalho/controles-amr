@@ -401,23 +401,15 @@ export default function ClientesPage({ user }) {
 
   const searchRow = (
     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <input
-          className="w-[360px] max-w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-          placeholder="Buscar por nome, e-mail, CPF/CNPJ…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          type="button"
-          onClick={load}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
-          disabled={loading}
-        >
-          Atualizar
-        </button>
-      </div>
-    </div>
+      <div className="flex items-center gap-3">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome, e-mail, CPF/CNPJ" />
+          <button
+            onClick={load}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+          >
+            Atualizar
+          </button>
+        </div>
   );
 
   return (
