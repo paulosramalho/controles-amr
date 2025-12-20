@@ -84,13 +84,6 @@ function isValidCpfCnpj(v = "") {
   return false;
 }
 
-function truncateEnd(text, max = 26) {
-  const s = String(text || "");
-  if (!s) return "";
-  if (s.length <= max) return s;
-  return s.slice(0, Math.max(0, max - 3)) + "...";
-}
-
 /* ---------- UI helpers ---------- */
 function Card({ title, subtitle, children, right }) {
   return (
@@ -200,7 +193,6 @@ function Popover({ open, anchorEl, onClose, children }) {
     if (left > maxLeft) left = maxLeft;
     if (left < margin) left = margin;
 
-    // Se estiver perto do rodapé, abre para cima
     const estimatedHeight = 220;
     if (top + estimatedHeight > window.innerHeight - margin) {
       top = r.top - margin - estimatedHeight;
@@ -222,7 +214,6 @@ function Popover({ open, anchorEl, onClose, children }) {
 
   return (
     <>
-      {/* overlay invisível (fecha clicando fora) */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         className="fixed z-50"
@@ -255,15 +246,12 @@ export default function ClientesPage({ user }) {
 
   const [q, setQ] = useState("");
 
-  // modal criar/editar
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  // modal detalhes (somente leitura)
   const [viewOpen, setViewOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
 
-  // popover obs
   const [obsOpenId, setObsOpenId] = useState(null);
   const obsBtnRefs = useRef({});
 
@@ -343,7 +331,6 @@ export default function ClientesPage({ user }) {
   function validate() {
     if (!cpfCnpj) return "Informe CPF ou CNPJ.";
     if (!isValidCpfCnpj(cpfCnpj)) return "CPF/CNPJ inválido.";
-
     if (!nomeRazaoSocial.trim()) return "Informe Nome/Razão Social.";
 
     if (email && !isValidEmail(String(email).trim().toLowerCase())) return "E-mail inválido.";
@@ -399,18 +386,24 @@ export default function ClientesPage({ user }) {
     }
   }
 
+  // ✅ Buscar + Atualizar no mesmo padrão (input esticado + botão)
   const searchRow = (
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-      <div className="flex items-center gap-3">
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome, e-mail, CPF/CNPJ" />
-          <button
-            onClick={load}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
-          >
-            Atualizar
-          </button>
-        </div>
-    /div>
+    <div className="flex items-center gap-3">
+      <input
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+        placeholder="Buscar por nome, e-mail, CPF/CNPJ…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={load}
+        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+        disabled={loading}
+      >
+        Atualizar
+      </button>
+    </div>
   );
 
   return (
@@ -418,7 +411,6 @@ export default function ClientesPage({ user }) {
       <Card
         title="Clientes"
         right={
-          // ✅ "+ Novo Cliente" no header
           <button
             type="button"
             onClick={openCreate}
@@ -429,7 +421,6 @@ export default function ClientesPage({ user }) {
           </button>
         }
       >
-        {/* ✅ Buscar + Atualizar no topo do corpo */}
         {searchRow}
 
         {error ? (
@@ -438,25 +429,19 @@ export default function ClientesPage({ user }) {
           </div>
         ) : null}
 
-        <div className="mt-4 overflow-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-sm">
+        <div className="mt-4 overflow-auto rounded-2xl border border-slate-200">
+          <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
-  <tr>
-    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">CPF/CNPJ</th>
-
-    {/* ✅ Nome ganha largura */}
-    <th className="text-left px-4 py-3 font-semibold min-w-[420px]">Nome/Razão Social</th>
-
-    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Telefone</th>
-    <th className="text-left px-4 py-3 font-semibold">E-mail</th>
-
-    {/* ✅ Obs. mínima */}
-    <th className="text-center px-2 py-3 font-semibold w-[64px]">Obs.</th>
-
-    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
-    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Ações</th>
-  </tr>
-</thead>
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">CPF/CNPJ</th>
+                <th className="text-left px-4 py-3 font-semibold min-w-[520px]">Nome/Razão Social</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Telefone</th>
+                <th className="text-left px-4 py-3 font-semibold">E-mail</th>
+                <th className="text-center px-2 py-3 font-semibold w-[64px]">Obs.</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
+                <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">Ações</th>
+              </tr>
+            </thead>
 
             <tbody className="divide-y divide-slate-200">
               {filtered.map((c) => {
@@ -471,15 +456,15 @@ export default function ClientesPage({ user }) {
                     </td>
 
                     <td className="px-4 py-3 text-slate-800">
-  <button
-    type="button"
-    onClick={() => openView(c)}
-    className="text-left font-semibold text-slate-900 hover:underline"
-    title="Ver detalhes"
-  >
-    {c?.nomeRazaoSocial || "—"}
-  </button>
-</td>
+                      <button
+                        type="button"
+                        onClick={() => openView(c)}
+                        className="text-left font-semibold text-slate-900 hover:underline"
+                        title="Ver detalhes"
+                      >
+                        {c?.nomeRazaoSocial || "—"}
+                      </button>
+                    </td>
 
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {c?.telefone ? maskPhoneBR(c.telefone) : "—"}
@@ -487,50 +472,44 @@ export default function ClientesPage({ user }) {
 
                     <td className="px-4 py-3 text-slate-700">{c?.email || "—"}</td>
 
-                    {/* ✅ Observações com popover */}
+                    {/* Obs. só ícone + popover */}
                     <td className="px-2 py-3 text-center">
-  {hasObs ? (
-    <>
-      <button
-        type="button"
-        ref={(el) => (obsBtnRefs.current[c.id] = el)}
-        onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
-        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-        title="Ver observações"
-      >
-        📝
-      </button>
+                      {hasObs ? (
+                        <>
+                          <button
+                            type="button"
+                            ref={(el) => (obsBtnRefs.current[c.id] = el)}
+                            onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            title="Ver observações"
+                          >
+                            📝
+                          </button>
 
-      <Popover
-        open={isObsOpen}
-        anchorEl={obsBtnRefs.current[c.id]}
-        onClose={() => setObsOpenId(null)}
-      >
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-900">Observações</div>
-          <button
-            type="button"
-            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
-            onClick={() => setObsOpenId(null)}
-            title="Fechar"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap text-left">{obs}</div>
-      </Popover>
-    </>
-  ) : (
-    <span className="text-slate-400">—</span>
-  )}
-</td>
-
-                    <td className="px-4 py-3">
-                      {c?.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
+                          <Popover open={isObsOpen} anchorEl={obsBtnRefs.current[c.id]} onClose={() => setObsOpenId(null)}>
+                            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-slate-900">Observações</div>
+                              <button
+                                type="button"
+                                className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+                                onClick={() => setObsOpenId(null)}
+                                title="Fechar"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap text-left">{obs}</div>
+                          </Popover>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
 
+                    <td className="px-4 py-3">{c?.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}</td>
+
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex justify-end gap-2">
                         <button
                           type="button"
                           onClick={() => openEdit(c)}
@@ -678,13 +657,7 @@ export default function ClientesPage({ user }) {
         </div>
 
         <div className="mt-4">
-          <Textarea
-            label="Observações"
-            value={String(viewing?.observacoes || "")}
-            onChange={() => {}}
-            readOnly
-            placeholder="—"
-          />
+          <Textarea label="Observações" value={String(viewing?.observacoes || "")} onChange={() => {}} readOnly placeholder="—" />
         </div>
       </Modal>
     </div>
