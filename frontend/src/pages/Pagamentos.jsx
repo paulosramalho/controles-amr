@@ -110,7 +110,7 @@ function Modal({ open, title, onClose, children, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-slate-200">
+      <div className="relative w-full max-w-5xl rounded-2xl bg-white shadow-xl border border-slate-200">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="text-base font-semibold text-slate-900">{title}</div>
           <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" type="button">
@@ -693,7 +693,11 @@ export default function PagamentosPage({ user }) {
       {/* ---------- Modal: Parcelas ---------- */}
       <Modal
         open={openParcelas}
-        title={selectedContrato ? `Parcelas — Contrato ${selectedContrato.numeroContrato}` : "Parcelas"}
+        title={
+  selectedContrato
+    ? `Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} - ${selectedContrato?.cliente?.nomeRazaoSocial || ""}`
+    : "Controle de Parcelas"
+}
         onClose={() => setOpenParcelas(false)}
         footer={
           <div className="flex items-center justify-end">
@@ -747,7 +751,7 @@ export default function PagamentosPage({ user }) {
                             onClick={() => openConfirmParcela(p)}
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
                           >
-                            Confirmar
+                            Receber Parcela
                           </button>
                         ) : (
                           <span className="text-slate-400 text-sm">—</span>
@@ -797,13 +801,23 @@ export default function PagamentosPage({ user }) {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Input
-            label="Data do recebimento"
-            value={confData}
-            onChange={setConfData}
-            placeholder="DD/MM/AAAA"
-            disabled={confirming}
-          />
+          <label className="block">
+  <div className="text-sm font-medium text-slate-700">Data do recebimento</div>
+  <input
+    type="date"
+    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+    value={
+      confData
+        ? confData.split("/").reverse().join("-")
+        : ""
+    }
+    onChange={(e) => {
+      const [y, m, d] = e.target.value.split("-");
+      setConfData(`${d}/${m}/${y}`);
+    }}
+    disabled={confirming}
+  />
+</label>
           <Select label="Meio" value={confMeio} onChange={setConfMeio} disabled={confirming}>
             <option value="PIX">PIX</option>
             <option value="TED">TED</option>
