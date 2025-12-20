@@ -443,19 +443,7 @@ useEffect(() => {
     return rows;
   }, [rows]);
 
-    const parcelasDoContrato = selectedContrato?.parcelas || [];
-
-  const totalPrevisto = useMemo(() => {
-    return parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorPrevisto || 0), 0);
-  }, [parcelasDoContrato]);
-
-  const totalRecebido = useMemo(() => {
-    return parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorRecebido || 0), 0);
-  }, [parcelasDoContrato]);
-
-  const diferencaTotais = totalRecebido - totalPrevisto;
-
-// SearchRow padrão
+  // SearchRow padrão
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
@@ -474,6 +462,12 @@ useEffect(() => {
       </button>
     </div>
   );
+
+  const parcelasDoContrato = selectedContrato?.parcelas || [];
+  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorPrevisto || 0), 0);
+  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p.valorRecebido || 0), 0);
+  const diferencaTotais = totalRecebido - totalPrevisto;
+
 
   if (!isAdmin) {
     return (
@@ -526,17 +520,14 @@ useEffect(() => {
               {filtered.map((c) => {
                 const status = computeStatusContrato(c);
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
-                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
-
-                const recebidoTotal = (c?.parcelas || []).reduce((acc, p) => acc + (p.status === "RECEBIDA" ? Number(p.valorRecebido || 0) : 0), 0);
-                const pendente = Math.max(0, Number(c.valorTotal || 0) - recebidoTotal);
+                                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(pendente)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(Math.max(0, Number(c.valorTotal || 0) - (c?.parcelas || []).reduce((s, p) => s + Number(p.valorRecebido || 0), 0)))}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -570,7 +561,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={8}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -578,6 +569,27 @@ useEffect(() => {
             </tbody>
           </table>
         </div>
+
+          {/* Totais */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div>
+              <div className="text-slate-500">Total previsto</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Total recebido</div>
+              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diferença</div>
+              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
+                R$ {formatBRLFromDecimal(diferencaTotais)}
+              </div>
+            </div>
+          </div>
+
       </Card>
 
       {/* ---------- Modal: Novo Contrato ---------- */}
@@ -831,25 +843,6 @@ useEffect(() => {
               </tbody>
             </table>
           </div>
-
-          {/* Totais */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <div>
-              <div className="text-slate-500">Total previsto</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Total recebido</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
-            </div>
-            <div>
-              <div className="text-slate-500">Diferença</div>
-              <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
-                R$ {formatBRLFromDecimal(diferencaTotais)}
-              </div>
-            </div>
-          </div>
-
         )}
       </Modal>
 
@@ -873,7 +866,9 @@ useEffect(() => {
               onClick={confirmarRecebimento}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-70"
               disabled={confirming}
-            >Receber Parcela</button>
+            >
+              Confirmar
+            </button>
           </div>
         }
       >
