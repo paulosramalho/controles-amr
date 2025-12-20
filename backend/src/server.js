@@ -1756,43 +1756,82 @@ app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, re
 });
 
 // Confirmar recebimento de uma parcela
-app.patch("/api/parcelas/:id/confirmar", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { dataRecebimento, valorRecebido, meioRecebimento, observacoes } = req.body || {};
+app.patch(
+  "/api/parcelas/:id/confirmar",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { dataRecebimento, valorRecebido, meioRecebimento, observacoes } = req.body || {};
 
-    const parcela = await prisma.parcelaContrato.findUnique({ where: { id } });
-    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+      const parcela = await prisma.parcelaContrato.findUnique({
+        where: { id },
+      });
 
-    const dt = dataRecebimento ? parseDateInput(dataRecebimento) : new Date();
-    if (!dt) return res.status(400).json({ message: "Data de recebimento inválida (DD/MM/AAAA)." });
+      if (!parcela) {
+        return res.status(404).json({ message: "Parcela não encontrada." });
+      }
 
-    // se não vier valorRecebido, assume o previsto
-    const cents = moneyToCents(valorRecebido ?? parcela.valorPrevisto?.toString?.() ?? parcela.valorPrevisto);
-    if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor recebido inválido." });
+      if (parcela.status === "RECEBIDA") {
+        return res.status(400).json({ message: "Esta parcela já foi recebida." });
+      }
 
-    const meio = meioRecebimento ? String(meioRecebimento).trim().toUpperCase() : null;
-    if (meio && !["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio)) {
-      return res.status(400).json({ message: "Meio de recebimento inválido." });
+      const dt = dataRecebimento
+        ? parseDateInput(dataRecebimento)
+        : new Date();
+
+      if (!dt) {
+        return res
+          .status(400)
+          .json({ message: "Data de recebimento inválida (DD/MM/AAAA)." });
+      }
+
+      // Se não vier valorRecebido, assume o valor previsto
+      const cents = moneyToCents(
+        valorRecebido ??
+        parcela.valorPrevisto?.toString?.() ??
+        parcela.valorPrevisto
+      );
+
+      if (!cents || cents <= 0n) {
+        return res.status(400).json({ message: "Valor recebido inválido." });
+      }
+
+      const meio = meioRecebimento
+        ? String(meioRecebimento).trim().toUpperCase()
+        : null;
+
+      if (
+        meio &&
+        !["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio)
+      ) {
+        return res.status(400).json({ message: "Meio de recebimento inválido." });
+      }
+
+      const updated = await prisma.parcelaContrato.update({
+        where: { id },
+        data: {
+          status: "RECEBIDA", // ⚠️ confirme ENUM
+          dataRecebimento: dt,
+          valorRecebido: Number(cents) / 100, // ✅ Decimal correto
+          meioRecebimento: meio,
+          observacoes: observacoes ? String(observacoes).trim() : null,
+        },
+      });
+
+      return res.json({
+        message: "Parcela recebida com sucesso.",
+        parcela: updated,
+      });
+    } catch (err) {
+      console.error("Erro ao confirmar parcela:", err);
+      return res.status(500).json({
+        message: "Erro interno ao confirmar o recebimento da parcela.",
+      });
     }
-
-    const updated = await prisma.parcelaContrato.update({
-      where: { id },
-      data: {
-        status: "RECEBIDA",
-        dataRecebimento: dt,
-        valorRecebido: centsToDecimalString(cents),
-        meioRecebimento: meio,
-        observacoes: observacoes ? String(observacoes) : null,
-      },
-    });
-
-    res.json({ message: "Parcela confirmada como recebida.", parcela: updated });
-  } catch (err) {
-    console.error("Erro ao confirmar parcela:", err);
-    res.status(500).json({ message: "Erro ao confirmar parcela." });
   }
-});
+);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
