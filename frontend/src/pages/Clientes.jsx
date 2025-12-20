@@ -448,16 +448,22 @@ export default function ClientesPage({ user }) {
         <div className="mt-4 overflow-auto rounded-xl border border-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold">CPF/CNPJ</th>
-                <th className="text-left px-4 py-3 font-semibold">Nome/Razão Social</th>
-                <th className="text-left px-4 py-3 font-semibold">Telefone</th>
-                <th className="text-left px-4 py-3 font-semibold">E-mail</th>
-                <th className="text-left px-4 py-3 font-semibold">Obs.</th>
-                <th className="text-left px-4 py-3 font-semibold">Status</th>
-                <th className="text-left px-4 py-3 font-semibold">Ações</th>
-              </tr>
-            </thead>
+  <tr>
+    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">CPF/CNPJ</th>
+
+    {/* ✅ Nome ganha largura */}
+    <th className="text-left px-4 py-3 font-semibold min-w-[420px]">Nome/Razão Social</th>
+
+    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Telefone</th>
+    <th className="text-left px-4 py-3 font-semibold">E-mail</th>
+
+    {/* ✅ Obs. mínima */}
+    <th className="text-center px-2 py-3 font-semibold w-[64px]">Obs.</th>
+
+    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
+    <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Ações</th>
+  </tr>
+</thead>
 
             <tbody className="divide-y divide-slate-200">
               {filtered.map((c) => {
@@ -472,16 +478,15 @@ export default function ClientesPage({ user }) {
                     </td>
 
                     <td className="px-4 py-3 text-slate-800">
-                      {/* Clique no nome abre modal de detalhes */}
-                      <button
-                        type="button"
-                        onClick={() => openView(c)}
-                        className="text-left font-semibold text-slate-900 hover:underline"
-                        title="Ver detalhes"
-                      >
-                        {c?.nomeRazaoSocial || "—"}
-                      </button>
-                    </td>
+  <button
+    type="button"
+    onClick={() => openView(c)}
+    className="text-left font-semibold text-slate-900 hover:underline"
+    title="Ver detalhes"
+  >
+    {c?.nomeRazaoSocial || "—"}
+  </button>
+</td>
 
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {c?.telefone ? maskPhoneBR(c.telefone) : "—"}
@@ -490,46 +495,42 @@ export default function ClientesPage({ user }) {
                     <td className="px-4 py-3 text-slate-700">{c?.email || "—"}</td>
 
                     {/* ✅ Observações com popover */}
-                    <td className="px-4 py-3 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <span className="max-w-[240px] inline-block">
-                          {hasObs ? truncateEnd(obs, 28) : "—"}
-                        </span>
+                    <td className="px-2 py-3 text-center">
+  {hasObs ? (
+    <>
+      <button
+        type="button"
+        ref={(el) => (obsBtnRefs.current[c.id] = el)}
+        onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
+        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+        title="Ver observações"
+      >
+        📝
+      </button>
 
-                        {hasObs ? (
-                          <>
-                            <button
-                              type="button"
-                              ref={(el) => (obsBtnRefs.current[c.id] = el)}
-                              onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
-                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-                              title="Ver observações"
-                            >
-                              📝
-                            </button>
-
-                            <Popover
-                              open={isObsOpen}
-                              anchorEl={obsBtnRefs.current[c.id]}
-                              onClose={() => setObsOpenId(null)}
-                            >
-                              <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
-                                <div className="text-sm font-semibold text-slate-900">Observações</div>
-                                <button
-                                  type="button"
-                                  className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
-                                  onClick={() => setObsOpenId(null)}
-                                  title="Fechar"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                              <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap">{obs}</div>
-                            </Popover>
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
+      <Popover
+        open={isObsOpen}
+        anchorEl={obsBtnRefs.current[c.id]}
+        onClose={() => setObsOpenId(null)}
+      >
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-slate-900">Observações</div>
+          <button
+            type="button"
+            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+            onClick={() => setObsOpenId(null)}
+            title="Fechar"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap">{obs}</div>
+      </Popover>
+    </>
+  ) : (
+    <span className="text-slate-400">—</span>
+  )}
+</td>
 
                     <td className="px-4 py-3">
                       {c?.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="red">Inativo</Badge>}
