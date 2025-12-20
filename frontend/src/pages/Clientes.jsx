@@ -502,7 +502,7 @@ export default function ClientesPage({ user }) {
         type="button"
         ref={(el) => (obsBtnRefs.current[c.id] = el)}
         onClick={() => setObsOpenId((id) => (id === c.id ? null : c.id))}
-        className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+        className="inline-flex items-center justify-left rounded-lg border border-slate-300 bg-white w-9 h-8 text-sm font-semibold text-slate-800 hover:bg-slate-100"
         title="Ver observações"
       >
         📝
