@@ -639,17 +639,165 @@ app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
    DADOS — ROTAS
 ========================= */
 
-app.get("/api/clients", async (_req, res) => {
+// ===== CLIENTES (Admin only) — CRUD + Soft delete =====
+
+// helpers locais (CPF/CNPJ)
+function isValidCNPJ(cnpj) {
+  const s = onlyDigits(cnpj);
+  if (s.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(s)) return false;
+
+  const calc = (base, weights) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * weights[i];
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  const d1 = calc(s.slice(0, 12), w1);
+  const d2 = calc(s.slice(0, 12) + String(d1), w2);
+
+  return d1 === Number(s[12]) && d2 === Number(s[13]);
+}
+
+function isValidCpfCnpj(doc) {
+  const d = onlyDigits(doc);
+  if (d.length === 11) return isValidCPF(d);
+  if (d.length === 14) return isValidCNPJ(d);
+  return false;
+}
+
+function normalizeCpfCnpj(doc) {
+  return onlyDigits(doc);
+}
+
+// ✅ GET /api/clients — Admin only
+app.get("/api/clients", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const clientes = await prisma.cliente.findMany({
       orderBy: { nomeRazaoSocial: "asc" },
     });
+
+    // serializeCliente espera ordens no objeto (mesmo que vazio)
     res.json(clientes.map((c) => serializeCliente({ ...c, ordens: [] })));
   } catch (err) {
     console.error("Erro ao listar clientes:", err);
     res.status(500).json({ message: "Erro ao listar clientes" });
   }
 });
+
+// ✅ POST /api/clients — cria só o cliente (sem ordem)
+app.post("/api/clients", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const cpfCnpj = normalizeCpfCnpj(req.body?.cpfCnpj || "");
+    const nomeRazaoSocial = String(req.body?.nomeRazaoSocial || "").trim();
+    const email = req.body?.email ? normEmail(req.body.email) : null;
+    const telefone = req.body?.telefone ? normPhone(req.body.telefone) : null;
+    const observacoes = req.body?.observacoes ? String(req.body.observacoes).trim() : null;
+
+    if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+    if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    if (!nomeRazaoSocial) return res.status(400).json({ message: "Informe Nome/Razão Social." });
+
+    // telefone: se veio algo e não for 10/11 dígitos, rejeita
+    if (req.body?.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    const created = await prisma.cliente.create({
+      data: {
+        cpfCnpj,
+        nomeRazaoSocial,
+        email,
+        telefone,
+        observacoes,
+        ativo: true,
+      },
+    });
+
+    return res.status(201).json(serializeCliente({ ...created, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao criar cliente:", err);
+    return res.status(500).json({ message: "Erro ao criar cliente." });
+  }
+});
+
+// ✅ PUT /api/clients/:id — edita dados
+app.put("/api/clients/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const cpfCnpj = req.body?.cpfCnpj !== undefined ? normalizeCpfCnpj(req.body.cpfCnpj) : undefined;
+    const nomeRazaoSocial =
+      req.body?.nomeRazaoSocial !== undefined ? String(req.body.nomeRazaoSocial || "").trim() : undefined;
+
+    const email = req.body?.email !== undefined ? (req.body.email ? normEmail(req.body.email) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normPhone(req.body.telefone) : null) : undefined;
+
+    const observacoes =
+      req.body?.observacoes !== undefined ? (req.body.observacoes ? String(req.body.observacoes).trim() : null) : undefined;
+
+    if (cpfCnpj !== undefined) {
+      if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+      if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    }
+    if (nomeRazaoSocial !== undefined && !nomeRazaoSocial) {
+      return res.status(400).json({ message: "Informe Nome/Razão Social." });
+    }
+    if (req.body?.telefone !== undefined && req.body.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    const updated = await prisma.cliente.update({
+      where: { id },
+      data: {
+        ...(cpfCnpj !== undefined ? { cpfCnpj } : {}),
+        ...(nomeRazaoSocial !== undefined ? { nomeRazaoSocial } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(telefone !== undefined ? { telefone } : {}),
+        ...(observacoes !== undefined ? { observacoes } : {}),
+      },
+    });
+
+    return res.json(serializeCliente({ ...updated, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao atualizar cliente:", err);
+    return res.status(500).json({ message: "Erro ao atualizar cliente." });
+  }
+});
+
+// ✅ PATCH /api/clients/:id/toggle — Ativar/Inativar (soft delete)
+app.patch("/api/clients/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const current = await prisma.cliente.findUnique({ where: { id }, select: { ativo: true } });
+    if (!current) return res.status(404).json({ message: "Cliente não encontrado." });
+
+    const updated = await prisma.cliente.update({
+      where: { id },
+      data: { ativo: !current.ativo },
+    });
+
+    return res.json({ id: updated.id, ativo: updated.ativo });
+  } catch (err) {
+    console.error("Erro ao alternar status do cliente:", err);
+    return res.status(500).json({ message: "Erro ao ativar/inativar cliente." });
+  }
+});
+
 
 app.get("/api/orders", async (_req, res) => {
   try {
@@ -759,7 +907,7 @@ app.post("/api/clients-and-orders", async (req, res) => {
   }
 });
 
-app.get("/api/clients-with-orders", async (req, res) => {
+app.get("/api/clients-with-orders", requireAuth, requireAdmin, async (req, res) => {
   const search = req.query.q ?? req.query.search;
   const status = req.query.status;
   const fromDate = req.query.fromDate;
