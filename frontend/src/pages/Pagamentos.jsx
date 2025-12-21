@@ -5,7 +5,19 @@ import { Link } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
+  if (!d) return null;
+
+  // Se vier "DD/MM/AAAA", parse correto
+  if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
+    const parsed = parseDateDDMMYYYY(d); // já existe no arquivo
+    if (!parsed) return null;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+
+  // Caso geral (Date, ISO etc.)
   const x = new Date(d);
+  if (!Number.isFinite(x.getTime())) return null;
   x.setHours(0, 0, 0, 0);
   return x;
 }
@@ -17,6 +29,8 @@ function isParcelaAtrasada(p) {
 
   const hoje = toDateOnly(new Date());
   const venc = toDateOnly(p.vencimento);
+
+  if (!hoje || !venc) return false;
 
   return venc < hoje;
 }
