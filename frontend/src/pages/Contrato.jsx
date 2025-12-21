@@ -4,26 +4,6 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 /* helpers (copiados do padrão das telas) */
-function toDateOnly(d) {
-  if (!d) return null;
-  const x = new Date(d);
-  if (!Number.isFinite(x.getTime())) return null;
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function isParcelaAtrasada(p) {
-  if (!p) return false;
-  if (p.status !== "PREVISTA") return false;
-  if (!p.vencimento) return false;
-
-  const hoje = toDateOnly(new Date());
-  const venc = toDateOnly(p.vencimento);
-
-  if (!hoje || !venc) return false;
-  return venc < hoje;
-}
-
 function formatBRLFromDecimal(value) {
   if (value === null || value === undefined || value === "") return "—";
   const num = Number(value);
@@ -66,21 +46,43 @@ function computeStatusContrato(contrato) {
   return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
 }
 
-function Badge({ children, tone = "slate" }) {
+function Badge({ tone = "slate", children }) {
   const map = {
-    slate: "bg-slate-600 text-white",
-    green: "bg-green-600 text-white",
-    red: "bg-red-600 text-white",
-    blue: "bg-blue-600 text-white",
-    amber: "bg-amber-500 text-white",
+    slate: "border-slate-200 bg-slate-600 text-white",
+    blue: "border-blue-700 bg-blue-600 text-white",
+    red: "border-red-700 bg-red-600 text-white",
+    green: "border-green-700 bg-green-600 text-white",
+    amber: "border-amber-700 bg-amber-600 text-white",
   };
-
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone] || map.slate}`}>
       {children}
     </span>
   );
 }
+
+function Modal({ title, children, onClose, size = "lg" }) {
+  const width =
+    size === "sm" ? "max-w-md" : size === "xl" ? "max-w-5xl" : "max-w-3xl";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className={`w-full ${width} rounded-2xl bg-white shadow-xl`}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <div className="text-base font-semibold text-slate-900">{title}</div>
+          <button
+            type="button"
+            className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 
 function Card({ title, right, children }) {
   return (
@@ -96,6 +98,36 @@ function Card({ title, right, children }) {
 
 export default function ContratoPage({ user }) {
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelParcela, setCancelParcela] = useState(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
+  const [canceling, setCanceling] = useState(false);
+
+  const openCancel = (parcela) => {
+    setCancelParcela(parcela);
+    setCancelMotivo("");
+    setCancelOpen(true);
+  };
+
+  const submitCancel = async () => {
+    if (!cancelParcela) return;
+    const motivo = String(cancelMotivo || "").trim();
+    if (!motivo) return;
+    setCanceling(true);
+    try {
+      await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
+        method: "PATCH",
+        body: { motivo },
+      });
+      setCancelOpen(false);
+      setCancelParcela(null);
+      setCancelMotivo("");
+      await load();
+    } finally {
+      setCanceling(false);
+    }
+  };
+
   const { id } = useParams();
   const nav = useNavigate();
 
@@ -236,6 +268,7 @@ export default function ContratoPage({ user }) {
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
                     <th className="text-left px-4 py-3 font-semibold">Recebido</th>
                     <th className="text-left px-4 py-3 font-semibold">Meio</th>
+                    <th className="text-left px-4 py-3 font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -244,18 +277,17 @@ export default function ContratoPage({ user }) {
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-  {p.status === "RECEBIDA" ? (
-    <Badge tone="green">Recebida</Badge>
-  ) : p.status === "CANCELADA" ? (
-    <Badge tone="red">Cancelada</Badge>
-  ) : isParcelaAtrasada(p) ? (
-    <Badge tone="red">Atrasada</Badge>
-  ) : (
-    <Badge tone="blue">Prevista</Badge>
-  )}
-</td>
-
+                      <td className="px-4 py-3">
+                        {p.status === "CANCELADA" ? (
+                          <Badge tone="slate">Cancelada</Badge>
+                        ) : p.status === "RECEBIDA" ? (
+                          <Badge tone="green">Recebida</Badge>
+                        ) : isParcelaAtrasada(p) ? (
+                          <Badge tone="red">Atrasada</Badge>
+                        ) : (
+                          <Badge tone="blue">Prevista</Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                         {p.dataRecebimento ? (
@@ -268,7 +300,7 @@ export default function ContratoPage({ user }) {
 
                   {!parcelas.length ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
                         Nenhuma parcela cadastrada.
                       </td>
                     </tr>
