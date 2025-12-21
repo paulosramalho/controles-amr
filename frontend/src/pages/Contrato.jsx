@@ -8,6 +8,25 @@ function formatMoneyBRL(value) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function getClienteNome(contrato) {
+  const c = contrato?.cliente;
+
+  const candidates = [
+    c?.nome,
+    c?.nomeRazaoSocial,
+    c?.razaoSocial,
+    c?.nomeFantasia,
+    contrato?.clienteNome,
+    contrato?.clienteRazaoSocial,
+    contrato?.cliente_nome,
+    contrato?.cliente_razao_social,
+    contrato?.nomeCliente,
+  ];
+
+  const v = candidates.find((x) => typeof x === "string" && x.trim());
+  return v ? v.trim() : "Cliente";
+}
+
 function Badge({ color = "blue", children }) {
   const base =
     "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold";
@@ -45,9 +64,14 @@ export default function Contrato() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4 text-slate-900">
-        Contrato {contrato.numeroContrato}
-      </h1>
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Contrato {contrato.numeroContrato}
+        </h1>
+        <div className="text-sm text-slate-600 mt-1">
+          {getClienteNome(contrato)}
+        </div>
+      </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full text-sm">

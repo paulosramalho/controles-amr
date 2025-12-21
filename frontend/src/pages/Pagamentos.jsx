@@ -1,12 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 
-/** ===== Helpers (sem dependências externas) ===== */
+/** ===== Helpers ===== */
 
 function formatMoneyBRL(value) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "R$ —";
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function getClienteNome(contrato) {
+  const c = contrato?.cliente;
+
+  // tenta caminhos mais comuns
+  const candidates = [
+    c?.nome,
+    c?.nomeRazaoSocial,
+    c?.razaoSocial,
+    c?.nomeFantasia,
+    contrato?.clienteNome,
+    contrato?.clienteRazaoSocial,
+    contrato?.cliente_nome,
+    contrato?.cliente_razao_social,
+    contrato?.nomeCliente,
+  ];
+
+  const v = candidates.find((x) => typeof x === "string" && x.trim());
+  return v ? v.trim() : "Cliente";
+}
+
+function normalizeText(s) {
+  return String(s ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
 }
 
 function Badge({ color = "blue", children }) {
@@ -21,27 +49,23 @@ function Badge({ color = "blue", children }) {
   return <span className={`${base} ${map[color] || map.blue}`}>{children}</span>;
 }
 
-function Modal({ title, onClose, size = "xl", children }) {
+function Modal({ title, onClose, size = "xl", children, footer }) {
   const maxW =
     size === "xl"
-      ? "max-w-5xl"
+      ? "max-w-6xl"
       : size === "lg"
-      ? "max-w-3xl"
+      ? "max-w-4xl"
       : "max-w-xl";
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* backdrop */}
       <div
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
         role="presentation"
       />
-      {/* panel */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div
-          className={`w-full ${maxW} rounded-2xl bg-white shadow-xl border border-slate-200`}
-        >
+        <div className={`w-full ${maxW} rounded-2xl bg-white shadow-xl border border-slate-200`}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
             <div className="text-lg font-semibold text-slate-900">{title}</div>
             <button
@@ -54,7 +78,14 @@ function Modal({ title, onClose, size = "xl", children }) {
               ✕
             </button>
           </div>
+
           <div className="px-5 py-4">{children}</div>
+
+          {footer ? (
+            <div className="px-5 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+              {footer}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -72,14 +103,22 @@ export default function Pagamentos() {
   const [contratos, setContratos] = useState([]);
   const [selectedContrato, setSelectedContrato] = useState(null);
 
-  const load = async () => {
-    const data = await apiFetch("/contratos");
-    setContratos(data || []);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    // mantém modal sincronizado sem precisar fechar
-    if (selectedContrato) {
-      const novo = (data || []).find((c) => c.id === selectedContrato.id);
-      if (novo) setSelectedContrato(novo);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch("/contratos");
+      setContratos(data || []);
+
+      // mantém modal sincronizado sem precisar fechar
+      if (selectedContrato) {
+        const novo = (data || []).find((c) => c.id === selectedContrato.id);
+        if (novo) setSelectedContrato(novo);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,6 +126,24 @@ export default function Pagamentos() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const contratosFiltrados = useMemo(() => {
+    const needle = normalizeText(q);
+    if (!needle) return contratos;
+
+    return contratos.filter((c) => {
+      const texto = [
+        c?.numeroContrato,
+        getClienteNome(c),
+        c?.formaPagamento,
+        c?.status,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      return normalizeText(texto).includes(needle);
+    });
+  }, [contratos, q]);
 
   const totais = useMemo(() => {
     if (!selectedContrato) return null;
@@ -110,10 +167,31 @@ export default function Pagamentos() {
 
   return (
     <div className="p-6">
-      <div className="flex items-end justify-between gap-4 mb-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-2xl font-semibold text-slate-900">Pagamentos</h1>
+
+        {/* Buscar + Atualizar (topo, padrão) */}
+        <div className="flex items-center gap-2">
+          <input
+            className="w-80 max-w-[55vw] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            placeholder="Buscar por contrato, cliente…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            title="Atualizar"
+          >
+            {loading ? "Atualizando…" : "Atualizar"}
+          </button>
+        </div>
       </div>
 
+      {/* Listagem */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
@@ -136,11 +214,14 @@ export default function Pagamentos() {
               <th className="px-4 py-3 text-center font-semibold text-slate-700">
                 Status
               </th>
+              <th className="px-4 py-3 text-right font-semibold text-slate-700">
+                Ações
+              </th>
             </tr>
           </thead>
 
           <tbody>
-            {contratos.map((c) => {
+            {contratosFiltrados.map((c) => {
               const parcelas = c.parcelas || [];
 
               const totalPrevisto = parcelas
@@ -152,21 +233,31 @@ export default function Pagamentos() {
                 .reduce((s, p) => s + Number(p.valorRecebido || 0), 0);
 
               const pendente = totalPrevisto - totalRecebido;
-
               const atrasado = parcelas.some(isAtrasada);
+
+              const clienteNome = getClienteNome(c);
 
               return (
                 <tr
                   key={c.id}
-                  className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                  onClick={() => setSelectedContrato(c)}
+                  className="border-b border-slate-100 hover:bg-slate-50"
                 >
-                  <td className="px-4 py-3 text-slate-900 font-medium">
+                  <td
+                    className="px-4 py-3 text-slate-900 font-medium cursor-pointer"
+                    onClick={() => setSelectedContrato(c)}
+                    title="Abrir controle de parcelas"
+                  >
                     {c.numeroContrato}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {c.cliente?.nome || "—"}
+
+                  <td
+                    className="px-4 py-3 text-slate-700 cursor-pointer"
+                    onClick={() => setSelectedContrato(c)}
+                    title="Abrir controle de parcelas"
+                  >
+                    {clienteNome}
                   </td>
+
                   <td className="px-4 py-3 text-right tabular-nums">
                     {formatMoneyBRL(totalPrevisto)}
                   </td>
@@ -183,14 +274,25 @@ export default function Pagamentos() {
                       <Badge color="blue">Em dia</Badge>
                     )}
                   </td>
+
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      onClick={() => window.open(`/contratos/${c.id}`, "_blank")}
+                      title="Ver contrato (read-only)"
+                    >
+                      Ver contrato
+                    </button>
+                  </td>
                 </tr>
               );
             })}
 
-            {contratos.length === 0 && (
+            {contratosFiltrados.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   Nenhum contrato encontrado.
@@ -201,13 +303,33 @@ export default function Pagamentos() {
         </table>
       </div>
 
+      {/* Modal */}
       {selectedContrato && (
         <Modal
-          title={`Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} — ${
-            selectedContrato.cliente?.nome || "Cliente"
-          }`}
+          title={`Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} — ${getClienteNome(
+            selectedContrato
+          )}`}
           onClose={() => setSelectedContrato(null)}
           size="xl"
+          footer={
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => window.open(`/contratos/${selectedContrato.id}`, "_blank")}
+              >
+                Ver contrato (read-only)
+              </button>
+
+              <button
+                type="button"
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => setSelectedContrato(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          }
         >
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -293,7 +415,7 @@ export default function Pagamentos() {
                   );
                 })}
 
-                {/* Totais no rodapé da tabela */}
+                {/* Totais no rodapé */}
                 {totais && (
                   <tr className="border-t border-slate-200 bg-slate-50">
                     <td className="px-3 py-3" />
