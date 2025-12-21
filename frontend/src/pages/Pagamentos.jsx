@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../services/api";
+import { apiFetch } from "../lib/api";
 import Modal from "../components/Modal";
 import Badge from "../components/Badge";
 import Money from "../components/Money";
