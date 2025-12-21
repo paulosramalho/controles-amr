@@ -3,12 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
-// cancelar parcela (admin)
-const [cancelOpen, setCancelOpen] = useState(false);
-const [canceling, setCanceling] = useState(false);
-const [cancelParcela, setCancelParcela] = useState(null);
-const [cancelMotivo, setCancelMotivo] = useState("");
-
 /* helpers (copiados do padrão das telas) */
 function toDateOnly(d) {
   if (!d) return null;
@@ -108,6 +102,12 @@ export default function ContratoPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [contrato, setContrato] = useState(null);
   const [error, setError] = useState("");
+
+  // ✅ cancelar parcela (admin) — AQUI DENTRO
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelParcela, setCancelParcela] = useState(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
 
   async function loadContrato() {
     setError("");
@@ -355,6 +355,7 @@ async function cancelarParcela() {
           </div>
         )}
       </Card>
+
       {/* 🔴 MODAL DE CANCELAMENTO — AQUI */}
       {cancelOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
