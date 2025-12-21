@@ -280,6 +280,12 @@ export default function PagamentosPage({ user }) {
   const [confMeio, setConfMeio] = useState("PIX");
   const [confValorDigits, setConfValorDigits] = useState("");
 
+  // cancelamento de parcela
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelParcela, setCancelParcela] = useState(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
+
   async function load() {
     setError("");
     setLoading(true);
@@ -980,16 +986,8 @@ async function cancelarParcela() {
             <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
           </label>
         </div>
-
-        // cancelar parcela (premium modal)
-        const [cancelOpen, setCancelOpen] = useState(false);
-        const [canceling, setCanceling] = useState(false);
-        const [cancelParcela, setCancelParcela] = useState(null);
-        const [cancelMotivo, setCancelMotivo] = useState("");
-
       </Modal>
-
-      <Modal
+<Modal
         open={cancelOpen}
         onClose={() => (!canceling ? setCancelOpen(false) : null)}
         title="Cancelar parcela"
@@ -1033,7 +1031,6 @@ async function cancelarParcela() {
           </div>
         </div>
       </Modal>
-
     </div>
   );
 }
