@@ -1,4 +1,4 @@
-// src/pages/Contrato.jsx
+// src/pages/Contrato.jsx Novo
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
