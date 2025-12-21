@@ -3,7 +3,33 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
+// cancelar parcela (admin)
+const [cancelOpen, setCancelOpen] = useState(false);
+const [canceling, setCanceling] = useState(false);
+const [cancelParcela, setCancelParcela] = useState(null);
+const [cancelMotivo, setCancelMotivo] = useState("");
+
 /* helpers (copiados do padrão das telas) */
+function toDateOnly(d) {
+  if (!d) return null;
+  const x = new Date(d);
+  if (!Number.isFinite(x.getTime())) return null;
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function isParcelaAtrasada(p) {
+  if (!p) return false;
+  if (p.status !== "PREVISTA") return false;
+  if (!p.vencimento) return false;
+
+  const hoje = toDateOnly(new Date());
+  const venc = toDateOnly(p.vencimento);
+
+  if (!hoje || !venc) return false;
+  return venc < hoje;
+}
+
 function formatBRLFromDecimal(value) {
   if (value === null || value === undefined || value === "") return "—";
   const num = Number(value);
@@ -46,43 +72,83 @@ function computeStatusContrato(contrato) {
   return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
 }
 
-function Badge({ tone = "slate", children }) {
+function Badge({ children, tone = "slate" }) {
   const map = {
-    slate: "border-slate-200 bg-slate-600 text-white",
-    blue: "border-blue-700 bg-blue-600 text-white",
-    red: "border-red-700 bg-red-600 text-white",
-    green: "border-green-700 bg-green-600 text-white",
-    amber: "border-amber-700 bg-amber-600 text-white",
+    slate: "bg-slate-600 text-white",
+    green: "bg-green-600 text-white",
+    red: "bg-red-600 text-white",
+    blue: "bg-blue-600 text-white",
+    amber: "bg-amber-500 text-white",
   };
+
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone] || map.slate}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
       {children}
     </span>
-  );
-}
+{cancelOpen ? (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="absolute inset-0 bg-black/30"
+      onClick={() => (!canceling ? setCancelOpen(false) : null)}
+    />
+    <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200">
+      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+        <div className="text-lg font-semibold text-slate-900">
+          Cancelar parcela
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+          onClick={() => setCancelOpen(false)}
+          disabled={canceling}
+        >
+          Fechar
+        </button>
+      </div>
 
-function Modal({ title, children, onClose, size = "lg" }) {
-  const width =
-    size === "sm" ? "max-w-md" : size === "xl" ? "max-w-5xl" : "max-w-3xl";
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className={`w-full ${width} rounded-2xl bg-white shadow-xl`}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-          <div className="text-base font-semibold text-slate-900">{title}</div>
+      <div className="p-5 space-y-4">
+        <div className="text-sm text-slate-700">
+          Você está cancelando a parcela{" "}
+          <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe
+          o motivo (obrigatório).
+        </div>
+
+        <label className="block">
+          <div className="text-sm font-medium text-slate-700">Motivo</div>
+          <input
+            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            value={cancelMotivo}
+            onChange={(e) => setCancelMotivo(e.target.value)}
+            placeholder="Ex.: Renegociação / cancelamento do acordo"
+            disabled={canceling}
+          />
+        </label>
+
+        <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
-            className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-            onClick={onClose}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+            onClick={() => setCancelOpen(false)}
+            disabled={canceling}
           >
-            ✕
+            Fechar
+          </button>
+          <button
+            type="button"
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            onClick={cancelarParcela}
+            disabled={canceling}
+          >
+            {canceling ? "Cancelando..." : "Cancelar"}
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
       </div>
     </div>
+  </div>
+) : null}
+
   );
 }
-
 
 function Card({ title, right, children }) {
   return (
@@ -98,36 +164,6 @@ function Card({ title, right, children }) {
 
 export default function ContratoPage({ user }) {
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelParcela, setCancelParcela] = useState(null);
-  const [cancelMotivo, setCancelMotivo] = useState("");
-  const [canceling, setCanceling] = useState(false);
-
-  const openCancel = (parcela) => {
-    setCancelParcela(parcela);
-    setCancelMotivo("");
-    setCancelOpen(true);
-  };
-
-  const submitCancel = async () => {
-    if (!cancelParcela) return;
-    const motivo = String(cancelMotivo || "").trim();
-    if (!motivo) return;
-    setCanceling(true);
-    try {
-      await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
-        method: "PATCH",
-        body: { motivo },
-      });
-      setCancelOpen(false);
-      setCancelParcela(null);
-      setCancelMotivo("");
-      await load();
-    } finally {
-      setCanceling(false);
-    }
-  };
-
   const { id } = useParams();
   const nav = useNavigate();
 
@@ -157,6 +193,41 @@ export default function ContratoPage({ user }) {
       setLoading(false);
     }
   }
+
+function openCancelParcela(parcela) {
+  setCancelParcela(parcela);
+  setCancelMotivo("");
+  setCancelOpen(true);
+}
+
+async function cancelarParcela() {
+  if (!cancelParcela) return;
+
+  const motivo = String(cancelMotivo || "").trim();
+  if (!motivo) {
+    setError("Motivo do cancelamento é obrigatório.");
+    return;
+  }
+
+  setError("");
+  setCanceling(true);
+  try {
+    await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
+      method: "PATCH",
+      body: { motivo },
+    });
+
+    setCancelOpen(false);
+    setCancelParcela(null);
+    setCancelMotivo("");
+
+    await loadContrato(); // ✅ atualiza na hora
+  } catch (e) {
+    setError(e?.message || "Falha ao cancelar parcela.");
+  } finally {
+    setCanceling(false);
+  }
+}
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -268,7 +339,7 @@ export default function ContratoPage({ user }) {
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
                     <th className="text-left px-4 py-3 font-semibold">Recebido</th>
                     <th className="text-left px-4 py-3 font-semibold">Meio</th>
-                    <th className="text-left px-4 py-3 font-semibold">Ações</th>
+                    <th className="text-right px-4 py-3 font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -277,16 +348,16 @@ export default function ContratoPage({ user }) {
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                      <td className="px-4 py-3">
-                        {p.status === "CANCELADA" ? (
-                          <Badge tone="slate">Cancelada</Badge>
-                        ) : p.status === "RECEBIDA" ? (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {p.status === "RECEBIDA" ? (
                           <Badge tone="green">Recebida</Badge>
-                        ) : isParcelaAtrasada(p) ? (
+                           ) : p.status === "CANCELADA" ? (
+                          <Badge tone="red">Cancelada</Badge>
+                           ) : isParcelaAtrasada(p) ? (
                           <Badge tone="red">Atrasada</Badge>
-                        ) : (
+                          ) : (
                           <Badge tone="blue">Prevista</Badge>
-                        )}
+                          )}
                       </td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
@@ -295,6 +366,19 @@ export default function ContratoPage({ user }) {
                         ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+                      <td className="px-4 py-3 text-right">
+                        {isAdmin && p.status !== "RECEBIDA" && p.status !== "CANCELADA" ? (
+                          <button
+                            type="button"
+                            onClick={() => openCancelParcela(p)}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            Cancelar
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-sm">—</span>
+                         )}
+                      </td>
                     </tr>
                   ))}
 
