@@ -1833,6 +1833,57 @@ app.patch(
   }
 );
 
+// Cancelar uma parcela (somente não recebidas)
+app.patch(
+  "/api/parcelas/:id/cancelar",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const motivo = String(req.body?.motivo || "").trim();
+
+      if (!id) return res.status(400).json({ message: "ID da parcela inválido." });
+      if (!motivo) {
+        return res.status(400).json({ message: "Informe o motivo do cancelamento." });
+      }
+      if (motivo.length < 3) {
+        return res.status(400).json({ message: "Motivo muito curto. Explique um pouco mais." });
+      }
+
+      const parcela = await prisma.parcelaContrato.findUnique({ where: { id } });
+      if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+
+      if (parcela.status === "RECEBIDA") {
+        return res.status(409).json({ message: "Parcela recebida não pode ser cancelada." });
+      }
+      if (parcela.status === "CANCELADA") {
+        return res.status(409).json({ message: "Esta parcela já está cancelada." });
+      }
+
+      const updated = await prisma.parcelaContrato.update({
+        where: { id },
+        data: {
+          status: "CANCELADA",
+          canceladaEm: new Date(),
+          canceladaPorId: req.user?.id ?? null,
+          cancelamentoMotivo: motivo,
+        },
+      });
+
+      return res.json({
+        message: "Parcela cancelada com sucesso.",
+        parcela: updated,
+      });
+    } catch (err) {
+      console.error("Erro ao cancelar parcela:", err);
+      return res.status(500).json({
+        message: "Erro interno ao cancelar a parcela.",
+      });
+    }
+  }
+);
+
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
 });

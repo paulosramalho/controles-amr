@@ -129,6 +129,12 @@ model ParcelaContrato {
 
   observacoes       String?           @db.Text
 
+  // trilha de cancelamento
+  canceladaEm        DateTime?
+  canceladaPorId     Int?
+  cancelamentoMotivo String?           @db.Text
+  canceladaPor       Usuario?          @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+
   @@unique([contratoId, numero])
   @@index([vencimento])
   @@index([status])
@@ -166,6 +172,9 @@ model Usuario {
   @@index([ativo])
   @@index([role])
   @@index([tipoUsuario])
+
+  parcelasCanceladas ParcelaContrato[] @relation("ParcelaCanceladaPor")
+
 }
 
 model Advogado {
