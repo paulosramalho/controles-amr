@@ -4,6 +4,28 @@ import { apiFetch } from "../lib/api";
 import { Link } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
+function toDateOnly(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function isParcelaAtrasada(p) {
+  if (!p) return false;
+  if (p.status !== "PREVISTA") return false;
+  if (!p.vencimento) return false;
+
+  const hoje = toDateOnly(new Date());
+  const venc = toDateOnly(p.vencimento);
+
+  return venc < hoje;
+}
+
+function hasParcelaAtrasada(contrato) {
+  const ps = contrato?.parcelas || [];
+  return ps.some(isParcelaAtrasada);
+}
+
 function DateInput({ label, value, onChange, disabled, className = "" }) {
   // value: "DD/MM/AAAA"  |  input[type=date] usa "YYYY-MM-DD"
   const toISO = (ddmmyyyy) => {
@@ -121,14 +143,15 @@ function Card({ title, right, children }) {
 
 function Badge({ children, tone = "slate" }) {
   const map = {
-    slate: "bg-slate-100 text-slate-800 border-slate-200",
-    green: "bg-green-50 text-green-700 border-green-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    slate: "bg-slate-600 text-white",
+    green: "bg-green-600 text-white",
+    red: "bg-red-600 text-white",
+    blue: "bg-blue-600 text-white",
+    amber: "bg-amber-500 text-white",
   };
+
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
       {children}
     </span>
   );
@@ -769,15 +792,22 @@ export default function PagamentosPage({ user }) {
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                      <td className="px-4 py-3">
-                        {p.status === "RECEBIDA" ? (
-                          <Badge tone="green">Recebida</Badge>
-                        ) : p.status === "CANCELADA" ? (
-                          <Badge tone="red">Cancelada</Badge>
-                        ) : (
-                          <Badge tone="blue">Prevista</Badge>
-                        )}
-                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+  {(() => {
+    // 1. Prioridade máxima: atraso
+    if (hasParcelaAtrasada(c)) {
+      return <Badge tone="red">Atrasada</Badge>;
+    }
+
+    // 2. Quitado (se você já usa esse status)
+    if ((c.status || "").toUpperCase() === "QUITADA") {
+      return <Badge tone="green">Quitado</Badge>;
+    }
+
+    // 3. Default
+    return <Badge tone="blue">Prevista</Badge>;
+  })()}
+</td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                         {p.dataRecebimento ? (
