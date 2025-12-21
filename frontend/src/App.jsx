@@ -7,6 +7,7 @@ import AdvogadosPage from "./pages/Advogados";
 import UsuariosPage from "./pages/Usuarios";
 import ClientesPage from "./pages/Clientes";
 import PagamentosPage from "./pages/Pagamentos";
+import ContratoPage from "./pages/Contrato";
 
 
 function useClock() {
@@ -20,7 +21,7 @@ function useClock() {
   return {
     date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`,
     time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
-  };
+  };Routes
 }
 
 function Spinner() {
@@ -286,6 +287,7 @@ function AppShell({ user, onLogout }) {
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
+          <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />

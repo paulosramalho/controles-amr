@@ -1,6 +1,7 @@
 // src/pages/Pagamentos.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { Link } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
 function DateInput({ label, value, onChange, disabled, className = "" }) {
@@ -39,14 +40,12 @@ function onlyDigits(v = "") {
 }
 
 // moeda (máscara tipo centavos):
-// digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; 12345→123,45; 123456→1.234,56
 function maskBRLFromDigits(digits = "") {
   const d = onlyDigits(digits);
   const n = d ? BigInt(d) : 0n;
   const intPart = n / 100n;
   const decPart = n % 100n;
 
-  // formata intPart com separador de milhar "."
   const intStr = intPart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${intStr},${decPart.toString().padStart(2, "0")}`;
 }
@@ -67,7 +66,6 @@ function parseDateDDMMYYYY(s) {
   const mm = Number(m[2]);
   const yyyy = Number(m[3]);
   if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
-  // valida mês/dia real
   const dt = new Date(yyyy, mm - 1, dd);
   if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
   return dt;
@@ -247,7 +245,7 @@ export default function PagamentosPage({ user }) {
   const [confParcela, setConfParcela] = useState(null);
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
-  const [confValorDigits, setConfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
+  const [confValorDigits, setConfValorDigits] = useState("");
 
   async function load() {
     setError("");
@@ -265,11 +263,9 @@ export default function PagamentosPage({ user }) {
 
   async function loadClientes() {
     try {
-      // sua tela de Clientes usa "/clients". Aqui também.
       const data = await apiFetch("/clients");
       setClientes(Array.isArray(data) ? data : []);
     } catch {
-      // silencioso
       setClientes([]);
     }
   }
@@ -279,11 +275,11 @@ export default function PagamentosPage({ user }) {
     load();
   }, [isAdmin]); // eslint-disable-line
 
-useEffect(() => {
-  if (!openParcelas || !selectedContrato) return;
-  const fresh = rows.find((r) => r.id === selectedContrato.id);
-  if (fresh) setSelectedContrato(fresh);
-}, [rows, openParcelas, selectedContrato]);
+  useEffect(() => {
+    if (!openParcelas || !selectedContrato) return;
+    const fresh = rows.find((r) => r.id === selectedContrato.id);
+    if (fresh) setSelectedContrato(fresh);
+  }, [rows, openParcelas, selectedContrato]);
 
   function resetNovo() {
     setClienteId("");
@@ -370,7 +366,7 @@ useEffect(() => {
       const payload = {
         clienteId: Number(clienteId),
         numeroContrato: String(numeroContrato).trim(),
-        valorTotal: onlyDigits(valorTotalDigits), // ✅ centavos (compatível com backend)
+        valorTotal: onlyDigits(valorTotalDigits),
         formaPagamento,
         observacoes: observacoes ? String(observacoes).trim() : null,
       };
@@ -406,9 +402,9 @@ useEffect(() => {
 
   function openConfirmParcela(parcela) {
     setConfParcela(parcela);
-    setConfData(toDDMMYYYY(new Date())); // default hoje
+    setConfData(toDDMMYYYY(new Date()));
     setConfMeio("PIX");
-    setConfValorDigits(""); // vazio => backend assume previsto
+    setConfValorDigits("");
     setConfOpen(true);
   }
 
@@ -438,19 +434,13 @@ useEffect(() => {
     }
   }
 
-  const filtered = useMemo(() => {
-    // backend já filtra via ?q, então aqui só retorna rows
-    return rows;
-  }, [rows]);
+  const filtered = useMemo(() => rows, [rows]);
 
-
-  // Totais do contrato selecionado (para o modal de parcelas)
   const parcelasDoContrato = selectedContrato?.parcelas || [];
   const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
   const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
   const diferencaTotais = totalRecebido - totalPrevisto;
 
-  // SearchRow padrão
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
@@ -524,35 +514,32 @@ useEffect(() => {
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
                 const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
+                const totalRecebidoLinha =
+                  Number(
+                    c?.resumo?.totalRecebido ??
+                      (c?.parcelas || [])
+                        .filter((p) => p.status === "RECEBIDA")
+                        .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
+                  ) || 0;
+
+                const valorTotalLinha = Number(c?.valorTotal || 0) || 0;
+                const pendenteLinha = Math.max(0, valorTotalLinha - totalRecebidoLinha);
+
                 return (
                   <tr key={c.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                      <Link
+                        to={`/contratos/${c.id}`}
+                        className="hover:underline"
+                        title="Ver contrato (somente leitura)"
+                      >
+                        {c.numeroContrato}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    {(() => {
-  const totalRecebidoLinha =
-    Number(
-      c?.resumo?.totalRecebido ??
-      (c?.parcelas || [])
-        .filter((p) => p.status === "RECEBIDA")
-        .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
-    ) || 0;
-
-  const valorTotalLinha = Number(c?.valorTotal || 0) || 0;
-  const pendenteLinha = Math.max(0, valorTotalLinha - totalRecebidoLinha);
-
-  return (
-    <>
-      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
-        R$ {formatBRLFromDecimal(totalRecebidoLinha)}
-      </td>
-
-      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
-        R$ {formatBRLFromDecimal(pendenteLinha)}
-      </td>
-    </>
-  );
-})()}
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(totalRecebidoLinha)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(pendenteLinha)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -586,7 +573,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={9}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -636,7 +623,7 @@ useEffect(() => {
             label="Número do contrato"
             value={numeroContrato}
             onChange={setNumeroContrato}
-            placeholder="Ex.: 2025-000123"
+            placeholder="Ex.: 20250904001A"
             disabled={loading}
           />
 
@@ -668,12 +655,7 @@ useEffect(() => {
         {/* detalhamento conforme forma */}
         {formaPagamento === "AVISTA" ? (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <DateInput
-  label="Vencimento (à vista)"
-  value={avistaVenc}
-  onChange={setAvistaVenc}
-  disabled={loading}
-/>
+            <DateInput label="Vencimento (à vista)" value={avistaVenc} onChange={setAvistaVenc} disabled={loading} />
           </div>
         ) : null}
 
@@ -687,13 +669,7 @@ useEffect(() => {
               disabled={loading}
               inputMode="numeric"
             />
-            <DateInput
-  label="1º vencimento"
-  value={parcelasPrimeiroVenc}
-  onChange={setParcelasPrimeiroVenc}
-  disabled={loading}
-/>
-
+            <DateInput label="1º vencimento" value={parcelasPrimeiroVenc} onChange={setParcelasPrimeiroVenc} disabled={loading} />
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
               O backend divide o valor automaticamente e ajusta os centavos.
             </div>
@@ -718,24 +694,13 @@ useEffect(() => {
                 </div>
               </label>
 
+              <DateInput label="Vencimento da entrada" value={entradaVenc} onChange={setEntradaVenc} disabled={loading} />
               <DateInput
-  label="Vencimento da entrada"
-  value={entradaVenc}
-  onChange={setEntradaVenc}
-  disabled={loading}
-/>
-
-<DateInput
-  label="1º vencimento (parcelas)"
-  value={entradaParcelasPrimeiroVenc}
-  onChange={setEntradaParcelasPrimeiroVenc}
-  disabled={loading}
-/>
-
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                A entrada fica como parcela nº 1.
-              </div>
+                label="1º vencimento (parcelas)"
+                value={entradaParcelasPrimeiroVenc}
+                onChange={setEntradaParcelasPrimeiroVenc}
+                disabled={loading}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -747,15 +712,9 @@ useEffect(() => {
                 disabled={loading}
                 inputMode="numeric"
               />
-              <Input
-                label="1º vencimento (parcelas)"
-                value={entradaParcelasPrimeiroVenc}
-                onChange={setEntradaParcelasPrimeiroVenc}
-                placeholder="DD/MM/AAAA"
-                disabled={loading}
-              />
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                O backend divide o restante automaticamente e ajusta os centavos.
+
+              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+                A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
               </div>
             </div>
           </div>
@@ -770,10 +729,10 @@ useEffect(() => {
       <Modal
         open={openParcelas}
         title={
-  selectedContrato
-    ? `Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} - ${selectedContrato?.cliente?.nomeRazaoSocial || ""}`
-    : "Controle de Parcelas"
-}
+          selectedContrato
+            ? `Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} - ${selectedContrato?.cliente?.nomeRazaoSocial || ""}`
+            : "Controle de Parcelas"
+        }
         onClose={() => setOpenParcelas(false)}
         footer={
           <div className="flex items-center justify-end">
@@ -868,11 +827,7 @@ useEffect(() => {
 
               <div>
                 <div className="text-slate-500">Diferença</div>
-                <div
-                  className={`font-semibold ${
-                    diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"
-                  }`}
-                >
+                <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
                   R$ {formatBRLFromDecimal(diferencaTotais)}
                 </div>
               </div>
@@ -908,12 +863,8 @@ useEffect(() => {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <DateInput
-  label="Data do recebimento"
-  value={confData}
-  onChange={setConfData}
-  disabled={confirming}
-/>
+          <DateInput label="Data do recebimento" value={confData} onChange={setConfData} disabled={confirming} />
+
           <Select label="Meio" value={confMeio} onChange={setConfMeio} disabled={confirming}>
             <option value="PIX">PIX</option>
             <option value="TED">TED</option>
@@ -936,9 +887,7 @@ useEffect(() => {
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Se deixar vazio, o sistema confirma pelo valor previsto.
-            </div>
+            <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
           </label>
         </div>
       </Modal>
