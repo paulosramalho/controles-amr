@@ -969,7 +969,7 @@ useEffect(() => {
         open={cancelOpen}
         title={cancelParcela ? `Cancelar parcela — #${cancelParcela.numero}` : "Cancelar parcela"}
         onClose={() => {
-          if (canceling) return;
+          if (cancelSaving) return;
           setCancelOpen(false);
         }}
         footer={
@@ -978,7 +978,7 @@ useEffect(() => {
               type="button"
               onClick={() => setCancelOpen(false)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={canceling}
+              disabled={cancelSaving}
             >
               Voltar
             </button>
@@ -986,7 +986,7 @@ useEffect(() => {
               type="button"
               onClick={cancelarParcela}
               className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-70"
-              disabled={canceling}
+              disabled={cancelSaving}
             >
               Cancelar parcela
             </button>
@@ -1005,7 +1005,7 @@ useEffect(() => {
               value={cancelMotivo}
               onChange={(e) => setCancelMotivo(e.target.value)}
               placeholder="Ex.: Renegociação com o cliente"
-              disabled={canceling}
+              disabled={cancelSaving}
               maxLength={140}
             />
             <div className="mt-1 text-xs text-slate-500">Até 140 caracteres.</div>
