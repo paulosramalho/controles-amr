@@ -119,11 +119,7 @@ function computeStatusContrato(contrato) {
   if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
 
   const now = new Date();
-  const hasOverdue = parcelas.some((p) => {
-    if (p.status !== "PREVISTA") return false;
-    const v = new Date(p.vencimento);
-    return Number.isFinite(v.getTime()) && v < now;
-  });
+  const hasOverdue = hasParcelaAtrasada(contrato);
 
   return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
 }
@@ -793,21 +789,14 @@ export default function PagamentosPage({ user }) {
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-  {(() => {
-    // 1. Prioridade máxima: atraso
-    if (hasParcelaAtrasada(c)) {
-      return <Badge tone="red">Atrasada</Badge>;
-    }
-
-    // 2. Quitado (se você já usa esse status)
-    if ((c.status || "").toUpperCase() === "QUITADA") {
-      return <Badge tone="green">Quitado</Badge>;
-    }
-
-    // 3. Default
-    return <Badge tone="blue">Prevista</Badge>;
-  })()}
-</td>
+                       {p.status === "RECEBIDA" ? (
+                       <Badge tone="green">Recebida</Badge>
+                         ) : isParcelaAtrasada(p) ? (
+                       <Badge tone="red">Atrasada</Badge>
+                         ) : (
+                       <Badge tone="blue">Prevista</Badge>
+                         )}
+                      </td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                         {p.dataRecebimento ? (
