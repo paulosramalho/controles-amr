@@ -4,6 +4,26 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 /* helpers (copiados do padrão das telas) */
+function toDateOnly(d) {
+  if (!d) return null;
+  const x = new Date(d);
+  if (!Number.isFinite(x.getTime())) return null;
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function isParcelaAtrasada(p) {
+  if (!p) return false;
+  if (p.status !== "PREVISTA") return false;
+  if (!p.vencimento) return false;
+
+  const hoje = toDateOnly(new Date());
+  const venc = toDateOnly(p.vencimento);
+
+  if (!hoje || !venc) return false;
+  return venc < hoje;
+}
+
 function formatBRLFromDecimal(value) {
   if (value === null || value === undefined || value === "") return "—";
   const num = Number(value);
@@ -223,15 +243,18 @@ export default function ContratoPage({ user }) {
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                      <td className="px-4 py-3">
-                        {p.status === "RECEBIDA" ? (
-                          <Badge tone="green">Recebida</Badge>
-                        ) : p.status === "CANCELADA" ? (
-                          <Badge tone="red">Cancelada</Badge>
-                        ) : (
-                          <Badge tone="blue">Prevista</Badge>
-                        )}
-                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+  {p.status === "RECEBIDA" ? (
+    <Badge tone="green">Recebida</Badge>
+  ) : p.status === "CANCELADA" ? (
+    <Badge tone="red">Cancelada</Badge>
+  ) : isParcelaAtrasada(p) ? (
+    <Badge tone="red">Atrasada</Badge>
+  ) : (
+    <Badge tone="blue">Prevista</Badge>
+  )}
+</td>
+
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                         {p.dataRecebimento ? (
