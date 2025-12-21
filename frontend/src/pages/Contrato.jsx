@@ -282,6 +282,9 @@ async function cancelarParcela() {
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {parcelas.map((p) => (
+
+                    console.log("parcela", p.id, p.status, p.motivoCancelamento, p.canceladoEm);
+
                     <tr key={p.id}>
                       <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
