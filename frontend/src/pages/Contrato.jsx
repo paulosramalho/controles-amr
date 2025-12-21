@@ -85,68 +85,6 @@ function Badge({ children, tone = "slate" }) {
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
       {children}
     </span>
-{cancelOpen ? (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div
-      className="absolute inset-0 bg-black/30"
-      onClick={() => (!canceling ? setCancelOpen(false) : null)}
-    />
-    <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200">
-      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-        <div className="text-lg font-semibold text-slate-900">
-          Cancelar parcela
-        </div>
-        <button
-          type="button"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-          onClick={() => setCancelOpen(false)}
-          disabled={canceling}
-        >
-          Fechar
-        </button>
-      </div>
-
-      <div className="p-5 space-y-4">
-        <div className="text-sm text-slate-700">
-          Você está cancelando a parcela{" "}
-          <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe
-          o motivo (obrigatório).
-        </div>
-
-        <label className="block">
-          <div className="text-sm font-medium text-slate-700">Motivo</div>
-          <input
-            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            value={cancelMotivo}
-            onChange={(e) => setCancelMotivo(e.target.value)}
-            placeholder="Ex.: Renegociação / cancelamento do acordo"
-            disabled={canceling}
-          />
-        </label>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-            onClick={() => setCancelOpen(false)}
-            disabled={canceling}
-          >
-            Fechar
-          </button>
-          <button
-            type="button"
-            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-            onClick={cancelarParcela}
-            disabled={canceling}
-          >
-            {canceling ? "Cancelando..." : "Cancelar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-) : null}
-
   );
 }
 
@@ -417,6 +355,47 @@ async function cancelarParcela() {
           </div>
         )}
       </Card>
+      {/* 🔴 MODAL DE CANCELAMENTO — AQUI */}
+      {cancelOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCancelOpen(false)} />
+
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="text-lg font-semibold text-slate-900">
+              Cancelar parcela #{cancelParcela?.numero}
+            </div>
+ 
+            <div className="mt-3 text-sm text-slate-600">
+              Informe o motivo do cancelamento.
+            </div>
+
+            <textarea
+              className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              rows={3}
+              value={cancelMotivo}
+              onChange={(e) => setCancelMotivo(e.target.value)}
+              disabled={canceling}
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-xl border px-3 py-2 text-sm"
+                onClick={() => setCancelOpen(false)}
+                disabled={canceling}
+              >
+                Fechar
+              </button>
+
+              <button
+                className="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                onClick={cancelarParcela}
+                disabled={canceling}
+              >
+                Confirmar cancelamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
