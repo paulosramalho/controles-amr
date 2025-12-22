@@ -1,5 +1,6 @@
 // src/pages/Pagamentos.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 /* ---------------- helpers ---------------- */
@@ -95,12 +96,19 @@ function computeStatusContrato(contrato) {
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
 
-  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
-  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
-
   const now = new Date();
-  const hasOverdue = parcelas.some((p) => {
-    if (p.status !== "PREVISTA") return false;
+
+  // CANCELADA não conta como pendente/atrasada. Se todas forem CANCELADA, contrato é "Cancelado".
+  const naoCanceladas = parcelas.filter((p) => p.status !== "CANCELADA");
+  if (naoCanceladas.length === 0) return { label: "Cancelado", tone: "amber" };
+
+  // Quitado = todas as não-canceladas estão RECEBIDA
+  const todasRecebidas = naoCanceladas.every((p) => p.status === "RECEBIDA");
+  if (todasRecebidas) return { label: "Quitado", tone: "green" };
+
+  // Atrasado = existe parcela não-recebida e não-cancelada, com vencimento < hoje
+  const hasOverdue = naoCanceladas.some((p) => {
+    if (p.status === "RECEBIDA") return false;
     const v = new Date(p.vencimento);
     return Number.isFinite(v.getTime()) && v < now;
   });
@@ -575,7 +583,11 @@ useEffect(() => {
 
                 return (
                   <tr key={c.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                      <Link to={`/contratos/${c.id}`} className="text-blue-700 hover:underline">
+                        {c.numeroContrato}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
