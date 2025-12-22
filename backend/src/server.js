@@ -19,6 +19,20 @@ app.use(morgan("dev"));
 /* =========================
    DIRETRIZES — HELPERS
 ========================= */
+async function nextRenegNumber(prisma, numeroOriginal) {
+  const prefix = `${numeroOriginal}-R`;
+  const existentes = await prisma.contratoPagamento.findMany({
+    where: { numeroContrato: { startsWith: prefix } },
+    select: { numeroContrato: true },
+  });
+
+  let max = 0;
+  for (const e of existentes) {
+    const m = e.numeroContrato.match(/-R(\d+)$/);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${numeroOriginal}-R${max + 1}`;
+}
 
 function onlyDigits(v = "") {
   return String(v).replace(/\D/g, "");
@@ -1883,6 +1897,132 @@ app.patch(
     }
   }
 );
+
+// 6.3 — Renegociar saldo: cancela pendentes e cria contrato filho
+app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const contratoId = Number(req.params.id);
+
+    const { quantidadeParcelas, primeiroVencimento, observacoes } = req.body || {};
+
+    const qtd = Number(quantidadeParcelas);
+    if (!Number.isFinite(qtd) || qtd < 1 || qtd > 60) {
+      return res.status(400).json({ message: "Quantidade de parcelas inválida (1 a 60)." });
+    }
+
+    const dt0 = parseDateInput(primeiroVencimento);
+    if (!dt0) {
+      return res.status(400).json({ message: "1º vencimento inválido (DD/MM/AAAA)." });
+    }
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id: contratoId },
+      include: { cliente: true, parcelas: true },
+    });
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    // parcelas elegíveis = PREVISTA ou ATRASADA (isto é: pendentes)
+    // (se teu backend não grava ATRASADA, use PREVISTA + vencimento < hoje)
+    const now = new Date();
+    const pendentes = (contrato.parcelas || []).filter((p) => {
+      if (p.status === "RECEBIDA") return false;
+      if (p.status === "CANCELADA") return false;
+      // aceita PREVISTA/ATRASADA/outros pendentes
+      return true;
+    });
+
+    if (!pendentes.length) {
+      return res.status(400).json({ message: "Sem saldo pendente para renegociar." });
+    }
+
+    // saldo = soma valorPrevisto das pendentes
+    // (Decimal do Prisma vem como string em alguns casos)
+    const saldoCents = pendentes.reduce((acc, p) => {
+      const cents = moneyToCents(p.valorPrevisto?.toString?.() ?? p.valorPrevisto);
+      return acc + (cents ?? 0n);
+    }, 0n);
+
+    if (saldoCents <= 0n) {
+      return res.status(400).json({ message: "Saldo pendente inválido." });
+    }
+
+    const novoNumero = await nextRenegNumber(prisma, contrato.numeroContrato);
+
+    // dividir saldo em qtd parcelas (última ajusta resto)
+    const base = saldoCents / BigInt(qtd);
+    const resto = saldoCents % BigInt(qtd);
+
+    const parcelasData = [];
+    for (let i = 1; i <= qtd; i++) {
+      const venc = new Date(dt0);
+      venc.setMonth(venc.getMonth() + (i - 1));
+      const cents = base + (i === qtd ? resto : 0n);
+
+      parcelasData.push({
+        numero: i,
+        vencimento: venc,
+        valorPrevisto: centsToDecimalString(cents),
+        status: "PREVISTA",
+      });
+    }
+
+    const userId = req.user?.id ? Number(req.user.id) : null;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const novoContrato = await tx.contratoPagamento.create({
+        data: {
+          numeroContrato: novoNumero,
+          clienteId: contrato.clienteId,
+          valorTotal: centsToDecimalString(saldoCents),
+          formaPagamento: "PARCELAS", // mantém simples por enquanto
+          observacoes: observacoes ? String(observacoes) : `Renegociação do contrato ${contrato.numeroContrato}`,
+          ativo: true,
+          contratoOrigemId: contrato.id,
+        },
+      });
+
+      await tx.parcelaContrato.createMany({
+        data: parcelasData.map((p) => ({ ...p, contratoId: novoContrato.id })),
+      });
+
+      // cancelar pendentes no contrato original
+      await Promise.all(
+        pendentes.map((p) =>
+          tx.parcelaContrato.update({
+            where: { id: p.id },
+            data: {
+              status: "CANCELADA",
+              canceladaEm: new Date(),
+              canceladaPorId: userId,
+              cancelamentoMotivo: `Renegociada no contrato ${novoContrato.numeroContrato}`,
+            },
+          })
+        )
+      );
+
+      // marca vínculo de renegociação (contrato original -> novo)
+      await tx.contratoPagamento.update({
+        where: { id: contrato.id },
+        data: {
+          renegociadoParaId: novoContrato.id,
+          renegociadoEm: new Date(),
+          renegociadoPorId: userId,
+        },
+      });
+
+      return { novoContratoId: novoContrato.id, novoNumero: novoContrato.numeroContrato };
+    });
+
+    return res.status(201).json({
+      message: "Renegociação criada com sucesso.",
+      novoContratoId: result.novoContratoId,
+      numeroContrato: result.novoNumero,
+    });
+  } catch (err) {
+    console.error("Erro ao renegociar saldo:", err);
+    return res.status(500).json({ message: "Erro ao renegociar saldo." });
+  }
+});
 
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
