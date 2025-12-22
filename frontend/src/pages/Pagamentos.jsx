@@ -74,11 +74,24 @@ function decimalToCents(val) {
   return neg ? -cents : cents;
 }
 
+
+const _brlFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+function formatBRL(value) {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return _brlFormatter.format(n);
+}
+
 function formatBRLFromCents(cents) {
   if (cents === null || cents === undefined) return "—";
-  const n = Number(cents) / 100;
-  if (!Number.isFinite(n)) return "—";
-  return formatBRL(n);
+  try {
+    const num = Number(cents) / 100;
+    if (!Number.isFinite(num)) return "—";
+    return formatBRL(num);
+  } catch {
+    return "—";
+  }
 }
 
 function parseDateDDMMYYYY(s) {
