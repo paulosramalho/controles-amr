@@ -28,6 +28,30 @@ function isDateBeforeToday(dateLike) {
   return d0 < n0;
 }
 
+function Badge({ tone = "slate", children }) {
+  const map = {
+    slate: "bg-slate-600 text-white",
+    blue: "bg-blue-600 text-white",
+    green: "bg-emerald-600 text-white",
+    red: "bg-red-600 text-white",
+    amber: "bg-amber-500 text-white",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${map[tone] || map.slate}`}>
+      {children}
+    </span>
+  );
+}
+
+function parcelaStatusUI(p) {
+  if (p?.status === "CANCELADA") return { label: "Cancelada", tone: "amber" };
+  if (p?.status === "RECEBIDA") return { label: "Recebida", tone: "green" };
+  if (p?.status === "ATRASADA" || (p?.status === "PREVISTA" && isDateBeforeToday(p?.vencimento))) {
+    return { label: "Atrasada", tone: "red" };
+  }
+  return { label: "Prevista", tone: "blue" };
+}
+
 function normalizeForma(fp) {
   const v = String(fp || "").toUpperCase();
   if (v === "AVISTA") return "À vista";
@@ -62,22 +86,6 @@ function computeStatusContrato(contrato) {
 
   const hasOverdue = parcelas.some((p) => isOverdue(p));
   return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
-}
-
-function Badge({ children, tone = "slate" }) {
-  const map = {
-    slate: "bg-slate-500 text-white",
-    green: "bg-green-600 text-white",
-    red: "bg-red-600 text-white",
-    blue: "bg-blue-600 text-white",
-    amber: "bg-amber-500 text-white",
-  };
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
-      {children}
-    </span>
-  );
 }
 
 function Card({ title, right, children }) {

@@ -59,6 +59,39 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function decimalToCents(val) {
+  if (val === null || val === undefined || val === "") return 0n;
+  let s = String(val).trim();
+  if (!s) return 0n;
+  const neg = s.startsWith("-");
+  if (neg) s = s.slice(1);
+  // normaliza para "1234.56"
+  s = s.replace(/[^0-9.]/g, "");
+  const parts = s.split(".");
+  const inteiro = parts[0] || "0";
+  const frac = (parts[1] || "").padEnd(2, "0").slice(0, 2);
+  const cents = BigInt(inteiro || "0") * 100n + BigInt(frac || "0");
+  return neg ? -cents : cents;
+}
+
+function formatBRLFromCents(cents) {
+  if (cents === null || cents === undefined) return "—";
+  try {
+    const num = Number(cents) / 100;
+    if (!Number.isFinite(num)) return "—";
+    return formatBRL(num);
+  } catch {
+    return "—";
+  }
+}
+
+function formatBRLFromCents(cents) {
+  if (cents === null || cents === undefined) return "—";
+  const n = Number(cents) / 100;
+  if (!Number.isFinite(n)) return "—";
+  return formatBRL(n);
+}
+
 function parseDateDDMMYYYY(s) {
   const raw = String(s || "").trim();
   if (!raw) return null;
@@ -92,6 +125,11 @@ function normalizeForma(fp) {
 
 function computeStatusContrato(contrato) {
   if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
+
+  // Prioridade maxima: contrato original marcado como renegociado (mantem ativo=true)
+  if (contrato?.renegociadoParaId || contrato?.renegociadoPara) {
+    return { label: "Renegociado", tone: "slate" };
+  }
 
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
@@ -463,7 +501,7 @@ useEffect(() => {
     }
 
     setError("");
-    setCanceling(true);
+    setCancelSaving(true);
     try {
       await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
         method: "PATCH",
@@ -477,7 +515,7 @@ useEffect(() => {
     } catch (e) {
       setError(e?.message || "Falha ao cancelar parcela.");
     } finally {
-      setCanceling(false);
+      setCancelSaving(false);
     }
   }
 
@@ -571,6 +609,8 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor recebido</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -584,6 +624,15 @@ useEffect(() => {
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
                 const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
+                const parcelas = c?.parcelas || [];
+                const totalPrevistoCents = parcelas
+                  .filter((p) => p.status !== "CANCELADA")
+                  .reduce((acc, p) => acc + decimalToCents(p.valorPrevisto), 0n);
+                const totalRecebidoCents = parcelas
+                  .filter((p) => p.status === "RECEBIDA")
+                  .reduce((acc, p) => acc + decimalToCents(p.valorRecebido ?? p.valorPrevisto), 0n);
+                const pendenteClamped = totalPrevistoCents > totalRecebidoCents ? (totalPrevistoCents - totalRecebidoCents) : 0n;
+
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
@@ -593,6 +642,8 @@ useEffect(() => {
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{formatBRLFromCents(totalRecebidoCents)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{formatBRLFromCents(pendenteClamped)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -626,7 +677,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={9}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
