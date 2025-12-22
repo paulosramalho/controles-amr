@@ -76,17 +76,6 @@ function decimalToCents(val) {
 
 function formatBRLFromCents(cents) {
   if (cents === null || cents === undefined) return "—";
-  try {
-    const num = Number(cents) / 100;
-    if (!Number.isFinite(num)) return "—";
-    return formatBRL(num);
-  } catch {
-    return "—";
-  }
-}
-
-function formatBRLFromCents(cents) {
-  if (cents === null || cents === undefined) return "—";
   const n = Number(cents) / 100;
   if (!Number.isFinite(n)) return "—";
   return formatBRL(n);
