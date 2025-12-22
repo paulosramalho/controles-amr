@@ -19,39 +19,6 @@ function toDDMMYYYY(dateLike) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-function isDateBeforeToday(dateLike) {
-  const d = new Date(dateLike);
-  if (!Number.isFinite(d.getTime())) return false;
-  const now = new Date();
-  const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return d0 < n0;
-}
-
-function Badge({ tone = "slate", children }) {
-  const map = {
-    slate: "bg-slate-600 text-white",
-    blue: "bg-blue-600 text-white",
-    green: "bg-emerald-600 text-white",
-    red: "bg-red-600 text-white",
-    amber: "bg-amber-500 text-white",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${map[tone] || map.slate}`}>
-      {children}
-    </span>
-  );
-}
-
-function parcelaStatusUI(p) {
-  if (p?.status === "CANCELADA") return { label: "Cancelada", tone: "amber" };
-  if (p?.status === "RECEBIDA") return { label: "Recebida", tone: "green" };
-  if (p?.status === "ATRASADA" || (p?.status === "PREVISTA" && isDateBeforeToday(p?.vencimento))) {
-    return { label: "Atrasada", tone: "red" };
-  }
-  return { label: "Prevista", tone: "blue" };
-}
-
 function normalizeForma(fp) {
   const v = String(fp || "").toUpperCase();
   if (v === "AVISTA") return "À vista";
@@ -64,28 +31,37 @@ function computeStatusContrato(contrato) {
   if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
 
   const parcelas = contrato?.parcelas || [];
+
+  const hasSaldoPendente = (ps = []) =>
+    Array.isArray(ps) && ps.some((p) => p && p.status !== "RECEBIDA" && p.status !== "CANCELADA");
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
 
+  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
+  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
+
   const now = new Date();
-  const isOverdue = (p) => {
-    if (!p) return false;
+  const hasOverdue = parcelas.some((p) => {
     if (p.status !== "PREVISTA") return false;
     const v = new Date(p.vencimento);
-    if (!Number.isFinite(v.getTime())) return false;
-    // compara por dia
-    const v0 = new Date(v.getFullYear(), v.getMonth(), v.getDate());
-    const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return v0 < n0;
-  };
+    return Number.isFinite(v.getTime()) && v < now;
+  });
 
-  const todasCanceladas = parcelas.every((p) => p.status === "CANCELADA");
-  if (todasCanceladas) return { label: "Cancelado", tone: "slate" };
-
-  const todasQuitadas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
-  if (todasQuitadas) return { label: "Quitado", tone: "green" };
-
-  const hasOverdue = parcelas.some((p) => isOverdue(p));
   return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
+}
+
+function Badge({ children, tone = "slate" }) {
+  const map = {
+    slate: "bg-slate-100 text-slate-800 border-slate-200",
+    green: "bg-green-50 text-green-700 border-green-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
 
 function Card({ title, right, children }) {
@@ -141,10 +117,8 @@ export default function ContratoPage({ user }) {
   const parcelas = contrato?.parcelas || [];
 
   const totals = useMemo(() => {
-    // CANCELADAS não entram no previsto/pendente
-    const ativas = parcelas.filter((p) => p?.status !== "CANCELADA");
-    const totalPrevisto = ativas.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-    const totalRecebido = ativas.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
+    const totalPrevisto = parcelas.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
+    const totalRecebido = parcelas.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
     const diferenca = totalRecebido - totalPrevisto;
     return { totalPrevisto, totalRecebido, diferenca };
   }, [parcelas]);
@@ -161,6 +135,22 @@ export default function ContratoPage({ user }) {
   }
 
   const status = contrato ? computeStatusContrato(contrato) : { label: "—", tone: "slate" };
+
+  async function renegociarSaldo() {
+    if (!contrato?.id) return;
+    if (!hasSaldoPendente(parcelas)) return;
+    const ok = window.confirm(
+      "Renegociar saldo vai cancelar automaticamente todas as parcelas pendentes e criar um novo contrato derivado. Deseja continuar?"
+    );
+    if (!ok) return;
+    try {
+      await apiFetch(`/contratos/${contrato.id}/renegociar`, { method: "POST" });
+      await loadContrato();
+      alert("Saldo renegociado. Um novo contrato foi criado.");
+    } catch (e) {
+      alert(e?.message || "Falha ao renegociar saldo.");
+    }
+  }
 
   return (
     <div className="p-6">
@@ -210,6 +200,15 @@ export default function ContratoPage({ user }) {
                     <Badge tone={status.tone}>{status.label}</Badge>
                   </div>
                 </div>
+                {user?.role === "ADMIN" && hasSaldoPendente(parcelas) ? (
+                  <button
+                    type="button"
+                    onClick={renegociarSaldo}
+                    className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    Renegociar saldo
+                  </button>
+                ) : null}
               </div>
 
               <div>
@@ -253,30 +252,21 @@ export default function ContratoPage({ user }) {
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                       <td className="px-4 py-3">
-                        {(() => {
-                          const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
-                          const label = p.status === "RECEBIDA" ? "Recebida" : p.status === "CANCELADA" ? "Cancelada" : isOverdue ? "Atrasada" : "Prevista";
-                          const tone = p.status === "RECEBIDA" ? "green" : p.status === "CANCELADA" ? "slate" : isOverdue ? "red" : "blue";
-
-                          const motivo =
-                            p.cancelMotivo ||
-                            p.motivoCancelamento ||
-                            p.motivo ||
-                            "";
-
-                          return (
-                            <div className="flex flex-col gap-1">
-                              <span title={p.status === "CANCELADA" && motivo ? `Motivo: ${motivo}` : undefined}>
-                                <Badge tone={tone}>{label}</Badge>
-                              </span>
-                              {p.status === "CANCELADA" && motivo ? (
-                                <div className="text-xs text-slate-500 line-clamp-1" title={motivo}>
-                                  Motivo: {motivo}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
+                        {p.status === "RECEBIDA" ? (
+                          <Badge tone="green">Recebida</Badge>
+                        ) : p.status === "CANCELADA" ? (
+                          <div className="space-y-1">
+                            <Badge tone="red">Cancelada</Badge>
+                            {p.cancelamentoMotivo ? (
+                              <div className="text-xs text-slate-500">Motivo: {String(p.cancelamentoMotivo)}</div>
+                            ) : null}
+                            {p.canceladaEm ? (
+                              <div className="text-xs text-slate-500">{toDDMMYYYY(p.canceladaEm)}</div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <Badge tone="blue">Prevista</Badge>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}

@@ -1,6 +1,5 @@
 // src/pages/Pagamentos.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 /* ---------------- helpers ---------------- */
@@ -59,41 +58,6 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function decimalToCents(val) {
-  if (val === null || val === undefined || val === "") return 0n;
-  let s = String(val).trim();
-  if (!s) return 0n;
-  const neg = s.startsWith("-");
-  if (neg) s = s.slice(1);
-  // normaliza para "1234.56"
-  s = s.replace(/[^0-9.]/g, "");
-  const parts = s.split(".");
-  const inteiro = parts[0] || "0";
-  const frac = (parts[1] || "").padEnd(2, "0").slice(0, 2);
-  const cents = BigInt(inteiro || "0") * 100n + BigInt(frac || "0");
-  return neg ? -cents : cents;
-}
-
-
-const _brlFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-function formatBRL(value) {
-  if (value === null || value === undefined) return "—";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return _brlFormatter.format(n);
-}
-
-function formatBRLFromCents(cents) {
-  if (cents === null || cents === undefined) return "—";
-  try {
-    const num = Number(cents) / 100;
-    if (!Number.isFinite(num)) return "—";
-    return formatBRL(num);
-  } catch {
-    return "—";
-  }
-}
-
 function parseDateDDMMYYYY(s) {
   const raw = String(s || "").trim();
   if (!raw) return null;
@@ -128,27 +92,15 @@ function normalizeForma(fp) {
 function computeStatusContrato(contrato) {
   if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
 
-  // Prioridade maxima: contrato original marcado como renegociado (mantem ativo=true)
-  if (contrato?.renegociadoParaId || contrato?.renegociadoPara) {
-    return { label: "Renegociado", tone: "slate" };
-  }
-
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
 
+  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
+  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
+
   const now = new Date();
-
-  // CANCELADA não conta como pendente/atrasada. Se todas forem CANCELADA, contrato é "Cancelado".
-  const naoCanceladas = parcelas.filter((p) => p.status !== "CANCELADA");
-  if (naoCanceladas.length === 0) return { label: "Cancelado", tone: "amber" };
-
-  // Quitado = todas as não-canceladas estão RECEBIDA
-  const todasRecebidas = naoCanceladas.every((p) => p.status === "RECEBIDA");
-  if (todasRecebidas) return { label: "Quitado", tone: "green" };
-
-  // Atrasado = existe parcela não-recebida e não-cancelada, com vencimento < hoje
-  const hasOverdue = naoCanceladas.some((p) => {
-    if (p.status === "RECEBIDA") return false;
+  const hasOverdue = parcelas.some((p) => {
+    if (p.status !== "PREVISTA") return false;
     const v = new Date(p.vencimento);
     return Number.isFinite(v.getTime()) && v < now;
   });
@@ -171,39 +123,17 @@ function Card({ title, right, children }) {
 
 function Badge({ children, tone = "slate" }) {
   const map = {
-    slate: "bg-slate-500 text-white",
-    green: "bg-green-600 text-white",
-    red: "bg-red-600 text-white",
-    blue: "bg-blue-600 text-white",
-    amber: "bg-amber-500 text-white",
+    slate: "bg-slate-100 text-slate-800 border-slate-200",
+    green: "bg-green-50 text-green-700 border-green-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
   };
-
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
       {children}
     </span>
   );
-}
-
-function isDateBeforeToday(dateLike) {
-  const d = new Date(dateLike);
-  if (!Number.isFinite(d.getTime())) return false;
-  const now = new Date();
-  // zera hora para comparação de "dia"
-  const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return d0.getTime() < n0.getTime();
-}
-
-function getParcelaUiStatus(p) {
-  if (!p) return { label: "—", tone: "slate" };
-  if (p.status === "RECEBIDA") return { label: "Recebida", tone: "green" };
-  if (p.status === "CANCELADA") return { label: "Cancelada", tone: "slate" };
-  // PREVISTA pode virar "Atrasada" visualmente
-  if (p.status === "PREVISTA" && isDateBeforeToday(p.vencimento)) return { label: "Atrasada", tone: "red" };
-  return { label: "Prevista", tone: "blue" };
 }
 
 function Modal({ open, title, onClose, children, footer }) {
@@ -319,12 +249,6 @@ export default function PagamentosPage({ user }) {
   const [confMeio, setConfMeio] = useState("PIX");
   const [confValorDigits, setConfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
 
-  // cancelar parcela (premium)
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelParcela, setCancelParcela] = useState(null);
-  const [cancelMotivo, setCancelMotivo] = useState("");
-  const [cancelSaving, setCancelSaving] = useState(false);
-
   async function load() {
     setError("");
     setLoading(true);
@@ -385,6 +309,36 @@ useEffect(() => {
   function openParcelasModal(contrato) {
     setSelectedContrato(contrato);
     setOpenParcelas(true);
+  }
+
+  const hasSaldoPendente = (parcelas = []) =>
+    Array.isArray(parcelas) && parcelas.some((p) => p && p.status !== "RECEBIDA" && p.status !== "CANCELADA");
+
+  async function renegociarSaldo(contrato) {
+    if (user?.role !== "ADMIN") return;
+    if (!contrato?.id) return;
+    if (!hasSaldoPendente(contrato.parcelas)) {
+      alert("Não há saldo pendente para renegociar.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Renegociar o saldo pendente do contrato ${contrato.numeroContrato}?\n\nIsso vai CANCELAR automaticamente todas as parcelas pendentes e criar um novo contrato derivado.`
+    );
+    if (!ok) return;
+
+    try {
+      // backend já valida ADMIN e calcula o saldo (PREVISTA/ATRASADA), ignorando RECEBIDA/CANCELADA
+      await apiFetch(`/contratos/${contrato.id}/renegociar`, { method: "POST" });
+
+      // Atualiza imediatamente lista + modal aberto
+      await loadContratos();
+      const contratoAtualizado = await apiFetch(`/contratos/${contrato.id}`);
+      setSelectedContrato(contratoAtualizado);
+    } catch (e) {
+      const msg = e?.message || "Erro ao renegociar saldo.";
+      alert(msg);
+    }
   }
 
   async function toggleContrato(contrato) {
@@ -488,39 +442,6 @@ useEffect(() => {
     setConfOpen(true);
   }
 
-  function openCancelParcela(parcela) {
-    setCancelParcela(parcela);
-    setCancelMotivo("");
-    setCancelOpen(true);
-  }
-
-  async function cancelarParcela() {
-    if (!cancelParcela) return;
-    const motivo = String(cancelMotivo || "").trim();
-    if (!motivo) {
-      setError("Informe o motivo do cancelamento.");
-      return;
-    }
-
-    setError("");
-    setCancelSaving(true);
-    try {
-      await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
-        method: "PATCH",
-        body: { motivo },
-      });
-
-      // Recarrega lista e contrato selecionado (sem sair do modal principal)
-      await load();
-      setCancelOpen(false);
-      setCancelParcela(null);
-    } catch (e) {
-      setError(e?.message || "Falha ao cancelar parcela.");
-    } finally {
-      setCancelSaving(false);
-    }
-  }
-
   async function confirmarRecebimento() {
     if (!confParcela) return;
     if (!parseDateDDMMYYYY(confData)) {
@@ -611,8 +532,6 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
-                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor recebido</th>
-                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -626,26 +545,11 @@ useEffect(() => {
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
                 const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
-                const parcelas = c?.parcelas || [];
-                const totalPrevistoCents = parcelas
-                  .filter((p) => p.status !== "CANCELADA")
-                  .reduce((acc, p) => acc + decimalToCents(p.valorPrevisto), 0n);
-                const totalRecebidoCents = parcelas
-                  .filter((p) => p.status === "RECEBIDA")
-                  .reduce((acc, p) => acc + decimalToCents(p.valorRecebido ?? p.valorPrevisto), 0n);
-                const pendenteClamped = totalPrevistoCents > totalRecebidoCents ? (totalPrevistoCents - totalRecebidoCents) : 0n;
-
                 return (
                   <tr key={c.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Link to={`/contratos/${c.id}`} className="text-blue-700 hover:underline">
-                        {c.numeroContrato}
-                      </Link>
-                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{formatBRLFromCents(totalRecebidoCents)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{formatBRLFromCents(pendenteClamped)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -679,7 +583,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={9}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -869,7 +773,18 @@ useEffect(() => {
 }
         onClose={() => setOpenParcelas(false)}
         footer={
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              {user?.role === "ADMIN" && selectedContrato && hasSaldoPendente(selectedContrato.parcelas) ? (
+                <button
+                  type="button"
+                  onClick={() => renegociarSaldo(selectedContrato)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                >
+                  Renegociar saldo
+                </button>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => setOpenParcelas(false)}
@@ -902,28 +817,39 @@ useEffect(() => {
                     <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                     <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                     <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-	                    <td className="px-4 py-3">
-	                      {(() => {
-	                        const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
-	                        const label = p.status === "RECEBIDA" ? "Recebida" : p.status === "CANCELADA" ? "Cancelada" : isOverdue ? "Atrasada" : "Prevista";
-	                        const tone = p.status === "RECEBIDA" ? "green" : p.status === "CANCELADA" ? "slate" : isOverdue ? "red" : "blue";
-	                        const motivo = p.cancelMotivo || p.motivoCancelamento || p.motivo || null;
-	                        const who = p.canceladoPorNome || p.canceladoPor || null;
-	                        const when = p.canceladoEm || p.dataCancelamento || null;
-	                        const tip =
-	                          label === "Cancelada" && (motivo || who || when)
-	                            ? [`Motivo: ${motivo || "—"}`, who ? `Por: ${who}` : null, when ? `Em: ${toDDMMYYYY(when)}` : null].filter(Boolean).join("\n")
-	                            : undefined;
-	                        return (
-	                          <div className="inline-flex flex-col gap-1" title={tip}>
-	                            <Badge tone={tone}>{label}</Badge>
-	                            {label === "Cancelada" && motivo ? (
-	                              <div className="text-xs text-slate-500">{motivo}</div>
-	                            ) : null}
-	                          </div>
-	                        );
-	                      })()}
-	                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const now = new Date();
+                        const venc = new Date(p.vencimento);
+                        const isOverdue = p.status === "PREVISTA" && Number.isFinite(venc.getTime()) && venc < now;
+                        const motivo = p.cancelamentoMotivo || "";
+                        const quem = p.canceladaPor?.nome || p.canceladaPor?.name || "";
+                        const quando = p.canceladaEm ? toDDMMYYYY(p.canceladaEm) : "";
+
+                        if (p.status === "RECEBIDA") return <Badge tone="green">Recebida</Badge>;
+                        if (p.status === "CANCELADA") {
+                          return (
+                            <div>
+                              <Badge tone="red">Cancelada</Badge>
+                              {(motivo || quem || quando) ? (
+                                <div className="mt-1 text-xs text-slate-600">
+                                  {motivo ? <div><span className="font-semibold">Motivo:</span> {String(motivo)}</div> : null}
+                                  {(quem || quando) ? (
+                                    <div>
+                                      {quem ? String(quem) : ""}
+                                      {quem && quando ? " • " : ""}
+                                      {quando ? String(quando) : ""}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        }
+                        if (isOverdue) return <Badge tone="red">Atrasada</Badge>;
+                        return <Badge tone="blue">Prevista</Badge>;
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-slate-800">
                       {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                       {p.dataRecebimento ? (
@@ -933,7 +859,7 @@ useEffect(() => {
                     <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-	                        {p.status === "PREVISTA" && isAdmin ? (
+                        {p.status === "PREVISTA" ? (
                           <button
                             type="button"
                             onClick={() => openConfirmParcela(p)}
@@ -941,17 +867,9 @@ useEffect(() => {
                           >
                             Receber Parcela
                           </button>
-	                        ) : null}
-	                        {isAdmin && p.status !== "RECEBIDA" && p.status !== "CANCELADA" ? (
-	                          <button
-	                            type="button"
-	                            onClick={() => openCancelParcela(p)}
-	                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-	                          >
-	                            Cancelar
-	                          </button>
-	                        ) : null}
-	                        {!isAdmin && p.status !== "PREVISTA" ? <span className="text-slate-400 text-sm">—</span> : null}
+                        ) : (
+                          <span className="text-slate-400 text-sm">—</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1028,55 +946,6 @@ useEffect(() => {
             <div className="mt-1 text-xs text-slate-500">
               Se deixar vazio, o sistema confirma pelo valor previsto.
             </div>
-          </label>
-        </div>
-      </Modal>
-
-      {/* ---------- Modal: Cancelar parcela ---------- */}
-      <Modal
-        open={cancelOpen}
-        title={cancelParcela ? `Cancelar parcela — #${cancelParcela.numero}` : "Cancelar parcela"}
-        onClose={() => {
-          if (cancelSaving) return;
-          setCancelOpen(false);
-        }}
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setCancelOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={cancelSaving}
-            >
-              Voltar
-            </button>
-            <button
-              type="button"
-              onClick={cancelarParcela}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-70"
-              disabled={cancelSaving}
-            >
-              Cancelar parcela
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            Informe o motivo do cancelamento. A parcela será marcada como <b>CANCELADA</b> e não entra mais em pendente/atraso.
-          </div>
-
-          <label className="block">
-            <div className="text-sm font-medium text-slate-700">Motivo (obrigatório)</div>
-            <input
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-              value={cancelMotivo}
-              onChange={(e) => setCancelMotivo(e.target.value)}
-              placeholder="Ex.: Renegociação com o cliente"
-              disabled={cancelSaving}
-              maxLength={140}
-            />
-            <div className="mt-1 text-xs text-slate-500">Até 140 caracteres.</div>
           </label>
         </div>
       </Modal>
