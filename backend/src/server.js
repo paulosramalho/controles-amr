@@ -1515,7 +1515,18 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
 
     const contratos = await prisma.contratoPagamento.findMany({
       where,
-      include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+      include: {
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
+      }
+    }
+  }
+}
+,
       orderBy: [{ createdAt: "desc" }],
       take: 200,
     });
@@ -1697,7 +1708,18 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
 
       return tx.contratoPagamento.findUnique({
         where: { id: contrato.id },
-        include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+        include: {
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
+      }
+    }
+  }
+}
+,
       });
     });
 
@@ -1738,7 +1760,18 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     const updated = await prisma.contratoPagamento.update({
       where: { id },
       data,
-      include: { cliente: true, parcelas: { orderBy: { numero: "asc" } } },
+      include: {
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
+      }
+    }
+  }
+}
+,
     });
 
     res.json(updated);
