@@ -124,19 +124,25 @@ function normalizeForma(fp) {
 }
 
 function computeStatusContrato(contrato) {
-  if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
-
   const parcelas = contrato?.parcelas || [];
-  if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
+  if (!parcelas.length) return "EM_DIA";
 
-  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
-  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
+  // PRIORIDADE:
+  // 1) RENEGOCIADO (se existir campo de referência ao contrato filho)
+  if (contrato?.renegociadoParaId) return "RENEGOCIADO";
 
-  const now = new Date();
-  const hasOverdue = hasParcelaAtrasada(contrato);
+  const allCanceladas = parcelas.every((p) => p.status === "CANCELADA");
+  if (allCanceladas) return "CANCELADO";
 
-  return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
+  const allEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
+  if (allEncerradas) return "QUITADO";
+
+  const hasAtrasada = parcelas.some((p) => isParcelaAtrasada(p));
+  if (hasAtrasada) return "ATRASADO";
+
+  return "EM_DIA";
 }
+
 
 /* ---------------- UI components ---------------- */
 function Card({ title, right, children }) {
@@ -597,15 +603,19 @@ async function cancelarParcela() {
             </thead>
 
             <tbody className="divide-y divide-slate-200">
-              {filtered.map((c) => {
-                const status = computeStatusContrato(c);
-                const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
-                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
-
-                const totalRecebidoLinha =
-                  Number(
-                    c?.resumo?.totalRecebido ??
-                      (c?.parcelas || [])
+                const parcelas = c?.parcelas || [];
+                const qtdParcelas = c?.resumo?.qtdParcelas ?? parcelas.length;
+                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? parcelas.filter((p) => p.status === "RECEBIDA").length;
+                const st = computeStatusContrato(c);
+                const status = st === "ATRASADO"
+                  ? { label: "Atrasado", tone: "red" }
+                  : st === "QUITADO"
+                    ? { label: "Quitado", tone: "green" }
+                    : st === "CANCELADO"
+                      ? { label: "Cancelado", tone: "slate" }
+                      : st === "RENEGOCIADO"
+                        ? { label: "Renegociado", tone: "amber" }
+                        : { label: "Em dia", tone: "blue" };
                         .filter((p) => p.status === "RECEBIDA")
                         .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
                   ) || 0;
@@ -857,13 +867,26 @@ async function cancelarParcela() {
                       <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                       <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                       {p.status === "RECEBIDA" ? (
+                       {p.status === "CANCELADA" ? (
+                       <div className="space-y-1">
+                         <Badge tone="slate">Cancelada</Badge>
+                         <div className="text-xs text-slate-500">
+                           {p.canceladaEm ? `Cancelada em ${toDDMMYYYY(p.canceladaEm)}` : "Cancelada"}
+                           {p.canceladaPor?.nome ? ` por ${p.canceladaPor.nome}` : ""}
+                         </div>
+                         {p.cancelamentoMotivo ? (
+                           <div className="text-xs text-slate-500 truncate max-w-[260px]" title={p.cancelamentoMotivo}>
+                             Motivo: {p.cancelamentoMotivo}
+                           </div>
+                         ) : null}
+                       </div>
+                     ) : p.status === "RECEBIDA" ? (
                        <Badge tone="green">Recebida</Badge>
-                         ) : isParcelaAtrasada(p) ? (
+                     ) : isParcelaAtrasada(p) ? (
                        <Badge tone="red">Atrasada</Badge>
-                         ) : (
+                     ) : (
                        <Badge tone="blue">Prevista</Badge>
-                         )}
+                     )}
                       </td>
                       <td className="px-4 py-3 text-slate-800">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
