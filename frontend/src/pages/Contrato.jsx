@@ -147,6 +147,7 @@ export default function ContratoPage({ user }) {
   const [editContratoForm, setEditContratoForm] = useState({
     numeroContrato: "",
     valorTotal: "",
+    formaPagamento: "AVISTA",
     observacoes: "",
   });
 
@@ -217,6 +218,7 @@ export default function ContratoPage({ user }) {
     setEditContratoForm({
       numeroContrato: contrato.numeroContrato || "",
       valorTotal: contrato.valorTotal || "",
+      formaPagamento: contrato.formaPagamento || "AVISTA",
       observacoes: contrato.observacoes || "",
     });
     setEditContratoOpen(true);
@@ -234,6 +236,7 @@ export default function ContratoPage({ user }) {
           adminPassword,
           numeroContrato: editContratoForm.numeroContrato,
           valorTotal: editContratoForm.valorTotal,
+          formaPagamento: editContratoForm.formaPagamento,
           observacoes: editContratoForm.observacoes,
         },
       });
@@ -565,6 +568,20 @@ export default function ContratoPage({ user }) {
             />
           </div>
         </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Forma de pagamento</label>
+            <select
+              value={editContratoForm.formaPagamento}
+              onChange={(e) => setEditContratoForm((s) => ({ ...s, formaPagamento: e.target.value }))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white"
+            >
+              <option value="AVISTA">À vista</option>
+              <option value="PARCELADO">Parcelado</option>
+              <option value="ENTRADA_PARCELAS">Entrada + Parcelas</option>
+            </select>
+          </div>
+
       </Modal>
 
       <Modal
