@@ -4,6 +4,13 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 
 /* helpers (copiados do padrão das telas) */
+function hasSaldoPendente(parcelas = []) {
+  return Array.isArray(parcelas) &&
+    parcelas.some(
+      (p) => p && p.status !== "RECEBIDA" && p.status !== "CANCELADA"
+    );
+}
+
 function formatBRLFromDecimal(value) {
   if (value === null || value === undefined || value === "") return "—";
   const num = Number(value);
