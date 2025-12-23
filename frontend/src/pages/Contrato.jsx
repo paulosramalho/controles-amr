@@ -542,6 +542,14 @@ export default function ContratoPage({ user }) {
                         <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                         <td className="px-4 py-3">
                           <Badge tone={tone}>{label}</Badge>
+                          {p.status === "CANCELADA" ? (
+                            <div className="mt-1 text-xs text-slate-500 space-y-0.5">
+                              <div>
+                                Cancelada em {toDDMMYYYY(p.canceladaEm)}{p.canceladaPor?.nome ? ` por ${p.canceladaPor.nome}` : ""}
+                              </div>
+                              {p.cancelamentoMotivo ? <div>Motivo: {p.cancelamentoMotivo}</div> : null}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-slate-800">
                           {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
