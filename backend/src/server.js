@@ -1969,100 +1969,131 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
   try {
     const contratoId = Number(req.params.id);
+    const usuarioId = req.user?.id; // ajuste conforme seu requireAuth injeta o user
+
     if (!Number.isFinite(contratoId)) {
       return res.status(400).json({ message: "ID do contrato inválido." });
     }
 
+    // 1) Busca contrato + parcelas
     const contrato = await prisma.contratoPagamento.findUnique({
       where: { id: contratoId },
-      include: { parcelas: true, cliente: true },
+      include: {
+        cliente: true,
+        parcelas: true,
+      },
     });
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
 
-    const pendentes = (contrato.parcelas || []).filter(
-      (p) => p.status === "PREVISTA" || p.status === "ATRASADA"
-    );
+    // 2) Identifica parcelas pendentes (NO BANCO: só PREVISTA)
+    const pendentes = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
 
     if (pendentes.length === 0) {
       return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
     }
 
-    // Gera numeroContrato novo: <original>-R1, -R2...
-    const base = String(contrato.numeroContrato).trim();
+    // 3) Calcula saldo pendente (Decimal)
+    // Se seu projeto usa helper moneyToCents/centsToDecimalString, pode usar.
+    // Aqui faço soma em cents (BigInt) de forma segura:
+    const toCents = (v) => {
+      if (v === null || v === undefined) return 0n;
+      // v pode vir como string/Decimal
+      const s = String(v).replace(/\./g, "").replace(",", ".");
+      // Garantir 2 casas
+      const n = Number(s);
+      if (!Number.isFinite(n)) return 0n;
+      return BigInt(Math.round(n * 100));
+    };
+    const centsToDecimalString = (cents) => {
+      const sign = cents < 0n ? "-" : "";
+      const a = cents < 0n ? -cents : cents;
+      const i = a / 100n;
+      const d = a % 100n;
+      return `${sign}${i.toString()}.${d.toString().padStart(2, "0")}`;
+    };
+
+    const saldoCents = pendentes.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
+    if (saldoCents <= 0n) {
+      return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
+    }
+
+    // 4) Gera número do contrato renegociado: ORIGINAL-RN (R1, R2...)
+    const base = contrato.numeroContrato;
     const existing = await prisma.contratoPagamento.findMany({
       where: { numeroContrato: { startsWith: `${base}-R` } },
       select: { numeroContrato: true },
     });
 
-    let next = 1;
     const used = new Set(existing.map((x) => x.numeroContrato));
-    while (used.has(`${base}-R${next}`)) next++;
-    const novoNumero = `${base}-R${next}`;
+    let seq = 1;
+    let novoNumero = `${base}-R${seq}`;
+    while (used.has(novoNumero)) {
+      seq += 1;
+      novoNumero = `${base}-R${seq}`;
+    }
 
-    const motivoPadrao = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
+    const motivo = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
 
-    const userId = req.user?.id; // ajuste se no seu requireAuth o usuário fica em outro lugar
-
+    // 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
     const result = await prisma.$transaction(async (tx) => {
-      // 1) Cancela TODAS as pendentes do contrato original
+      // 5.1 cancela TODAS pendentes
       await tx.parcelaContrato.updateMany({
         where: {
-          contratoId: contrato.id,
-          status: { in: ["PREVISTA", "ATRASADA"] },
+          contratoId,
+          status: { in: ["PREVISTA"] }, // ✅ SEM ATRASADA
         },
         data: {
           status: "CANCELADA",
           canceladaEm: new Date(),
-          canceladaPorId: userId ?? null,
-          cancelamentoMotivo: motivoPadrao,
+          canceladaPorId: usuarioId ?? null,
+          cancelamentoMotivo: motivo,
         },
       });
 
-      // 2) Cria contrato filho
-      const novoContrato = await tx.contratoPagamento.create({
+      // 5.2 cria contrato filho (1 parcela à vista)
+      const filho = await tx.contratoPagamento.create({
         data: {
           numeroContrato: novoNumero,
           clienteId: contrato.clienteId,
-          valorTotal: pendentes.reduce((acc, p) => acc + Number(p.valorPrevisto), 0), // Decimal ok no Prisma, se vier como number/string
-          formaPagamento: "PARCELADO", // ajuste se seu enum for diferente
-          observacoes: `Renegociado a partir do contrato ${base}.`,
-          ativo: true,
+          valorTotal: centsToDecimalString(saldoCents),
+          formaPagamento: "AVISTA",
+          observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
+          // se você já tem campos pai/renegociado no model, ajuste aqui:
+          // contratoPaiId: contrato.id,
+          // renegociadoDeId: contrato.id,
+          parcelas: {
+            create: [
+              {
+                numero: 1,
+                vencimento: new Date(), // vencimento hoje
+                valorPrevisto: centsToDecimalString(saldoCents),
+                status: "PREVISTA",
+              },
+            ],
+          },
+        },
+        include: { parcelas: true },
+      });
 
-          // OPCIONAL (se existir no seu schema):
-          // contratoOrigemId: contrato.id,
+      // 5.3 marca original como renegociado (sem desativar)
+      const originalAtualizado = await tx.contratoPagamento.update({
+        where: { id: contratoId },
+        data: {
+          // ajuste os campos conforme você criou no Prisma:
           // renegociadoEm: new Date(),
-          // renegociadoPorId: userId ?? null,
+          // renegociadoPorId: usuarioId ?? null,
+          // renegociadoParaId: filho.id,
         },
       });
 
-      // 3) Cria novas parcelas (mesma quantidade das pendentes e mesmos vencimentos/valores)
-      const pendentesOrdenadas = [...pendentes].sort((a, b) => a.numero - b.numero);
-
-      await tx.parcelaContrato.createMany({
-        data: pendentesOrdenadas.map((p, idx) => ({
-          contratoId: novoContrato.id,
-          numero: idx + 1,
-          vencimento: p.vencimento,
-          valorPrevisto: p.valorPrevisto,
-          status: "PREVISTA",
-        })),
-      });
-
-      // 4) Marca contrato original como “renegociado” (OPCIONAL – só se seus campos existirem)
-      // Se você tem um campo do tipo renegociadoParaId, aqui é o lugar:
-      // await tx.contratoPagamento.update({
-      //   where: { id: contrato.id },
-      //   data: { renegociadoParaId: novoContrato.id },
-      // });
-
-      return novoContrato;
+      return { filho, originalAtualizado };
     });
 
     return res.json({
-      message: "Renegociação criada com sucesso.",
-      contratoNovoId: result.id,
-      numeroContratoNovo: result.numeroContrato,
+      message: `Renegociação criada com sucesso: ${result.filho.numeroContrato}.`,
+      contratoNovo: result.filho,
+      contratoOriginal: result.originalAtualizado,
     });
   } catch (err) {
     console.error("Erro ao renegociar saldo:", err);
