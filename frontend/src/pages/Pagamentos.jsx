@@ -789,24 +789,7 @@ async function cancelarParcela() {
 
         {formaPagamento === "ENTRADA_PARCELAS" ? (
           <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <label className="block">
-                <div className="text-sm font-medium text-slate-700">Valor da entrada</div>
-                <div className="mt-1 relative">
-                  <input
-                    className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                    value={maskBRLFromDigits(entradaValorDigits)}
-                    onChange={(e) => setEntradaValorDigits(onlyDigits(e.target.value))}
-                    placeholder="0,00"
-                    disabled={loading}
-                    inputMode="numeric"
-                  />
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-                </div>
-              </label>
-
-              <DateInput label="Vencimento da entrada" value={entradaVenc} onChange={setEntradaVenc} disabled={loading} />
-            </div>
+            formaPagamento === "ENTRADA_PARCELAS"
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input
