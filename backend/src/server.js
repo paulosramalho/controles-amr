@@ -69,27 +69,27 @@ function parseDateInput(input) {
   const s = String(input).trim();
   if (!s) return null;
 
-  // DD/MM/AAAA → DATA LOCAL (12:00)
+  // DD/MM/AAAA
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const dd = Number(m[1]);
     const mm = Number(m[2]);
     const yyyy = Number(m[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // YYYY-MM-DD (input type="date") → DATA LOCAL (12:00)
+  // YYYY-MM-DD (input date)
   const isoShort = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoShort) {
     const yyyy = Number(isoShort[1]);
     const mm = Number(isoShort[2]);
     const dd = Number(isoShort[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // ISO completo ou outros formatos
+  // ISO / demais formatos
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -1522,10 +1522,8 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const contratos = await prisma.contratoPagamento.findMany({
       where,
       include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: {
+  cliente: true,
+  parcelas: {
     orderBy: { numero: "asc" },
     include: {
       canceladaPor: {
@@ -1558,6 +1556,10 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
         observacoes: c.observacoes,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
+        contratoOrigemId: c.contratoOrigemId ?? null,
+        renegociadoParaId: c.renegociadoParaId ?? null,
+        renegociadoEm: c.renegociadoEm ?? null,
+        renegociadoPorId: c.renegociadoPorId ?? null,
         parcelas,
         resumo: {
           qtdParcelas: parcelas.length,
@@ -1791,148 +1793,6 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-
-// Admin-only: editar contrato com confirmação de senha (correção de lançamento)
-app.put("/api/contratos/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    if (!prisma.usuario) {
-      return res.status(501).json({ message: "Auth não disponível (model Usuario ausente)." });
-    }
-
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID do contrato inválido." });
-
-    const adminPassword = String(req.body?.adminPassword || "");
-    if (!adminPassword) return res.status(400).json({ message: "Confirme sua senha para editar." });
-
-    const { bcrypt } = await getAuthLibs();
-    const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
-    if (!u || !u.ativo) return res.status(401).json({ message: "Usuário inválido." });
-
-    const ok = await bcrypt.compare(adminPassword, u.senhaHash);
-    if (!ok) return res.status(401).json({ message: "Senha inválida." });
-
-    const { numeroContrato, valorTotal, formaPagamento, observacoes } = req.body || {};
-    const data = {};
-
-    if (numeroContrato !== undefined) data.numeroContrato = String(numeroContrato).trim();
-
-    if (valorTotal !== undefined) {
-      const cents = moneyToCents(valorTotal);
-      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor total inválido." });
-      data.valorTotal = centsToDecimalString(cents);
-    }
-
-    if (formaPagamento !== undefined) {
-      const fp = String(formaPagamento).trim().toUpperCase();
-      if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
-        return res.status(400).json({ message: "Forma de pagamento inválida." });
-      }
-      data.formaPagamento = fp;
-    }
-
-    if (observacoes !== undefined) data.observacoes = observacoes ? String(observacoes) : null;
-
-    const updated = await prisma.contratoPagamento.update({
-      where: { id },
-      data,
-      include: {
-        cliente: true,
-        parcelas: {
-          orderBy: { numero: "asc" },
-          include: { canceladaPor: { select: { id: true, nome: true } } },
-        },
-      },
-    });
-
-    return res.json(updated);
-  } catch (err) {
-    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
-    if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
-    console.error("Erro ao admin-edit contrato:", err);
-    return res.status(500).json({ message: "Erro ao editar contrato." });
-  }
-});
-
-// Admin-only: editar parcela com confirmação de senha (correção de lançamento)
-app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    if (!prisma.usuario) {
-      return res.status(501).json({ message: "Auth não disponível (model Usuario ausente)." });
-    }
-
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID da parcela inválido." });
-
-    const adminPassword = String(req.body?.adminPassword || "");
-    if (!adminPassword) return res.status(400).json({ message: "Confirme sua senha para editar." });
-
-    const { bcrypt } = await getAuthLibs();
-    const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
-    if (!u || !u.ativo) return res.status(401).json({ message: "Usuário inválido." });
-
-    const ok = await bcrypt.compare(adminPassword, u.senhaHash);
-    if (!ok) return res.status(401).json({ message: "Senha inválida." });
-
-    const data = {};
-
-    if (req.body?.vencimento !== undefined) {
-      const dt = parseDateInput(req.body.vencimento);
-      if (!dt) return res.status(400).json({ message: "Vencimento inválido (DD/MM/AAAA)." });
-      data.vencimento = dt;
-    }
-
-    if (req.body?.valorPrevisto !== undefined) {
-      const cents = moneyToCents(req.body.valorPrevisto);
-      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
-      data.valorPrevisto = centsToDecimalString(cents);
-    }
-
-    // Edição de dados de recebimento (quando aplicável)
-    if (req.body?.dataRecebimento !== undefined) {
-      const dt = req.body.dataRecebimento ? parseDateInput(req.body.dataRecebimento) : null;
-      if (req.body.dataRecebimento && !dt) {
-        return res.status(400).json({ message: "Data de recebimento inválida (DD/MM/AAAA)." });
-      }
-      data.dataRecebimento = dt;
-    }
-
-    if (req.body?.valorRecebido !== undefined) {
-      const cents = req.body.valorRecebido === null || req.body.valorRecebido === "" ? null : moneyToCents(req.body.valorRecebido);
-      if (cents !== null && cents <= 0n) return res.status(400).json({ message: "Valor recebido inválido." });
-      data.valorRecebido = cents === null ? null : Number(cents) / 100;
-    }
-
-    if (req.body?.meioRecebimento !== undefined) {
-      const meio = req.body.meioRecebimento ? String(req.body.meioRecebimento).trim().toUpperCase() : null;
-      if (meio && !["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio)) {
-        return res.status(400).json({ message: "Meio de recebimento inválido." });
-      }
-      data.meioRecebimento = meio;
-    }
-
-    if (req.body?.observacoes !== undefined) {
-      data.observacoes = req.body.observacoes ? String(req.body.observacoes).trim() : null;
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({ message: "Nenhum campo para editar." });
-    }
-
-    const updated = await prisma.parcelaContrato.update({
-      where: { id },
-      data,
-    });
-
-    return res.json(updated);
-  } catch (err) {
-    if (err?.code === "P2025") return res.status(404).json({ message: "Parcela não encontrada." });
-    console.error("Erro ao admin-edit parcela:", err);
-    return res.status(500).json({ message: "Erro ao editar parcela." });
-  }
-});
-
-
 // Ativar/Inativar contrato (soft)
 app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1949,6 +1809,128 @@ app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, re
   } catch (err) {
     console.error("Erro ao ativar/inativar contrato:", err);
     res.status(500).json({ message: "Erro ao ativar/inativar contrato." });
+  }
+});
+
+
+// ---------------- Admin-only: edição (correção de lançamentos) ----------------
+// PUT /api/contratos/:id/admin-edit
+app.put("/api/contratos/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({ message: "Usuários ainda não ativados no schema.prisma." });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID do contrato inválido." });
+
+    const adminPassword = String(req.body?.adminPassword || "");
+    if (!adminPassword) return res.status(400).json({ message: "Confirme sua senha de admin." });
+
+    const admin = await prisma.usuario.findUnique({ where: { id: Number(req.user.id) } });
+    if (!admin || !admin.ativo) return res.status(401).json({ message: "Usuário inválido." });
+
+    const ok = await bcrypt.compare(adminPassword, admin.senhaHash);
+    if (!ok) return res.status(401).json({ message: "Senha de admin incorreta." });
+
+    const numeroContrato = req.body?.numeroContrato !== undefined ? String(req.body.numeroContrato || "").trim() : undefined;
+    const valorTotalRaw = req.body?.valorTotal !== undefined ? req.body.valorTotal : undefined;
+    const observacoes = req.body?.observacoes !== undefined ? (req.body.observacoes ? String(req.body.observacoes) : null) : undefined;
+    const formaPagamentoRaw = req.body?.formaPagamento !== undefined ? String(req.body.formaPagamento || "").trim().toUpperCase() : undefined;
+
+    const data = {};
+
+    if (numeroContrato !== undefined) {
+      if (!numeroContrato) return res.status(400).json({ message: "Número do contrato inválido." });
+      data.numeroContrato = numeroContrato;
+    }
+
+    if (formaPagamentoRaw !== undefined) {
+      if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(formaPagamentoRaw)) {
+        return res.status(400).json({ message: "Forma de pagamento inválida." });
+      }
+      data.formaPagamento = formaPagamentoRaw;
+    }
+
+    if (valorTotalRaw !== undefined) {
+      const totalCents = moneyToCents(valorTotalRaw);
+      if (totalCents === null) return res.status(400).json({ message: "Valor total inválido." });
+      if (totalCents <= 0n) return res.status(400).json({ message: "O valor total precisa ser maior que zero." });
+      data.valorTotal = centsToDecimalString(totalCents);
+    }
+
+    if (observacoes !== undefined) data.observacoes = observacoes;
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data,
+      include: {
+        cliente: true,
+        parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
+      },
+    });
+
+    return res.json({
+      ...updated,
+      cliente: serializeCliente({ ...updated.cliente, ordens: [] }),
+    });
+  } catch (err) {
+    console.error("Erro admin-edit contrato:", err);
+    return res.status(500).json({ message: "Erro ao editar contrato." });
+  }
+});
+
+// PUT /api/parcelas/:id/admin-edit
+app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({ message: "Usuários ainda não ativados no schema.prisma." });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID da parcela inválido." });
+
+    const adminPassword = String(req.body?.adminPassword || "");
+    if (!adminPassword) return res.status(400).json({ message: "Confirme sua senha de admin." });
+
+    const admin = await prisma.usuario.findUnique({ where: { id: Number(req.user.id) } });
+    if (!admin || !admin.ativo) return res.status(401).json({ message: "Usuário inválido." });
+
+    const ok = await bcrypt.compare(adminPassword, admin.senhaHash);
+    if (!ok) return res.status(401).json({ message: "Senha de admin incorreta." });
+
+    const vencimentoRaw = req.body?.vencimento !== undefined ? req.body.vencimento : undefined;
+    const valorPrevistoRaw = req.body?.valorPrevisto !== undefined ? req.body.valorPrevisto : undefined;
+
+    const data = {};
+
+    if (vencimentoRaw !== undefined) {
+      const d = parseDateInput(vencimentoRaw);
+      if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
+      data.vencimento = d;
+    }
+
+    if (valorPrevistoRaw !== undefined) {
+      const cents = moneyToCents(valorPrevistoRaw);
+      if (cents === null) return res.status(400).json({ message: "Valor previsto inválido." });
+      if (cents <= 0n) return res.status(400).json({ message: "Valor previsto deve ser maior que zero." });
+      data.valorPrevisto = centsToDecimalString(cents);
+    }
+
+    const updated = await prisma.parcelaContrato.update({
+      where: { id },
+      data,
+      include: { canceladaPor: { select: { id: true, nome: true } } },
+    });
+
+    return res.json(updated);
+  } catch (err) {
+    console.error("Erro admin-edit parcela:", err);
+    return res.status(500).json({ message: "Erro ao editar parcela." });
   }
 });
 
@@ -2088,8 +2070,6 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       where: { id },
       include: {
         cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
         parcelas: {
           orderBy: { numero: "asc" },
           include: {
@@ -2127,8 +2107,6 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       include: {
         cliente: true,
         parcelas: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
       },
     });
 
@@ -2166,15 +2144,27 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
     }
 
-    // 4) Gera número do contrato renegociado: RAIZ-RN (R1, R2...)
-    // Regra: se estiver renegociando um contrato já renegociado (ex.: 20250904001A-R1),
-    // o próximo deve ser 20250904001A-R2 (não 20250904001A-R1-R1).
-    const numeroRaiz = String(contrato.numeroContrato || "").replace(/-R\d+$/i, "");
-    const novoNumero = await nextRenegNumber(prisma, numeroRaiz);
+    // 4) Gera número do contrato renegociado: ORIGINAL-RN (R1, R2...)
+    const base = contrato.numeroContrato;
 
-    const motivo = `Renegociação automática do saldo pendente do contrato ${contrato.numeroContrato} -> ${novoNumero}`;
+    // Se for renegociação de renegociado (ex: ...-R1), a raiz é o número original
+    const baseRoot = String(base).replace(/-R\d+$/, "");
+    const existing = await prisma.contratoPagamento.findMany({
+      where: { numeroContrato: { startsWith: `${baseRoot}-R` } },
+      select: { numeroContrato: true },
+    });
 
-// 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
+    const used = new Set(existing.map((x) => x.numeroContrato));
+    let seq = 1;
+    let novoNumero = `${baseRoot}-R${seq}`;
+    while (used.has(novoNumero)) {
+      seq += 1;
+      novoNumero = `${base}-R${seq}`;
+    }
+
+    const motivo = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
+
+    // 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
     const result = await prisma.$transaction(async (tx) => {
       // 5.1 cancela TODAS pendentes
       await tx.parcelaContrato.updateMany({
@@ -2197,8 +2187,10 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
           clienteId: contrato.clienteId,
           valorTotal: centsToDecimalString(saldoCents),
           formaPagamento: "AVISTA",
-          observacoes: `Contrato gerado por renegociação do contrato ${contrato.numeroContrato}.`,
-          contratoOrigemId: contrato.id,
+          observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
+          // se você já tem campos pai/renegociado no model, ajuste aqui:
+          // contratoPaiId: contrato.id,
+          // renegociadoDeId: contrato.id,
           parcelas: {
             create: [
               {
@@ -2217,9 +2209,10 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
-          renegociadoEm: new Date(),
-          renegociadoPorId: usuarioId ?? null,
-          renegociadoParaId: filho.id,
+          // ajuste os campos conforme você criou no Prisma:
+          // renegociadoEm: new Date(),
+          // renegociadoPorId: usuarioId ?? null,
+          // renegociadoParaId: filho.id,
         },
       });
 
