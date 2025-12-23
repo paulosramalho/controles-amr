@@ -1,6 +1,7 @@
 // src/pages/Pagamentos.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { Link } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
 function DateInput({ label, value, onChange, disabled, className = "" }) {
@@ -90,22 +91,26 @@ function normalizeForma(fp) {
 }
 
 function computeStatusContrato(contrato) {
-  if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
-
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
 
-  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
-  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
+  const pendentes = parcelas.filter(
+    (p) => p.status !== "RECEBIDA" && p.status !== "CANCELADA"
+  );
+
+  if (pendentes.length === 0) {
+    return { label: "Quitado", tone: "green" };
+  }
 
   const now = new Date();
-  const hasOverdue = parcelas.some((p) => {
-    if (p.status !== "PREVISTA") return false;
+  const hasOverdue = pendentes.some((p) => {
     const v = new Date(p.vencimento);
     return Number.isFinite(v.getTime()) && v < now;
   });
 
-  return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
+  return hasOverdue
+    ? { label: "Atrasado", tone: "red" }
+    : { label: "Em dia", tone: "blue" };
 }
 
 /* ---------------- UI components ---------------- */
@@ -123,14 +128,15 @@ function Card({ title, right, children }) {
 
 function Badge({ children, tone = "slate" }) {
   const map = {
-    slate: "bg-slate-100 text-slate-800 border-slate-200",
-    green: "bg-green-50 text-green-700 border-green-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    green: "bg-green-600 text-white",
+    red: "bg-red-600 text-white",
+    blue: "bg-blue-600 text-white",
+    amber: "bg-amber-500 text-white",
+    slate: "bg-slate-500 text-white",
   };
+
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
       {children}
     </span>
   );
@@ -547,7 +553,11 @@ useEffect(() => {
 
                 return (
                   <tr key={c.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">{c.numeroContrato}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                      <Link to={`/contratos/${c.id}`} className="text-blue-700 hover:underline">
+                        {c.numeroContrato}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
