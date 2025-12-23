@@ -396,7 +396,7 @@ useEffect(() => {
   async function salvarContrato() {
     const msg = validateNovo();
     if (msg) {
-      setError(msg);
+      setModalError(msg);
       return;
     }
 
@@ -430,13 +430,14 @@ useEffect(() => {
         };
       }
 
-      await apiFetch(`/contratos/${contratoId}/renegociar`, {
+      await apiFetch("/contratos", {
         method: "POST",
+        body: payload,
       });
       setOpenNovo(false);
       await load();
     } catch (e) {
-      setError(e?.message || "Falha ao salvar contrato.");
+      setModalError(e?.message || "Falha ao salvar contrato.");
     } finally {
       setLoading(false);
     }
@@ -543,6 +544,8 @@ useEffect(() => {
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
         ) : null}
 
+        const [modalError, setModalError] = useState("");
+
         <div className="mt-4 overflow-auto rounded-2xl border border-slate-200">
           <table className="min-w-[1100px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
@@ -617,6 +620,11 @@ useEffect(() => {
 
       {/* ---------- Modal: Novo Contrato ---------- */}
       <Modal
+{modalError && (
+  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    {modalError}
+  </div>
+)}
         open={openNovo}
         title="Novo Contrato de Pagamento"
         onClose={() => setOpenNovo(false)}
@@ -765,13 +773,6 @@ useEffect(() => {
                 placeholder="Ex.: 5"
                 disabled={loading}
                 inputMode="numeric"
-              />
-              <Input
-                label="1º vencimento (parcelas)"
-                value={entradaParcelasPrimeiroVenc}
-                onChange={setEntradaParcelasPrimeiroVenc}
-                placeholder="DD/MM/AAAA"
-                disabled={loading}
               />
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
                 O backend divide o restante automaticamente e ajusta os centavos.
