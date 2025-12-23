@@ -253,7 +253,7 @@ export default function PagamentosPage({ user }) {
   const [confParcela, setConfParcela] = useState(null);
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
-  const [confValorDigits, setConfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
+  const [confValorDigits, setconfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
 
   async function load() {
     setError("");
@@ -444,38 +444,45 @@ useEffect(() => {
     setConfParcela(parcela);
     setConfData(toDDMMYYYY(new Date())); // default hoje
     setConfMeio("PIX");
-    setConfValorDigits(""); // vazio => backend assume previsto
+    confValorDigits(""); // vazio => backend assume previsto
     setConfOpen(true);
   }
 
   async function confirmarRecebimento() {
-    if (!confParcela) return;
-    if (!parseDateDDMMYYYY(confData)) {
-      setError("Data de recebimento inválida (DD/MM/AAAA).");
-      return;
-    }
+  if (!confParcela) return;
 
-    setError("");
-    setConfirming(true);
-    try {
-      const payload = {
-  dataRecebimento: confData || undefined,
-  meioRecebimento: confMeio || undefined,
-  observacoes: confObs || undefined,
-  ...(confValorDigits ? { valorRecebido: confValorDigits } : {}), // ✅ só manda se preencheu
-};
-
-      if (onlyDigits(confValorDigits)) body.valorRecebido = onlyDigits(confValorDigits);
-
-      await apiFetch(`/parcelas/${confParcela.id}/confirmar`, { method: "PATCH", body });
-      setConfOpen(false);
-      await load();
-    } catch (e) {
-      setError(e?.message || "Falha ao confirmar recebimento.");
-    } finally {
-      setConfirming(false);
-    }
+  if (!parseDateDDMMYYYY(confData)) {
+    setError("Data de recebimento inválida (DD/MM/AAAA).");
+    return;
   }
+
+  setError("");
+  setConfirming(true);
+
+  try {
+    const body = {
+      dataRecebimento: confData,
+      meioRecebimento: confMeio,
+    };
+
+    // ✅ SÓ envia se foi preenchido
+    if (confValorDigits) {
+      body.valorRecebido = confValorDigits; // centavos
+    }
+
+    await apiFetch(
+      `/parcelas/${confParcela.id}/confirmar`,
+      { method: "PATCH", body }
+    );
+
+    setConfOpen(false);
+    await load();
+  } catch (e) {
+    setError(e?.message || "Falha ao confirmar recebimento.");
+  } finally {
+    setConfirming(false);
+  }
+}
 
   const filtered = useMemo(() => {
     // backend já filtra via ?q, então aqui só retorna rows
@@ -944,21 +951,29 @@ useEffect(() => {
           </Select>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
-            <div className="mt-1 relative">
-              <input
-                value={confValorDigits ? maskBRLFromDigits(confValorDigits) : ""}  // ✅ vazio de verdade
-                placeholder="(vazio = usa o valor previsto)"
-                onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
-                disabled={confirming}
-                inputMode="numeric"
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Se deixar vazio, o sistema confirma pelo valor previsto.
-            </div>
-          </label>
+  <div className="text-sm font-medium text-slate-700">
+    Valor recebido (opcional)
+  </div>
+
+  <div className="mt-1 relative">
+    <input
+      className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none
+                 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+      placeholder="(vazio = usa o valor previsto)"
+      value={confValorDigits ? maskBRLFromDigits(confValorDigits) : ""}
+      onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
+      disabled={confirming}
+      inputMode="numeric"
+    />
+    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+      R$
+    </div>
+  </div>
+
+  <div className="mt-1 text-xs text-slate-500">
+    Se deixar vazio, o sistema confirma pelo valor previsto.
+  </div>
+</label>
         </div>
       </Modal>
     </div>
