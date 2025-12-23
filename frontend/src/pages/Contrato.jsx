@@ -36,47 +36,36 @@ function normalizeForma(fp) {
   return fp || "—";
 }
 
+/**
+ * Padrão aprovado:
+ * computeStatusContrato(c) → "EM_DIA" | "ATRASADO" | "QUITADO" | "CANCELADO" | "RENEGOCIADO"
+ * (Badges ficam somente em Pagamentos.jsx)
+ */
 function computeStatusContrato(contrato) {
-  if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
-
   const parcelas = contrato?.parcelas || [];
-  if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
+  if (!parcelas.length) return "EM_DIA";
 
-  const now = new Date();
-  const isOverdue = (p) => {
-    if (!p) return false;
-    if (p.status !== "PREVISTA") return false;
-    const v = new Date(p.vencimento);
-    if (!Number.isFinite(v.getTime())) return false;
-    // compara por dia
-    const v0 = new Date(v.getFullYear(), v.getMonth(), v.getDate());
-    const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return v0 < n0;
-  };
+  // Se houver vínculo de renegociação
+  if (contrato?.renegociadoParaId) return "RENEGOCIADO";
 
   const todasCanceladas = parcelas.every((p) => p.status === "CANCELADA");
-  if (todasCanceladas) return { label: "Cancelado", tone: "slate" };
+  if (todasCanceladas) return "CANCELADO";
 
-  const todasQuitadas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
-  if (todasQuitadas) return { label: "Quitado", tone: "green" };
+  const todasEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
+  if (todasEncerradas) return "QUITADO";
 
-  const hasOverdue = parcelas.some((p) => isOverdue(p));
-  return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
+  const hasOverdue = parcelas.some((p) => p?.status === "PREVISTA" && isDateBeforeToday(p.vencimento));
+  if (hasOverdue) return "ATRASADO";
+
+  return "EM_DIA";
 }
 
-function Badge({ children, tone = "slate" }) {
-  const map = {
-    slate: "bg-slate-100 text-slate-800 border-slate-200",
-    green: "bg-green-50 text-green-700 border-green-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
-      {children}
-    </span>
-  );
+function statusLabel(st) {
+  if (st === "ATRASADO") return "Atrasado";
+  if (st === "QUITADO") return "Quitado";
+  if (st === "CANCELADO") return "Cancelado";
+  if (st === "RENEGOCIADO") return "Renegociado";
+  return "Em dia";
 }
 
 function Card({ title, right, children }) {
@@ -151,7 +140,12 @@ export default function ContratoPage({ user }) {
     );
   }
 
-  const status = contrato ? computeStatusContrato(contrato) : { label: "—", tone: "slate" };
+  const st = contrato ? computeStatusContrato(contrato) : "EM_DIA";
+  const stLabel = statusLabel(st);
+
+  // Se for útil para a tela de renegociação em Pagamentos (quando existir),
+  // deixamos o id disponível via querystring.
+  const renegociarHref = contrato ? `/pagamentos?renegociar=${encodeURIComponent(String(contrato.id))}` : "/pagamentos";
 
   return (
     <div className="p-6">
@@ -166,6 +160,14 @@ export default function ContratoPage({ user }) {
             >
               ← Voltar
             </button>
+
+            <Link
+              to={renegociarHref}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              title="Abrir Pagamentos para renegociar o saldo do contrato"
+            >
+              Renegociar Saldo
+            </Link>
 
             <Link
               to="/pagamentos"
@@ -194,13 +196,9 @@ export default function ContratoPage({ user }) {
                 <div className="text-slate-500">Forma</div>
                 <div className="font-semibold text-slate-900">{normalizeForma(contrato.formaPagamento)}</div>
               </div>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-slate-500">Status</div>
-                  <div className="mt-1">
-                    <Badge tone={status.tone}>{status.label}</Badge>
-                  </div>
-                </div>
+              <div>
+                <div className="text-slate-500">Status</div>
+                <div className="font-semibold text-slate-900">{stLabel}</div>
               </div>
 
               <div>
@@ -238,46 +236,61 @@ export default function ContratoPage({ user }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
-                  {parcelas.map((p) => (
-                    <tr key={p.id}>
-                      <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
-                      <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
-                      <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
-                          const label = p.status === "RECEBIDA" ? "Recebida" : p.status === "CANCELADA" ? "Cancelada" : isOverdue ? "Atrasada" : "Prevista";
-                          const tone = p.status === "RECEBIDA" ? "green" : p.status === "CANCELADA" ? "slate" : isOverdue ? "red" : "blue";
+                  {parcelas.map((p) => {
+                    const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
+                    const label =
+                      p.status === "RECEBIDA"
+                        ? "Recebida"
+                        : p.status === "CANCELADA"
+                          ? "Cancelada"
+                          : isOverdue
+                            ? "Atrasada"
+                            : "Prevista";
 
-                          const motivo =
-                            p.cancelMotivo ||
-                            p.motivoCancelamento ||
-                            p.motivo ||
-                            "";
+                    const motivo =
+                      p.cancelMotivo ||
+                      p.motivoCancelamento ||
+                      p.motivo ||
+                      "";
 
-                          return (
-                            <div className="flex flex-col gap-1">
-                              <span title={p.status === "CANCELADA" && motivo ? `Motivo: ${motivo}` : undefined}>
-                                <Badge tone={tone}>{label}</Badge>
-                              </span>
-                              {p.status === "CANCELADA" && motivo ? (
-                                <div className="text-xs text-slate-500 line-clamp-1" title={motivo}>
-                                  Motivo: {motivo}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-slate-800">
-                        {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
-                        {p.dataRecebimento ? (
-                          <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                    </tr>
-                  ))}
+                    return (
+                      <tr key={p.id}>
+                        <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
+                        <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
+                        <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`font-semibold ${
+                                label === "Atrasada"
+                                  ? "text-red-700"
+                                  : label === "Recebida"
+                                    ? "text-green-700"
+                                    : label === "Cancelada"
+                                      ? "text-slate-600"
+                                      : "text-slate-800"
+                              }`}
+                              title={label === "Cancelada" && motivo ? `Motivo: ${motivo}` : undefined}
+                            >
+                              {label}
+                            </span>
+                            {label === "Cancelada" && motivo ? (
+                              <div className="text-xs text-slate-500 line-clamp-1" title={motivo}>
+                                Motivo: {motivo}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-800">
+                          {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
+                          {p.dataRecebimento ? (
+                            <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+                      </tr>
+                    );
+                  })}
 
                   {!parcelas.length ? (
                     <tr>
