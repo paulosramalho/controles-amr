@@ -69,27 +69,27 @@ function parseDateInput(input) {
   const s = String(input).trim();
   if (!s) return null;
 
-  // DD/MM/AAAA
+  // DD/MM/AAAA → DATA LOCAL (12:00)
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const dd = Number(m[1]);
     const mm = Number(m[2]);
     const yyyy = Number(m[3]);
-    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // YYYY-MM-DD (input date)
+  // YYYY-MM-DD (input type="date") → DATA LOCAL (12:00)
   const isoShort = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoShort) {
     const yyyy = Number(isoShort[1]);
     const mm = Number(isoShort[2]);
     const dd = Number(isoShort[3]);
-    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // ISO / demais formatos
+  // ISO completo ou outros formatos
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
