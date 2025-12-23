@@ -113,9 +113,10 @@ model ContratoPagamento {
   renegociadoPara   ContratoPagamento?  @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
   renegociadosDele  ContratoPagamento[] @relation("ContratoRenegociadoPara")
 
-  renegociadoEm    DateTime?
-  renegociadoPorId Int?
-  renegociadoPor   Usuario?  @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
+  renegociadoEm       DateTime?
+  renegociadoPorId    Int?
+  renegociadoPor      Usuario?              @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
+  RetificacaoContrato RetificacaoContrato[]
 
   @@index([clienteId])
   @@index([formaPagamento])
@@ -147,8 +148,9 @@ model ParcelaContrato {
   // trilha de cancelamento
   canceladaEm        DateTime?
   canceladaPorId     Int?
-  cancelamentoMotivo String?   @db.Text
-  canceladaPor       Usuario?  @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  cancelamentoMotivo String?              @db.Text
+  canceladaPor       Usuario?             @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  RetificacaoParcela RetificacaoParcela[]
 
   @@unique([contratoId, numero])
   @@index([vencimento])
@@ -186,7 +188,9 @@ model Usuario {
 
   parcelasCanceladas ParcelaContrato[] @relation("ParcelaCanceladaPor")
 
-  contratosRenegociados ContratoPagamento[] @relation("ContratoRenegociadoPor")
+  contratosRenegociados ContratoPagamento[]   @relation("ContratoRenegociadoPor")
+  RetificacaoContrato   RetificacaoContrato[]
+  RetificacaoParcela    RetificacaoParcela[]
 
   @@index([ativo])
   @@index([role])
@@ -223,6 +227,44 @@ model ModeloDistribuicao {
   cod          String?  @unique
 
   @@index([cod])
+}
+
+model RetificacaoContrato {
+  id         Int               @id @default(autoincrement())
+  contratoId Int
+  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id])
+
+  motivo         String
+  alteracoes     Json // { campo: { before, after }, ... }
+  snapshotAntes  Json?
+  snapshotDepois Json?
+
+  criadoPorId Int?
+  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+
+  criadoEm DateTime @default(now())
+
+  @@index([contratoId])
+  @@index([criadoPorId])
+}
+
+model RetificacaoParcela {
+  id        Int             @id @default(autoincrement())
+  parcelaId Int
+  parcela   ParcelaContrato @relation(fields: [parcelaId], references: [id])
+
+  motivo         String
+  alteracoes     Json // { campo: { before, after }, ... }
+  snapshotAntes  Json?
+  snapshotDepois Json?
+
+  criadoPorId Int?
+  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+
+  criadoEm DateTime @default(now())
+
+  @@index([parcelaId])
+  @@index([criadoPorId])
 }
 
 enum UserRole {

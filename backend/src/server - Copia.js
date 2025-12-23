@@ -1553,6 +1553,8 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
         valorTotal: c.valorTotal,
         formaPagamento: c.formaPagamento,
         ativo: c.ativo,
+        renegociadoParaId: c.renegociadoParaId,
+        contratoOrigemId: c.contratoOrigemId,
         observacoes: c.observacoes,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,

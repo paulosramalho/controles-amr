@@ -222,6 +222,31 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+
+async function verifyAdminPassword(req, adminPassword) {
+  if (!adminPassword) return false;
+  if (!prisma.usuario) return false;
+  const { bcrypt } = await getAuthLibs();
+
+  const userId = Number(req.user?.id);
+  if (!Number.isFinite(userId)) return false;
+
+  const u = await prisma.usuario.findUnique({ where: { id: userId } });
+  if (!u) return false;
+
+  return bcrypt.compare(String(adminPassword), u.senhaHash);
+}
+
+async function requireAdminPassword(req, res, adminPassword) {
+  const ok = await verifyAdminPassword(req, adminPassword);
+  if (!ok) {
+    res.status(401).json({ message: "Senha de admin inválida." });
+    return false;
+  }
+  return true;
+}
+
+
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
 ========================= */
@@ -1790,6 +1815,312 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ message: "Erro ao atualizar contrato." });
   }
 });
+
+
+
+// =====================
+// ADMIN-ONLY: EDIÇÃO (restrita) e RETIFICAÇÃO (auditável)
+// Decisão do projeto:
+// - "Editar" = somente observações (texto) + confirmação de senha
+// - "Retificar" = correção de vencimento/valor (e, no verde, reestruturação) com LOG
+// =====================
+
+// Editar contrato (somente observações)
+app.put("/api/contratos/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { adminPassword, observacoes } = req.body || {};
+    const ok = await requireAdminPassword(req, res, adminPassword);
+    if (!ok) return;
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data: {
+        observacoes: observacoes === undefined ? undefined : String(observacoes),
+      },
+      include: {
+        cliente: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
+      },
+    });
+
+    return res.json(updated);
+  } catch (err) {
+    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
+    console.error("Erro ao editar observações do contrato:", err);
+    return res.status(500).json({ message: "Erro ao editar observações do contrato." });
+  }
+});
+
+// Editar parcela (desativado; use retificação)
+app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (_req, res) => {
+  return res.status(400).json({
+    message: "Edição direta de parcela foi desativada. Use Retificar (admin) para correção com log.",
+  });
+});
+
+// Retificar parcela (auditável)
+app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parcelaId = Number(req.params.id);
+    if (!Number.isFinite(parcelaId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { adminPassword, motivo, patch } = req.body || {};
+    const ok = await requireAdminPassword(req, res, adminPassword);
+    if (!ok) return;
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
+
+    const parcela = await prisma.parcelaContrato.findUnique({
+      where: { id: parcelaId },
+      include: { contrato: { include: { parcelas: true } } },
+    });
+    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+
+    const contrato = parcela.contrato;
+    if (!contrato) return res.status(400).json({ message: "Contrato da parcela não encontrado." });
+
+    // Semáforo: bloqueios (Vermelho)
+    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
+    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
+    if (inCadeiaReneg || temRecebida) {
+      return res.status(400).json({
+        message:
+          "Retificação bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida. Faça correção via estorno/contralançamento, preservando integridade.",
+      });
+    }
+
+    // Parcela precisa ser PREVISTA
+    if (parcela.status !== "PREVISTA") {
+      return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
+    }
+
+    const p = patch || {};
+    const data = {};
+
+    if (p.vencimento !== undefined) {
+      const d = parseDateInput(p.vencimento);
+      if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
+      data.vencimento = d;
+    }
+
+    if (p.valorPrevisto !== undefined) {
+      const cents = moneyToCents(p.valorPrevisto);
+      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
+      data.valorPrevisto = centsToDecimalString(cents);
+    }
+
+    if (!Object.keys(data).length) {
+      return res.status(400).json({ message: "Nada para retificar." });
+    }
+
+    const before = {
+      id: parcela.id,
+      contratoId: parcela.contratoId,
+      numero: parcela.numero,
+      vencimento: parcela.vencimento,
+      valorPrevisto: parcela.valorPrevisto,
+      status: parcela.status,
+    };
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const afterParcela = await tx.parcelaContrato.update({
+        where: { id: parcelaId },
+        data,
+      });
+
+      const alteracoes = {};
+      if (data.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
+      if (data.valorPrevisto) alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
+
+      await tx.retificacaoParcela.create({
+        data: {
+          parcelaId,
+          motivo: motivoTxt,
+          alteracoes,
+          snapshotAntes: before,
+          snapshotDepois: {
+            id: afterParcela.id,
+            contratoId: afterParcela.contratoId,
+            numero: afterParcela.numero,
+            vencimento: afterParcela.vencimento,
+            valorPrevisto: afterParcela.valorPrevisto,
+            status: afterParcela.status,
+          },
+          criadoPorId: req.user?.id ?? null,
+        },
+      });
+
+      return afterParcela;
+    });
+
+    return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
+  } catch (err) {
+    console.error("Erro ao retificar parcela:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao retificar parcela." });
+  }
+});
+
+// Retificar contrato (verde): reestrutura parcelas PREVISTAS conforme payload (com log)
+app.post("/api/contratos/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const contratoId = Number(req.params.id);
+    if (!Number.isFinite(contratoId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { adminPassword, motivo, payload } = req.body || {};
+    const ok = await requireAdminPassword(req, res, adminPassword);
+    if (!ok) return;
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id: contratoId },
+      include: { parcelas: true },
+    });
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
+    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
+    if (inCadeiaReneg || temRecebida) {
+      return res.status(400).json({
+        message:
+          "Retificação estrutural bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida.",
+      });
+    }
+
+    const allPrevistas = (contrato.parcelas || []).every((p) => p.status === "PREVISTA");
+    if (!allPrevistas) {
+      return res.status(400).json({ message: "Retificação estrutural permitida somente quando todas as parcelas são PREVISTAS." });
+    }
+
+    const totalCents = moneyToCents(contrato.valorTotal);
+    if (totalCents === null || totalCents <= 0n) return res.status(400).json({ message: "Valor total inválido no contrato." });
+
+    // reutiliza a mesma lógica de plano de parcelas do endpoint de renegociação:
+    const b = payload || {};
+    const fp = String(b.formaPagamento || contrato.formaPagamento || "AVISTA").trim().toUpperCase();
+    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+      return res.status(400).json({ message: "Forma de pagamento inválida." });
+    }
+
+    // default: usa o vencimento da primeira parcela atual (normalizado) como base
+    const firstV = (contrato.parcelas || []).map((p) => p.vencimento).filter(Boolean).sort((a,b)=>new Date(a)-new Date(b))[0];
+    const base0 = firstV ? new Date(firstV) : new Date();
+    const dataBase = new Date(base0.getFullYear(), base0.getMonth(), base0.getDate(), 12, 0, 0, 0);
+
+    const parseDateOrDefault = (v, field, fallbackDate) => {
+      if (v === undefined || v === null || String(v).trim() === "") return fallbackDate;
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    const addMonthsLocalNoon = (date, months) => {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + months);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+    };
+
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDateOrDefault(b?.avista?.vencimento, "avista.vencimento", dataBase);
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: totalCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(b?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
+      const valoresCents = splitCents(totalCents, qtd);
+      for (let i = 0; i < qtd; i++) {
+        parcelasPlan.push({ numero: i + 1, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(b?.entrada?.valor);
+      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= totalCents) return res.status(400).json({ message: "A entrada deve ser menor que o total." });
+
+      const eVenc = parseDateOrDefault(b?.entrada?.vencimento, "entrada.vencimento", dataBase);
+
+      const qtd = Number(b?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
+
+      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
+      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
+
+      const restante = totalCents - eValorCents;
+      const valoresCents = splitCents(restante, qtd);
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+      for (let i = 0; i < qtd; i++) {
+        parcelasPlan.push({ numero: i + 2, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
+      }
+    }
+
+    const snapshotAntes = {
+      id: contrato.id,
+      numeroContrato: contrato.numeroContrato,
+      formaPagamento: contrato.formaPagamento,
+      valorTotal: contrato.valorTotal,
+      parcelas: contrato.parcelas,
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      // apaga e recria parcelas (todas eram PREVISTAS)
+      await tx.parcelaContrato.deleteMany({ where: { contratoId } });
+
+      await tx.parcelaContrato.createMany({
+        data: parcelasPlan.map((p) => ({
+          contratoId,
+          numero: p.numero,
+          vencimento: p.vencimento,
+          valorPrevisto: centsToDecimalString(p.valorCents),
+          status: "PREVISTA",
+        })),
+      });
+
+      const contratoDepois = await tx.contratoPagamento.update({
+        where: { id: contratoId },
+        data: { formaPagamento: fp },
+        include: { parcelas: { orderBy: { numero: "asc" } } },
+      });
+
+      await tx.retificacaoContrato.create({
+        data: {
+          contratoId,
+          motivo: motivoTxt,
+          alteracoes: { formaPagamento: { before: contrato.formaPagamento, after: fp } },
+          snapshotAntes,
+          snapshotDepois: {
+            id: contratoDepois.id,
+            numeroContrato: contratoDepois.numeroContrato,
+            formaPagamento: contratoDepois.formaPagamento,
+            valorTotal: contratoDepois.valorTotal,
+            parcelas: contratoDepois.parcelas,
+          },
+          criadoPorId: req.user?.id ?? null,
+        },
+      });
+
+      return contratoDepois;
+    });
+
+    return res.json({ message: "Contrato retificado com sucesso.", contrato: result });
+  } catch (err) {
+    console.error("Erro ao retificar contrato:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao retificar contrato." });
+  }
+});
+
 
 // Ativar/Inativar contrato (soft)
 app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
