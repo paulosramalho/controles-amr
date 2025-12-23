@@ -8,16 +8,17 @@ datasource db {
 }
 
 model Cliente {
-  id              Int              @id @default(autoincrement())
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  cpfCnpj         String           @unique
+  id              Int                 @id @default(autoincrement())
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  cpfCnpj         String              @unique
   nomeRazaoSocial String
   email           String?
   telefone        String?
   observacoes     String?
-  ativo           Boolean          @default(true)
+  ativo           Boolean             @default(true)
   ordens          OrdemPagamento[]
+  contratos       ContratoPagamento[]
 
   @@index([ativo])
   @@index([nomeRazaoSocial])
@@ -59,6 +60,101 @@ model Pagamento {
   @@index([dataPagamento])
 }
 
+// =========================
+// NOVO — PAGAMENTOS (CONTRATOS + PARCELAS)
+// =========================
+
+enum FormaPagamentoContrato {
+  AVISTA
+  ENTRADA_PARCELAS
+  PARCELADO
+}
+
+enum StatusParcela {
+  PREVISTA
+  RECEBIDA
+  CANCELADA
+}
+
+enum MeioRecebimento {
+  PIX
+  TED
+  BOLETO
+  CARTAO
+  DINHEIRO
+  OUTRO
+}
+
+model ContratoPagamento {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Número do contrato (global, único)
+  numeroContrato String @unique @db.VarChar(60)
+
+  clienteId Int
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  valorTotal     Decimal                @db.Decimal(12, 2)
+  formaPagamento FormaPagamentoContrato
+
+  observacoes String? @db.Text
+  ativo       Boolean @default(true)
+
+  parcelas ParcelaContrato[]
+
+  // 👇 6.3 — renegociação (pai/filho)
+  contratoOrigemId Int?
+  contratoOrigem   ContratoPagamento?  @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
+  derivados        ContratoPagamento[] @relation("ContratoOrigem")
+
+  renegociadoParaId Int?
+  renegociadoPara   ContratoPagamento?  @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
+  renegociadosDele  ContratoPagamento[] @relation("ContratoRenegociadoPara")
+
+  renegociadoEm    DateTime?
+  renegociadoPorId Int?
+  renegociadoPor   Usuario?  @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
+
+  @@index([clienteId])
+  @@index([formaPagamento])
+  @@index([ativo])
+  @@index([contratoOrigemId])
+  @@index([renegociadoParaId])
+}
+
+model ParcelaContrato {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contratoId Int
+  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  numero        Int // 1..N (ordem)
+  vencimento    DateTime
+  valorPrevisto Decimal  @db.Decimal(12, 2)
+
+  status StatusParcela @default(PREVISTA)
+
+  dataRecebimento DateTime?
+  valorRecebido   Decimal?         @db.Decimal(12, 2)
+  meioRecebimento MeioRecebimento?
+
+  observacoes String? @db.Text
+
+  // trilha de cancelamento
+  canceladaEm        DateTime?
+  canceladaPorId     Int?
+  cancelamentoMotivo String?   @db.Text
+  canceladaPor       Usuario?  @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+
+  @@unique([contratoId, numero])
+  @@index([vencimento])
+  @@index([status])
+}
+
 model Repasse {
   id               Int             @id @default(autoincrement())
   createdAt        DateTime        @default(now())
@@ -87,6 +183,10 @@ model Usuario {
   telefone    String?
   tipoUsuario TipoUsuario @default(USUARIO)
   advogado    Advogado?   @relation(fields: [advogadoId], references: [id])
+
+  parcelasCanceladas ParcelaContrato[] @relation("ParcelaCanceladaPor")
+
+  contratosRenegociados ContratoPagamento[] @relation("ContratoRenegociadoPor")
 
   @@index([ativo])
   @@index([role])

@@ -1522,8 +1522,10 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const contratos = await prisma.contratoPagamento.findMany({
       where,
       include: {
-  cliente: true,
-  parcelas: {
+        cliente: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        parcelas: {
     orderBy: { numero: "asc" },
     include: {
       canceladaPor: {
@@ -1944,6 +1946,8 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       where: { id },
       include: {
         cliente: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
         parcelas: {
           orderBy: { numero: "asc" },
           include: {
@@ -1981,6 +1985,8 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       include: {
         cliente: true,
         parcelas: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
       },
     });
 
@@ -2059,9 +2065,7 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
           valorTotal: centsToDecimalString(saldoCents),
           formaPagamento: "AVISTA",
           observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
-          // se você já tem campos pai/renegociado no model, ajuste aqui:
-          // contratoPaiId: contrato.id,
-          // renegociadoDeId: contrato.id,
+          contratoOrigemId: contrato.id,
           parcelas: {
             create: [
               {
@@ -2080,10 +2084,9 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
-          // ajuste os campos conforme você criou no Prisma:
-          // renegociadoEm: new Date(),
-          // renegociadoPorId: usuarioId ?? null,
-          // renegociadoParaId: filho.id,
+          renegociadoEm: new Date(),
+          renegociadoPorId: usuarioId ?? null,
+          renegociadoParaId: filho.id,
         },
       });
 
