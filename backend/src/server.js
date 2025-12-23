@@ -1945,16 +1945,16 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     const contrato = await prisma.contratoPagamento.findUnique({
       where: { id },
       include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: {
-          orderBy: { numero: "asc" },
-          include: {
-            canceladaPor: { select: { id: true, nome: true } },
-          },
-        },
-      },
+  cliente: true,
+  contratoOrigem: { select: { id: true, numeroContrato: true } },
+  renegociadoPara: { select: { id: true, numeroContrato: true } },
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: { select: { id: true, nome: true } },
+    },
+  },
+},
     });
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
@@ -1970,10 +1970,16 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 // POST /api/contratos/:id/renegociar
+// 6.3 — Renegociar saldo:
+// - Cancela parcelas PREVISTA do contrato original (mantém histórico)
+// - Cria novo contrato com numeração ORIGINAL-RN
+// - Por padrão, usa como "dataBase" o menor vencimento dentre as parcelas pendentes (normalizado 12:00)
+// - Permite enviar os mesmos parâmetros do "Novo Contrato" (formaPagamento/avista/entrada/parcelas);
+//   Se alguma data não vier, cai no default dataBase.
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
   try {
     const contratoId = Number(req.params.id);
-    const usuarioId = req.user?.id; // ajuste conforme seu requireAuth injeta o user
+    const usuarioId = req.user?.id ?? null;
 
     if (!Number.isFinite(contratoId)) {
       return res.status(400).json({ message: "ID do contrato inválido." });
@@ -1985,8 +1991,6 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       include: {
         cliente: true,
         parcelas: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
       },
     });
 
@@ -1998,40 +2002,18 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     if (pendentes.length === 0) {
       return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
     }
-    // 2.1) Define a data-base da renegociação (OPÇÃO 1):
-    // menor vencimento dentre as parcelas pendentes do contrato original.
-    // Normalizamos para "meio-dia" para evitar efeito D-1 por fuso horário.
+
+    // 2.1) dataBase = menor vencimento dentre as pendentes (normaliza para 12:00 local)
     const dataBaseRaw = pendentes
       .map((p) => p.vencimento)
       .filter(Boolean)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
 
-    // Se por algum motivo não houver vencimento nas pendentes, usa a data de hoje (normalizada).
-    const _db = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
-    const dataBase = new Date(_db.getUTCFullYear(), _db.getUTCMonth(), _db.getUTCDate(), 12, 0, 0, 0);
+    const db0 = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
+    const dataBase = new Date(db0.getFullYear(), db0.getMonth(), db0.getDate(), 12, 0, 0, 0);
 
-
-    // 3) Calcula saldo pendente (Decimal)
-    // Se seu projeto usa helper moneyToCents/centsToDecimalString, pode usar.
-    // Aqui faço soma em cents (BigInt) de forma segura:
-    const toCents = (v) => {
-      if (v === null || v === undefined) return 0n;
-      // v pode vir como string/Decimal
-      const s = String(v).replace(/\./g, "").replace(",", ".");
-      // Garantir 2 casas
-      const n = Number(s);
-      if (!Number.isFinite(n)) return 0n;
-      return BigInt(Math.round(n * 100));
-    };
-    const centsToDecimalString = (cents) => {
-      const sign = cents < 0n ? "-" : "";
-      const a = cents < 0n ? -cents : cents;
-      const i = a / 100n;
-      const d = a % 100n;
-      return `${sign}${i.toString()}.${d.toString().padStart(2, "0")}`;
-    };
-
-    const saldoCents = pendentes.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
+    // 3) Calcula saldo pendente (em cents BigInt)
+    const saldoCents = pendentes.reduce((acc, p) => acc + moneyToCents(p.valorPrevisto), 0n);
     if (saldoCents <= 0n) {
       return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
     }
@@ -2051,54 +2033,159 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       novoNumero = `${base}-R${seq}`;
     }
 
-    const motivo = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
+    const motivo = `Renegociação do saldo pendente do contrato ${base} -> ${novoNumero}`;
 
-    // 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
+    // 5) Lê preferências do payload (mesmo formato do POST /api/contratos)
+    const body = req.body || {};
+    const fp = String(body.formaPagamento || "AVISTA").trim().toUpperCase();
+    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+      return res.status(400).json({
+        message: "Forma de pagamento inválida. Use AVISTA, ENTRADA_PARCELAS ou PARCELADO.",
+      });
+    }
+
+    const parseDateOrDefault = (v, field, fallbackDate) => {
+      if (v === undefined || v === null || String(v).trim() === "") return fallbackDate;
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    const addMonthsLocalNoon = (date, months) => {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + months);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+    };
+
+    // 6) Monta o plano de parcelas (sempre total = saldoCents; ignora valorTotal do payload)
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDateOrDefault(body?.avista?.vencimento, "avista.vencimento", dataBase);
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: saldoCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(body?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+
+      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
+
+      let valoresCents;
+      if (body?.parcelas?.valorParcela !== undefined && body?.parcelas?.valorParcela !== null && body?.parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(body.parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== saldoCents) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do saldo pendente. Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(saldoCents, qtd);
+      }
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = addMonthsLocalNoon(primeiroVenc, i);
+        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(body?.entrada?.valor);
+      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= saldoCents) return res.status(400).json({ message: "A entrada deve ser menor que o saldo pendente." });
+
+      const eVenc = parseDateOrDefault(body?.entrada?.vencimento, "entrada.vencimento", dataBase);
+
+      const qtd = Number(body?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
+
+      // default: 1ª parcela = dataBase + 1 mês (pode ser sobrescrita pelo front)
+      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
+      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
+
+      const restante = saldoCents - eValorCents;
+
+      let valoresCents;
+      if (body?.parcelas?.valorParcela !== undefined && body?.parcelas?.valorParcela !== null && body?.parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(body.parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== restante) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do restante (saldo - entrada). Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(restante, qtd);
+      }
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = addMonthsLocalNoon(primeiroVenc, i);
+        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    // 7) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
     const result = await prisma.$transaction(async (tx) => {
-      // 5.1 cancela TODAS pendentes
+      // 7.1 cancela TODAS pendentes
       await tx.parcelaContrato.updateMany({
         where: {
           contratoId,
-          status: { in: ["PREVISTA"] }, // ✅ SEM ATRASADA
+          status: { in: ["PREVISTA"] },
         },
         data: {
           status: "CANCELADA",
           canceladaEm: new Date(),
-          canceladaPorId: usuarioId ?? null,
+          canceladaPorId: usuarioId,
           cancelamentoMotivo: motivo,
         },
       });
 
-      // 5.2 cria contrato filho (1 parcela à vista)
+      // 7.2 cria contrato filho
       const filho = await tx.contratoPagamento.create({
         data: {
           numeroContrato: novoNumero,
           clienteId: contrato.clienteId,
           valorTotal: centsToDecimalString(saldoCents),
-          formaPagamento: "AVISTA",
-          observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
+          formaPagamento: fp,
+          observacoes: `Originado da renegociação do contrato ${base}.`,
           contratoOrigemId: contrato.id,
           parcelas: {
-            create: [
-              {
-                numero: 1,
-                vencimento: dataBase, // vencimento hoje
-                valorPrevisto: centsToDecimalString(saldoCents),
-                status: "PREVISTA",
-              },
-            ],
+            create: parcelasPlan.map((p) => ({
+              numero: p.numero,
+              vencimento: p.vencimento,
+              valorPrevisto: centsToDecimalString(p.valorCents),
+              status: "PREVISTA",
+            })),
           },
         },
-        include: { parcelas: true },
+        include: {
+          cliente: true,
+          parcelas: { orderBy: { numero: "asc" } },
+          contratoOrigem: true,
+        },
       });
 
-      // 5.3 marca original como renegociado (sem desativar)
+      // 7.3 marca original como renegociado
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
           renegociadoEm: new Date(),
-          renegociadoPorId: usuarioId ?? null,
+          renegociadoPorId: usuarioId,
           renegociadoParaId: filho.id,
+        },
+        include: {
+          cliente: true,
+          parcelas: { orderBy: { numero: "asc" } },
+          renegociadoPara: true,
         },
       });
 
@@ -2112,7 +2199,7 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     });
   } catch (err) {
     console.error("Erro ao renegociar saldo:", err);
-    return res.status(500).json({ message: "Erro ao renegociar saldo." });
+    return res.status(500).json({ message: err?.message || "Erro ao renegociar saldo." });
   }
 });
 
