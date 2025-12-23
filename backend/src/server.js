@@ -69,27 +69,27 @@ function parseDateInput(input) {
   const s = String(input).trim();
   if (!s) return null;
 
-  // DD/MM/AAAA → DATA LOCAL (12:00)
+  // DD/MM/AAAA
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const dd = Number(m[1]);
     const mm = Number(m[2]);
     const yyyy = Number(m[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // YYYY-MM-DD (input type="date") → DATA LOCAL (12:00)
+  // YYYY-MM-DD (input date)
   const isoShort = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoShort) {
     const yyyy = Number(isoShort[1]);
     const mm = Number(isoShort[2]);
     const dd = Number(isoShort[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // ISO completo ou outros formatos
+  // ISO / demais formatos
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -1522,10 +1522,8 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const contratos = await prisma.contratoPagamento.findMany({
       where,
       include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: {
+  cliente: true,
+  parcelas: {
     orderBy: { numero: "asc" },
     include: {
       canceladaPor: {
@@ -1555,6 +1553,8 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
         valorTotal: c.valorTotal,
         formaPagamento: c.formaPagamento,
         ativo: c.ativo,
+        renegociadoParaId: c.renegociadoParaId,
+        contratoOrigemId: c.contratoOrigemId,
         observacoes: c.observacoes,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
@@ -1946,8 +1946,6 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       where: { id },
       include: {
         cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
         parcelas: {
           orderBy: { numero: "asc" },
           include: {
@@ -1973,7 +1971,7 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
   try {
     const contratoId = Number(req.params.id);
-    const usuarioId = req.user?.id ?? null;
+    const usuarioId = req.user?.id; // ajuste conforme seu requireAuth injeta o user
 
     if (!Number.isFinite(contratoId)) {
       return res.status(400).json({ message: "ID do contrato inválido." });
@@ -1997,17 +1995,27 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
     }
 
-    // 2.1) dataBase = menor vencimento dentre as pendentes (normaliza para 12:00 local)
-    const dataBaseRaw = pendentes
-      .map((p) => p.vencimento)
-      .filter(Boolean)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+    // 3) Calcula saldo pendente (Decimal)
+    // Se seu projeto usa helper moneyToCents/centsToDecimalString, pode usar.
+    // Aqui faço soma em cents (BigInt) de forma segura:
+    const toCents = (v) => {
+      if (v === null || v === undefined) return 0n;
+      // v pode vir como string/Decimal
+      const s = String(v).replace(/\./g, "").replace(",", ".");
+      // Garantir 2 casas
+      const n = Number(s);
+      if (!Number.isFinite(n)) return 0n;
+      return BigInt(Math.round(n * 100));
+    };
+    const centsToDecimalString = (cents) => {
+      const sign = cents < 0n ? "-" : "";
+      const a = cents < 0n ? -cents : cents;
+      const i = a / 100n;
+      const d = a % 100n;
+      return `${sign}${i.toString()}.${d.toString().padStart(2, "0")}`;
+    };
 
-    const db0 = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
-    const dataBase = new Date(db0.getFullYear(), db0.getMonth(), db0.getDate(), 12, 0, 0, 0);
-
-    // 3) Calcula saldo pendente (em cents BigInt)
-    const saldoCents = pendentes.reduce((acc, p) => acc + moneyToCents(p.valorPrevisto), 0n);
+    const saldoCents = pendentes.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
     if (saldoCents <= 0n) {
       return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
     }
@@ -2027,138 +2035,57 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       novoNumero = `${base}-R${seq}`;
     }
 
-    const motivo = `Renegociação do saldo pendente do contrato ${base} -> ${novoNumero}`;
+    const motivo = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
 
-    // 5) Lê preferências do payload (mesmo formato do POST /api/contratos)
-    const body = req.body || {};
-    const fp = String(body.formaPagamento || "AVISTA").trim().toUpperCase();
-    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
-      return res.status(400).json({
-        message: "Forma de pagamento inválida. Use AVISTA, ENTRADA_PARCELAS ou PARCELADO.",
-      });
-    }
-
-    const parseDateOrDefault = (v, field, fallbackDate) => {
-      if (v === undefined || v === null || String(v).trim() === "") return fallbackDate;
-      const d = parseDateInput(v);
-      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
-      return d;
-    };
-
-    const addMonthsLocalNoon = (date, months) => {
-      const d = new Date(date);
-      d.setMonth(d.getMonth() + months);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-    };
-
-    // 6) Monta o plano de parcelas (sempre total = saldoCents; ignora valorTotal do payload)
-    let parcelasPlan = [];
-
-    if (fp === "AVISTA") {
-      const venc = parseDateOrDefault(body?.avista?.vencimento, "avista.vencimento", dataBase);
-      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: saldoCents }];
-    }
-
-    if (fp === "PARCELADO") {
-      const qtd = Number(body?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
-
-      const primeiroVenc = parseDateOrDefault(
-        body?.parcelas?.primeiroVencimento,
-        "parcelas.primeiroVencimento",
-        dataBase
-      );
-
-      const valoresCents = splitCents(saldoCents, qtd);
-
-      for (let i = 0; i < qtd; i++) {
-        const venc = addMonthsLocalNoon(primeiroVenc, i);
-        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
-      }
-    }
-
-    if (fp === "ENTRADA_PARCELAS") {
-      const eValorCents = moneyToCents(body?.entrada?.valor);
-      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
-      if (eValorCents >= saldoCents) return res.status(400).json({ message: "A entrada deve ser menor que o saldo pendente." });
-
-      const eVenc = parseDateOrDefault(body?.entrada?.vencimento, "entrada.vencimento", dataBase);
-
-      const qtd = Number(body?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
-
-      // default: 1ª parcela = dataBase + 1 mês (pode ser sobrescrita pelo front)
-      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
-      const primeiroVenc = parseDateOrDefault(
-        body?.parcelas?.primeiroVencimento,
-        "parcelas.primeiroVencimento",
-        primeiroDefault
-      );
-
-      const restante = saldoCents - eValorCents;
-      const valoresCents = splitCents(restante, qtd);
-
-      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
-
-      for (let i = 0; i < qtd; i++) {
-        const venc = addMonthsLocalNoon(primeiroVenc, i);
-        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
-      }
-    }
-
-    // 7) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
+    // 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
     const result = await prisma.$transaction(async (tx) => {
-      // 7.1 cancela TODAS pendentes
+      // 5.1 cancela TODAS pendentes
       await tx.parcelaContrato.updateMany({
         where: {
           contratoId,
-          status: { in: ["PREVISTA"] },
+          status: { in: ["PREVISTA"] }, // ✅ SEM ATRASADA
         },
         data: {
           status: "CANCELADA",
           canceladaEm: new Date(),
-          canceladaPorId: usuarioId,
+          canceladaPorId: usuarioId ?? null,
           cancelamentoMotivo: motivo,
         },
       });
 
-      // 7.2 cria contrato filho
+      // 5.2 cria contrato filho (1 parcela à vista)
       const filho = await tx.contratoPagamento.create({
         data: {
           numeroContrato: novoNumero,
           clienteId: contrato.clienteId,
           valorTotal: centsToDecimalString(saldoCents),
-          formaPagamento: fp,
-          observacoes: `Originado da renegociação do contrato ${base}.`,
-          contratoOrigemId: contrato.id,
+          formaPagamento: "AVISTA",
+          observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
+          // se você já tem campos pai/renegociado no model, ajuste aqui:
+          // contratoPaiId: contrato.id,
+          // renegociadoDeId: contrato.id,
           parcelas: {
-            create: parcelasPlan.map((p) => ({
-              numero: p.numero,
-              vencimento: p.vencimento,
-              valorPrevisto: centsToDecimalString(p.valorCents),
-              status: "PREVISTA",
-            })),
+            create: [
+              {
+                numero: 1,
+                vencimento: new Date(), // vencimento hoje
+                valorPrevisto: centsToDecimalString(saldoCents),
+                status: "PREVISTA",
+              },
+            ],
           },
         },
-        include: {
-          cliente: true,
-          parcelas: { orderBy: { numero: "asc" } },
-          contratoOrigem: { select: { id: true, numeroContrato: true } },
-        },
+        include: { parcelas: true },
       });
 
-      // 7.3 marca original como renegociado
+      // 5.3 marca original como renegociado (sem desativar)
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
-          renegociadoEm: new Date(),
-          renegociadoPorId: usuarioId,
-          renegociadoParaId: filho.id,
-        },
-        include: {
-          cliente: true,
-          parcelas: { orderBy: { numero: "asc" } },
-          renegociadoPara: { select: { id: true, numeroContrato: true } },
+          // ajuste os campos conforme você criou no Prisma:
+          // renegociadoEm: new Date(),
+          // renegociadoPorId: usuarioId ?? null,
+          // renegociadoParaId: filho.id,
         },
       });
 
@@ -2172,11 +2099,9 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     });
   } catch (err) {
     console.error("Erro ao renegociar saldo:", err);
-    return res.status(500).json({ message: err?.message || "Erro ao renegociar saldo." });
+    return res.status(500).json({ message: "Erro ao renegociar saldo." });
   }
 });
-
-
 
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
