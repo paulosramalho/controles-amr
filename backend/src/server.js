@@ -1931,6 +1931,36 @@ app.patch(
   }
 );
 
+app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID do contrato inválido." });
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id },
+      include: {
+        cliente: true,
+        parcelas: {
+          orderBy: { numero: "asc" },
+          include: {
+            canceladaPor: { select: { id: true, nome: true } },
+          },
+        },
+      },
+    });
+
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    return res.json({
+      ...contrato,
+      cliente: serializeCliente({ ...contrato.cliente, ordens: [] }),
+    });
+  } catch (err) {
+    console.error("Erro ao buscar contrato:", err);
+    return res.status(500).json({ message: "Erro ao buscar contrato." });
+  }
+});
+
 // 6.3 — Renegociar saldo: cancela pendentes e cria contrato filho
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
   try {
