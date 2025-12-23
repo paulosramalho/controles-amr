@@ -1,9 +1,45 @@
 // src/pages/Pagamentos.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { Link } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
+function toDateOnly(d) {
+  if (!d) return null;
+
+  // Se vier "DD/MM/AAAA", parse correto
+  if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
+    const parsed = parseDateDDMMYYYY(d); // já existe no arquivo
+    if (!parsed) return null;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+
+  // Caso geral (Date, ISO etc.)
+  const x = new Date(d);
+  if (!Number.isFinite(x.getTime())) return null;
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function isParcelaAtrasada(p) {
+  if (!p) return false;
+  if (p.status !== "PREVISTA") return false;
+  if (!p.vencimento) return false;
+
+  const hoje = toDateOnly(new Date());
+  const venc = toDateOnly(p.vencimento);
+
+  if (!hoje || !venc) return false;
+
+  return venc < hoje;
+}
+
+function hasParcelaAtrasada(contrato) {
+  const ps = contrato?.parcelas || [];
+  return ps.some(isParcelaAtrasada);
+}
+
 function DateInput({ label, value, onChange, disabled, className = "" }) {
   // value: "DD/MM/AAAA"  |  input[type=date] usa "YYYY-MM-DD"
   const toISO = (ddmmyyyy) => {
@@ -40,14 +76,12 @@ function onlyDigits(v = "") {
 }
 
 // moeda (máscara tipo centavos):
-// digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; 12345→123,45; 123456→1.234,56
 function maskBRLFromDigits(digits = "") {
   const d = onlyDigits(digits);
   const n = d ? BigInt(d) : 0n;
   const intPart = n / 100n;
   const decPart = n % 100n;
 
-  // formata intPart com separador de milhar "."
   const intStr = intPart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${intStr},${decPart.toString().padStart(2, "0")}`;
 }
@@ -68,7 +102,6 @@ function parseDateDDMMYYYY(s) {
   const mm = Number(m[2]);
   const yyyy = Number(m[3]);
   if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
-  // valida mês/dia real
   const dt = new Date(yyyy, mm - 1, dd);
   if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
   return dt;
@@ -91,26 +124,18 @@ function normalizeForma(fp) {
 }
 
 function computeStatusContrato(contrato) {
+  if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
+
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
 
-  const pendentes = parcelas.filter(
-    (p) => p.status !== "RECEBIDA" && p.status !== "CANCELADA"
-  );
-
-  if (pendentes.length === 0) {
-    return { label: "Quitado", tone: "green" };
-  }
+  const recebidas = parcelas.filter((p) => p.status === "RECEBIDA").length;
+  if (recebidas === parcelas.length) return { label: "Quitado", tone: "green" };
 
   const now = new Date();
-  const hasOverdue = pendentes.some((p) => {
-    const v = new Date(p.vencimento);
-    return Number.isFinite(v.getTime()) && v < now;
-  });
+  const hasOverdue = hasParcelaAtrasada(contrato);
 
-  return hasOverdue
-    ? { label: "Atrasado", tone: "red" }
-    : { label: "Em dia", tone: "blue" };
+  return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
 }
 
 /* ---------------- UI components ---------------- */
@@ -128,11 +153,11 @@ function Card({ title, right, children }) {
 
 function Badge({ children, tone = "slate" }) {
   const map = {
+    slate: "bg-slate-600 text-white",
     green: "bg-green-600 text-white",
     red: "bg-red-600 text-white",
     blue: "bg-blue-600 text-white",
     amber: "bg-amber-500 text-white",
-    slate: "bg-slate-500 text-white",
   };
 
   return (
@@ -218,6 +243,7 @@ export default function PagamentosPage({ user }) {
 
   // modal novo contrato
   const [openNovo, setOpenNovo] = useState(false);
+  const [modalError, setModalError] = useState("");
 
   // modal parcelas
   const [openParcelas, setOpenParcelas] = useState(false);
@@ -253,7 +279,13 @@ export default function PagamentosPage({ user }) {
   const [confParcela, setConfParcela] = useState(null);
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
-  const [confValorDigits, setConfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
+  const [confValorDigits, setConfValorDigits] = useState("");
+
+  // cancelamento de parcela
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelParcela, setCancelParcela] = useState(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
 
   async function load() {
     setError("");
@@ -271,11 +303,9 @@ export default function PagamentosPage({ user }) {
 
   async function loadClientes() {
     try {
-      // sua tela de Clientes usa "/clients". Aqui também.
       const data = await apiFetch("/clients");
       setClientes(Array.isArray(data) ? data : []);
     } catch {
-      // silencioso
       setClientes([]);
     }
   }
@@ -285,11 +315,11 @@ export default function PagamentosPage({ user }) {
     load();
   }, [isAdmin]); // eslint-disable-line
 
-useEffect(() => {
-  if (!openParcelas || !selectedContrato) return;
-  const fresh = rows.find((r) => r.id === selectedContrato.id);
-  if (fresh) setSelectedContrato(fresh);
-}, [rows, openParcelas, selectedContrato]);
+  useEffect(() => {
+    if (!openParcelas || !selectedContrato) return;
+    const fresh = rows.find((r) => r.id === selectedContrato.id);
+    if (fresh) setSelectedContrato(fresh);
+  }, [rows, openParcelas, selectedContrato]);
 
   function resetNovo() {
     setClienteId("");
@@ -308,6 +338,7 @@ useEffect(() => {
 
   function openNovoContrato() {
     resetNovo();
+    setModalError("");
     setOpenNovo(true);
     loadClientes();
   }
@@ -315,36 +346,6 @@ useEffect(() => {
   function openParcelasModal(contrato) {
     setSelectedContrato(contrato);
     setOpenParcelas(true);
-  }
-
-  const hasSaldoPendente = (parcelas = []) =>
-    Array.isArray(parcelas) && parcelas.some((p) => p && p.status !== "RECEBIDA" && p.status !== "CANCELADA");
-
-  async function renegociarSaldo(contrato) {
-    if (user?.role !== "ADMIN") return;
-    if (!contrato?.id) return;
-    if (!hasSaldoPendente(contrato.parcelas)) {
-      alert("Não há saldo pendente para renegociar.");
-      return;
-    }
-
-    const ok = window.confirm(
-      `Renegociar o saldo pendente do contrato ${contrato.numeroContrato}?\n\nIsso vai CANCELAR automaticamente todas as parcelas pendentes e criar um novo contrato derivado.`
-    );
-    if (!ok) return;
-
-    try {
-      // backend já valida ADMIN e calcula o saldo (PREVISTA/ATRASADA), ignorando RECEBIDA/CANCELADA
-      await apiFetch(`/contratos/${contrato.id}/renegociar`, { method: "POST" });
-
-      // Atualiza imediatamente lista + modal aberto
-      await loadContratos();
-      const contratoAtualizado = await apiFetch(`/contratos/${contrato.id}`);
-      setSelectedContrato(contratoAtualizado);
-    } catch (e) {
-      const msg = e?.message || "Erro ao renegociar saldo.";
-      alert(msg);
-    }
   }
 
   async function toggleContrato(contrato) {
@@ -400,13 +401,13 @@ useEffect(() => {
       return;
     }
 
-    setError("");
+    setModalError("");
     setLoading(true);
     try {
       const payload = {
         clienteId: Number(clienteId),
         numeroContrato: String(numeroContrato).trim(),
-        valorTotal: onlyDigits(valorTotalDigits), // ✅ centavos (compatível com backend)
+        valorTotal: onlyDigits(valorTotalDigits),
         formaPagamento,
         observacoes: observacoes ? String(observacoes).trim() : null,
       };
@@ -430,10 +431,7 @@ useEffect(() => {
         };
       }
 
-      await apiFetch("/contratos", {
-        method: "POST",
-        body: payload,
-      });
+      await apiFetch("/contratos", { method: "POST", body: payload });
       setOpenNovo(false);
       await load();
     } catch (e) {
@@ -445,54 +443,92 @@ useEffect(() => {
 
   function openConfirmParcela(parcela) {
     setConfParcela(parcela);
-    setConfData(toDDMMYYYY(new Date())); // default hoje
+    setConfData(toDDMMYYYY(new Date()));
     setConfMeio("PIX");
-    setConfValorDigits(""); // vazio => backend assume previsto
+    setConfValorDigits("");
     setConfOpen(true);
   }
 
-  async function confirmarRecebimento() {
-  if (!confParcela) return;
+function openCancelParcela(parcela) {
+  setCancelParcela(parcela);
+  setCancelMotivo("");
+  setCancelOpen(true);
+}
 
-  if (!parseDateDDMMYYYY(confData)) {
-    setError("Data de recebimento inválida (DD/MM/AAAA).");
+async function cancelarParcela() {
+  if (!cancelParcela) return;
+
+  const motivo = String(cancelMotivo || "").trim();
+  if (!motivo) {
+    setError("Motivo do cancelamento é obrigatório.");
     return;
   }
 
   setError("");
-  setConfirming(true);
-
+  setCanceling(true);
   try {
-    const body = {
-      dataRecebimento: confData,
-      meioRecebimento: confMeio,
-    };
+    await apiFetch(`/parcelas/${cancelParcela.id}/cancelar`, {
+      method: "PATCH",
+      body: { motivo },
+    });
 
-    // ✅ SÓ envia se foi preenchido
-    if (confValorDigits) {
-      body.valorRecebido = confValorDigits; // centavos
-    }
+    // ✅ Atualização imediata no modal (sem sair/voltar)
+    setSelectedContrato((prev) => {
+      if (!prev) return prev;
+      const parcelas = (prev.parcelas || []).map((p) =>
+        p.id === cancelParcela.id
+          ? { ...p, status: "CANCELADA", motivoCancelamento: motivo }
+          : p
+      );
+      return { ...prev, parcelas };
+    });
 
-    await apiFetch(
-      `/parcelas/${confParcela.id}/confirmar`,
-      { method: "PATCH", body }
-    );
+    setCancelOpen(false);
+    setCancelParcela(null);
+    setCancelMotivo("");
 
-    setConfOpen(false);
+    // ✅ Garantir consistência da lista e do contrato selecionado
     await load();
   } catch (e) {
-    setError(e?.message || "Falha ao confirmar recebimento.");
+    setError(e?.message || "Falha ao cancelar parcela.");
   } finally {
-    setConfirming(false);
+    setCanceling(false);
   }
 }
 
-  const filtered = useMemo(() => {
-    // backend já filtra via ?q, então aqui só retorna rows
-    return rows;
-  }, [rows]);
+  async function confirmarRecebimento() {
+    if (!confParcela) return;
+    if (!parseDateDDMMYYYY(confData)) {
+      setError("Data de recebimento inválida (DD/MM/AAAA).");
+      return;
+    }
 
-  // SearchRow padrão
+    setError("");
+    setConfirming(true);
+    try {
+      const body = {
+        dataRecebimento: confData,
+        meioRecebimento: confMeio,
+      };
+      if (onlyDigits(confValorDigits)) body.valorRecebido = onlyDigits(confValorDigits);
+
+      await apiFetch(`/parcelas/${confParcela.id}/confirmar`, { method: "PATCH", body });
+      setConfOpen(false);
+      await load();
+    } catch (e) {
+      setError(e?.message || "Falha ao confirmar recebimento.");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  const filtered = useMemo(() => rows, [rows]);
+
+  const parcelasDoContrato = selectedContrato?.parcelas || [];
+  const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
+  const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
+  const diferencaTotais = totalRecebido - totalPrevisto;
+
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
@@ -544,8 +580,6 @@ useEffect(() => {
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
         ) : null}
 
-        const [modalError, setModalError] = useState("");
-
         <div className="mt-4 overflow-auto rounded-2xl border border-slate-200">
           <table className="min-w-[1100px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-700">
@@ -553,6 +587,8 @@ useEffect(() => {
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor total</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor recebido</th>
+                <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Valor pendente</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Forma</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Parcelas</th>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Status</th>
@@ -566,15 +602,32 @@ useEffect(() => {
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? (c?.parcelas?.length || 0);
                 const qtdRecebidas = c?.resumo?.qtdRecebidas ?? (c?.parcelas?.filter((p) => p.status === "RECEBIDA").length || 0);
 
+                const totalRecebidoLinha =
+                  Number(
+                    c?.resumo?.totalRecebido ??
+                      (c?.parcelas || [])
+                        .filter((p) => p.status === "RECEBIDA")
+                        .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
+                  ) || 0;
+
+                const valorTotalLinha = Number(c?.valorTotal || 0) || 0;
+                const pendenteLinha = Math.max(0, valorTotalLinha - totalRecebidoLinha);
+
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Link to={`/contratos/${c.id}`} className="text-blue-700 hover:underline">
+                      <Link
+                        to={`/contratos/${c.id}`}
+                        className="hover:underline"
+                        title="Ver contrato (somente leitura)"
+                      >
                         {c.numeroContrato}
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(totalRecebidoLinha)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(pendenteLinha)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
@@ -608,7 +661,7 @@ useEffect(() => {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={7}>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={9}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -620,14 +673,9 @@ useEffect(() => {
 
       {/* ---------- Modal: Novo Contrato ---------- */}
       <Modal
-{modalError && (
-  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-    {modalError}
-  </div>
-)}
         open={openNovo}
         title="Novo Contrato de Pagamento"
-        onClose={() => setOpenNovo(false)}
+        onClose={() => { setOpenNovo(false); setModalError(""); }}
         footer={
           <div className="flex items-center justify-end gap-2">
             <button
@@ -636,6 +684,11 @@ useEffect(() => {
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               disabled={loading}
             >
+        {modalError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {modalError}
+          </div>
+        )}
               Cancelar
             </button>
             <button
@@ -663,7 +716,7 @@ useEffect(() => {
             label="Número do contrato"
             value={numeroContrato}
             onChange={setNumeroContrato}
-            placeholder="Ex.: 2025-000123"
+            placeholder="Ex.: 20250904001A"
             disabled={loading}
           />
 
@@ -695,12 +748,7 @@ useEffect(() => {
         {/* detalhamento conforme forma */}
         {formaPagamento === "AVISTA" ? (
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <DateInput
-  label="Vencimento (à vista)"
-  value={avistaVenc}
-  onChange={setAvistaVenc}
-  disabled={loading}
-/>
+            <DateInput label="Vencimento (à vista)" value={avistaVenc} onChange={setAvistaVenc} disabled={loading} />
           </div>
         ) : null}
 
@@ -714,13 +762,7 @@ useEffect(() => {
               disabled={loading}
               inputMode="numeric"
             />
-            <DateInput
-  label="1º vencimento"
-  value={parcelasPrimeiroVenc}
-  onChange={setParcelasPrimeiroVenc}
-  disabled={loading}
-/>
-
+            <DateInput label="1º vencimento" value={parcelasPrimeiroVenc} onChange={setParcelasPrimeiroVenc} disabled={loading} />
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
               O backend divide o valor automaticamente e ajusta os centavos.
             </div>
@@ -745,24 +787,7 @@ useEffect(() => {
                 </div>
               </label>
 
-              <DateInput
-  label="Vencimento da entrada"
-  value={entradaVenc}
-  onChange={setEntradaVenc}
-  disabled={loading}
-/>
-
-<DateInput
-  label="1º vencimento (parcelas)"
-  value={entradaParcelasPrimeiroVenc}
-  onChange={setEntradaParcelasPrimeiroVenc}
-  disabled={loading}
-/>
-
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                A entrada fica como parcela nº 1.
-              </div>
+              <DateInput label="Vencimento da entrada" value={entradaVenc} onChange={setEntradaVenc} disabled={loading} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -774,8 +799,9 @@ useEffect(() => {
                 disabled={loading}
                 inputMode="numeric"
               />
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                O backend divide o restante automaticamente e ajusta os centavos.
+
+              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+                A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
               </div>
             </div>
           </div>
@@ -790,24 +816,13 @@ useEffect(() => {
       <Modal
         open={openParcelas}
         title={
-  selectedContrato
-    ? `Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} - ${selectedContrato?.cliente?.nomeRazaoSocial || ""}`
-    : "Controle de Parcelas"
-}
+          selectedContrato
+            ? `Controle de Parcelas do Contrato ${selectedContrato.numeroContrato} - ${selectedContrato?.cliente?.nomeRazaoSocial || ""}`
+            : "Controle de Parcelas"
+        }
         onClose={() => setOpenParcelas(false)}
         footer={
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              {user?.role === "ADMIN" && selectedContrato && hasSaldoPendente(selectedContrato.parcelas) ? (
-                <button
-                  type="button"
-                  onClick={() => renegociarSaldo(selectedContrato)}
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                >
-                  Renegociar saldo
-                </button>
-              ) : null}
-            </div>
+          <div className="flex items-center justify-end">
             <button
               type="button"
               onClick={() => setOpenParcelas(false)}
@@ -821,92 +836,99 @@ useEffect(() => {
         {!selectedContrato ? (
           <div className="text-sm text-slate-600">Selecione um contrato.</div>
         ) : (
-          <div className="overflow-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[900px] w-full text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">#</th>
-                  <th className="text-left px-4 py-3 font-semibold">Vencimento</th>
-                  <th className="text-left px-4 py-3 font-semibold">Previsto</th>
-                  <th className="text-left px-4 py-3 font-semibold">Status</th>
-                  <th className="text-left px-4 py-3 font-semibold">Recebido</th>
-                  <th className="text-left px-4 py-3 font-semibold">Meio</th>
-                  <th className="text-right px-4 py-3 font-semibold">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {(selectedContrato.parcelas || []).map((p) => (
-                  <tr key={p.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
-                    <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
-                    <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const now = new Date();
-                        const venc = new Date(p.vencimento);
-                        const isOverdue = p.status === "PREVISTA" && Number.isFinite(venc.getTime()) && venc < now;
-                        const motivo = p.cancelamentoMotivo || "";
-                        const quem = p.canceladaPor?.nome || p.canceladaPor?.name || "";
-                        const quando = p.canceladaEm ? toDDMMYYYY(p.canceladaEm) : "";
-
-                        if (p.status === "RECEBIDA") return <Badge tone="green">Recebida</Badge>;
-                        if (p.status === "CANCELADA") {
-                          return (
-                            <div>
-                              <Badge tone="red">Cancelada</Badge>
-                              {(motivo || quem || quando) ? (
-                                <div className="mt-1 text-xs text-slate-600">
-                                  {motivo ? <div><span className="font-semibold">Motivo:</span> {String(motivo)}</div> : null}
-                                  {(quem || quando) ? (
-                                    <div>
-                                      {quem ? String(quem) : ""}
-                                      {quem && quando ? " • " : ""}
-                                      {quando ? String(quando) : ""}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        }
-                        if (isOverdue) return <Badge tone="red">Atrasada</Badge>;
-                        return <Badge tone="blue">Prevista</Badge>;
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-slate-800">
-                      {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
-                      {p.dataRecebimento ? (
-                        <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        {p.status === "PREVISTA" ? (
-                          <button
-                            type="button"
-                            onClick={() => openConfirmParcela(p)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                          >
-                            Receber Parcela
-                          </button>
-                        ) : (
-                          <span className="text-slate-400 text-sm">—</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
-                {!(selectedContrato.parcelas || []).length ? (
+          <div className="space-y-4">
+            <div className="overflow-auto rounded-2xl border border-slate-200">
+              <table className="min-w-[900px] w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700">
                   <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
-                      Nenhuma parcela cadastrada.
-                    </td>
+                    <th className="text-left px-4 py-3 font-semibold">#</th>
+                    <th className="text-left px-4 py-3 font-semibold">Vencimento</th>
+                    <th className="text-left px-4 py-3 font-semibold">Previsto</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Recebido</th>
+                    <th className="text-left px-4 py-3 font-semibold">Meio</th>
+                    <th className="text-right px-4 py-3 font-semibold">Ações</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {(selectedContrato.parcelas || []).map((p) => (
+                    <tr key={p.id} className="bg-white">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
+                      <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
+                      <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                       {p.status === "RECEBIDA" ? (
+                       <Badge tone="green">Recebida</Badge>
+                         ) : isParcelaAtrasada(p) ? (
+                       <Badge tone="red">Atrasada</Badge>
+                         ) : (
+                       <Badge tone="blue">Prevista</Badge>
+                         )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-800">
+                        {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
+                        {p.dataRecebimento ? (
+                          <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+                      <td className="px-4 py-3 text-right">
+                         <div className="flex justify-end gap-2">
+                           {p.status === "PREVISTA" ? (
+                           <button
+                             type="button"
+                             onClick={() => openConfirmParcela(p)}
+                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                           >
+                             Receber Parcela
+                           </button>
+                         ) : (
+                           <span className="text-slate-400 text-sm">—</span>
+                          )}
+ 
+                          {isAdmin && p.status !== "RECEBIDA" && p.status !== "CANCELADA" ? (
+                            <button
+                              type="button"
+                              onClick={() => openCancelParcela(p)}
+                              className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                            >
+                              Cancelar
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!(selectedContrato.parcelas || []).length ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                        Nenhuma parcela cadastrada.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div>
+                <div className="text-slate-500">Total previsto</div>
+                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+              </div>
+
+              <div>
+                <div className="text-slate-500">Total recebido</div>
+                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+              </div>
+
+              <div>
+                <div className="text-slate-500">Diferença</div>
+                <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
+                  R$ {formatBRLFromDecimal(diferencaTotais)}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Modal>
@@ -914,7 +936,7 @@ useEffect(() => {
       {/* ---------- Modal: Confirmar recebimento ---------- */}
       <Modal
         open={confOpen}
-        title={confParcela ? `Confirmar recebimento — Parcela #${confParcela.numero}` : "Confirmar recebimento"}
+        title={confParcela ? `Receber Parcela — Parcela #${confParcela.numero}` : "Receber Parcela"}
         onClose={() => setConfOpen(false)}
         footer={
           <div className="flex items-center justify-end gap-2">
@@ -938,12 +960,8 @@ useEffect(() => {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <DateInput
-  label="Data do recebimento"
-  value={confData}
-  onChange={setConfData}
-  disabled={confirming}
-/>
+          <DateInput label="Data do recebimento" value={confData} onChange={setConfData} disabled={confirming} />
+
           <Select label="Meio" value={confMeio} onChange={setConfMeio} disabled={confirming}>
             <option value="PIX">PIX</option>
             <option value="TED">TED</option>
@@ -954,29 +972,64 @@ useEffect(() => {
           </Select>
 
           <label className="block">
-  <div className="text-sm font-medium text-slate-700">
-    Valor recebido (opcional)
-  </div>
+            <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
+            <div className="mt-1 relative">
+              <input
+                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+                value={maskBRLFromDigits(confValorDigits)}
+                onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
+                placeholder="(vazio = valor previsto)"
+                disabled={confirming}
+                inputMode="numeric"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
+          </label>
+        </div>
+      </Modal>
+<Modal
+        open={cancelOpen}
+        onClose={() => (!canceling ? setCancelOpen(false) : null)}
+        title="Cancelar parcela"
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-slate-700">
+            Você está cancelando a parcela{" "}
+            <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe o
+            motivo (obrigatório).
+          </div>
 
-  <div className="mt-1 relative">
-    <input
-      className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none
-                 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-      placeholder="(vazio = usa o valor previsto)"
-      value={confValorDigits ? maskBRLFromDigits(confValorDigits) : ""}
-      onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
-      disabled={confirming}
-      inputMode="numeric"
-    />
-    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-      R$
-    </div>
-  </div>
+          <label className="block">
+            <div className="text-sm font-medium text-slate-700">Motivo</div>
+            <input
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              value={cancelMotivo}
+              onChange={(e) => setCancelMotivo(e.target.value)}
+              placeholder="Ex.: Renegociação / cancelamento do acordo"
+              disabled={canceling}
+            />
+          </label>
 
-  <div className="mt-1 text-xs text-slate-500">
-    Se deixar vazio, o sistema confirma pelo valor previsto.
-  </div>
-</label>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              onClick={() => setCancelOpen(false)}
+              disabled={canceling}
+            >
+              Fechar
+            </button>
+
+            <button
+              type="button"
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              onClick={cancelarParcela}
+              disabled={canceling}
+            >
+              {canceling ? "Cancelando..." : "Cancelar"}
+            </button>
+          </div>
         </div>
       </Modal>
     </div>
