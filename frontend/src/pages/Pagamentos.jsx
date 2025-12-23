@@ -1,7 +1,7 @@
 // src/pages/Pagamentos.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -246,6 +246,9 @@ export default function PagamentosPage({ user }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [renegProcessando, setRenegProcessando] = useState(false);
 
   // modal novo contrato
   const [openNovo, setOpenNovo] = useState(false);
@@ -320,6 +323,43 @@ export default function PagamentosPage({ user }) {
     if (!isAdmin) return;
     load();
   }, [isAdmin]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const params = new URLSearchParams(location.search || "");
+    const id = params.get("renegociar");
+    if (!id) return;
+    if (renegProcessando) return;
+
+    (async () => {
+      setError("");
+      setRenegProcessando(true);
+      try {
+        const resp = await apiFetch(`/contratos/${id}/renegociar`, { method: "POST" });
+
+        const novoId =
+          resp?.contratoNovo?.id ??
+          resp?.contratoNovoId ??
+          resp?.id;
+
+        // limpa query param (pra não repetir ao voltar)
+        navigate("/pagamentos", { replace: true });
+
+        await load();
+
+        if (novoId) {
+          navigate(`/contratos/${novoId}`);
+        }
+      } catch (e) {
+        navigate("/pagamentos", { replace: true });
+        setError(e?.message || "Falha ao renegociar saldo.");
+      } finally {
+        setRenegProcessando(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, location.search]);
 
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
@@ -611,15 +651,16 @@ async function cancelarParcela() {
 
                 const st = computeStatusContrato(c);
                 const status =
-                  st === "ATRASADO"
-                    ? { label: "Atrasado", tone: "red" }
-                    : st === "QUITADO"
-                      ? { label: "Quitado", tone: "green" }
-                      : st === "CANCELADO"
-                        ? { label: "Cancelado", tone: "slate" }
-                        : st === "RENEGOCIADO"
-                          ? { label: "Renegociado", tone: "amber" }
-                          : { label: "Em dia", tone: "blue" };
+  st === "ATRASADO"
+    ? { label: "Atrasado", tone: "red" }
+    : st === "RENEGOCIADO"
+      ? { label: "Renegociado", tone: "amber" }
+      : st === "QUITADO"
+        ? { label: "Quitado", tone: "green" }
+        : st === "CANCELADO"
+          ? { label: "Cancelado", tone: "slate" }
+          : { label: "Em dia", tone: "blue" };
+
 
                 const totalRecebidoLinha =
                   Number(
