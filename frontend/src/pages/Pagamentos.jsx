@@ -458,10 +458,13 @@ useEffect(() => {
     setError("");
     setConfirming(true);
     try {
-      const body = {
-        dataRecebimento: confData,
-        meioRecebimento: confMeio,
-      };
+      const payload = {
+  dataRecebimento: confData || undefined,
+  meioRecebimento: confMeio || undefined,
+  observacoes: confObs || undefined,
+  ...(confValorDigits ? { valorRecebido: confValorDigits } : {}), // ✅ só manda se preencheu
+};
+
       if (onlyDigits(confValorDigits)) body.valorRecebido = onlyDigits(confValorDigits);
 
       await apiFetch(`/parcelas/${confParcela.id}/confirmar`, { method: "PATCH", body });
@@ -944,10 +947,9 @@ useEffect(() => {
             <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
             <div className="mt-1 relative">
               <input
-                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                value={maskBRLFromDigits(confValorDigits)}
+                value={confValorDigits ? maskBRLFromDigits(confValorDigits) : ""}  // ✅ vazio de verdade
+                placeholder="(vazio = usa o valor previsto)"
                 onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
-                placeholder="(vazio = valor previsto)"
                 disabled={confirming}
                 inputMode="numeric"
               />
