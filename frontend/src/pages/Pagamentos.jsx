@@ -430,7 +430,9 @@ useEffect(() => {
         };
       }
 
-      await apiFetch("/contratos", { method: "POST", body: payload });
+      await apiFetch(`/contratos/${contratoId}/renegociar`, {
+        method: "POST",
+      });
       setOpenNovo(false);
       await load();
     } catch (e) {
