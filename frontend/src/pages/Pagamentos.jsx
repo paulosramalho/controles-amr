@@ -603,21 +603,29 @@ async function cancelarParcela() {
             </thead>
 
             <tbody className="divide-y divide-slate-200">
+              {filtered.map((c) => {
                 const parcelas = c?.parcelas || [];
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? parcelas.length;
-                const qtdRecebidas = c?.resumo?.qtdRecebidas ?? parcelas.filter((p) => p.status === "RECEBIDA").length;
+                const qtdRecebidas =
+                  c?.resumo?.qtdRecebidas ?? parcelas.filter((p) => p.status === "RECEBIDA").length;
+
                 const st = computeStatusContrato(c);
-                const status = st === "ATRASADO"
-                  ? { label: "Atrasado", tone: "red" }
-                  : st === "QUITADO"
-                    ? { label: "Quitado", tone: "green" }
-                    : st === "CANCELADO"
-                      ? { label: "Cancelado", tone: "slate" }
-                      : st === "RENEGOCIADO"
-                        ? { label: "Renegociado", tone: "amber" }
-                        : { label: "Em dia", tone: "blue" };
-                        .filter((p) => p.status === "RECEBIDA")
-                        .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
+                const status =
+                  st === "ATRASADO"
+                    ? { label: "Atrasado", tone: "red" }
+                    : st === "QUITADO"
+                      ? { label: "Quitado", tone: "green" }
+                      : st === "CANCELADO"
+                        ? { label: "Cancelado", tone: "slate" }
+                        : st === "RENEGOCIADO"
+                          ? { label: "Renegociado", tone: "amber" }
+                          : { label: "Em dia", tone: "blue" };
+
+                const totalRecebidoLinha =
+                  Number(
+                    parcelas
+                      .filter((p) => p.status === "RECEBIDA")
+                      .reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0)
                   ) || 0;
 
                 const valorTotalLinha = Number(c?.valorTotal || 0) || 0;
@@ -626,18 +634,18 @@ async function cancelarParcela() {
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Link
-                        to={`/contratos/${c.id}`}
-                        className="hover:underline"
-                        title="Ver contrato (somente leitura)"
-                      >
+                      <Link to={`/contratos/${c.id}`} className="hover:underline" title="Ver contrato (somente leitura)">
                         {c.numeroContrato}
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(totalRecebidoLinha)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(pendenteLinha)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+                      R$ {formatBRLFromDecimal(totalRecebidoLinha)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+                      R$ {formatBRLFromDecimal(pendenteLinha)}
+                    </td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
                     <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
