@@ -253,7 +253,7 @@ export default function PagamentosPage({ user }) {
   const [confParcela, setConfParcela] = useState(null);
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
-  const [confValorDigits, setconfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
+  const [confValorDigits, setConfValorDigits] = useState(""); // opcional: se vazio, backend assume previsto
 
   async function load() {
     setError("");
@@ -444,7 +444,7 @@ useEffect(() => {
     setConfParcela(parcela);
     setConfData(toDDMMYYYY(new Date())); // default hoje
     setConfMeio("PIX");
-    confValorDigits(""); // vazio => backend assume previsto
+    setConfValorDigits(""); // vazio => backend assume previsto
     setConfOpen(true);
   }
 
