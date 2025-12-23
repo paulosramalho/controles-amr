@@ -1998,6 +1998,18 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     if (pendentes.length === 0) {
       return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
     }
+    // 2.1) Define a data-base da renegociação (OPÇÃO 1):
+    // menor vencimento dentre as parcelas pendentes do contrato original.
+    // Normalizamos para "meio-dia" para evitar efeito D-1 por fuso horário.
+    const dataBaseRaw = pendentes
+      .map((p) => p.vencimento)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+
+    // Se por algum motivo não houver vencimento nas pendentes, usa a data de hoje (normalizada).
+    const _db = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
+    const dataBase = new Date(_db.getUTCFullYear(), _db.getUTCMonth(), _db.getUTCDate(), 12, 0, 0, 0);
+
 
     // 3) Calcula saldo pendente (Decimal)
     // Se seu projeto usa helper moneyToCents/centsToDecimalString, pode usar.
@@ -2070,7 +2082,7 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
             create: [
               {
                 numero: 1,
-                vencimento: new Date(), // vencimento hoje
+                vencimento: dataBase, // vencimento hoje
                 valorPrevisto: centsToDecimalString(saldoCents),
                 status: "PREVISTA",
               },
