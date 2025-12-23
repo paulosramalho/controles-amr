@@ -158,12 +158,36 @@ function AppShell({ user, onLogout }) {
 
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
   const [openSettings, setOpenSettings] = useState(false);
+  const [openLivroCaixa, setOpenLivroCaixa] = useState(false);
+  const [openLancamentos, setOpenLancamentos] = useState(false);
 
   const menu = useMemo(() => {
     if (isAdmin) {
       return [
         { to: "/dashboard", label: "Dashboard" },
         { to: "/repasses", label: "Repasses" },
+
+        // ✅ Livro Caixa (abaixo de Repasses)
+        {
+          type: "group",
+          label: "Livro Caixa",
+          children: [
+            {
+              type: "subgroup",
+              label: "Lançamentos",
+              children: [
+                { to: "/livro-caixa/realizar", label: "Realizar" },
+                { to: "/livro-caixa/agendar", label: "Agendar" },
+              ],
+            },
+            { to: "/livro-caixa/visualizacao", label: "Visualização" },
+            { to: "/livro-caixa/emissao", label: "Emissão" },
+          ],
+        },
+
+        // ✅ Pagamentos sai de Configurações e fica abaixo de Livro Caixa
+        { to: "/pagamentos", label: "Pagamentos" },
+
         { to: "/historico", label: "Histórico" },
         { to: "/relatorios", label: "Relatórios" },
 
@@ -174,7 +198,6 @@ function AppShell({ user, onLogout }) {
           children: [
             { to: "/advogados", label: "Advogados" },
             { to: "/clientes", label: "Clientes" },
-            { to: "/pagamentos", label: "Pagamentos" },
             { to: "/usuarios", label: "Usuários" },
           ],
         },
@@ -220,13 +243,15 @@ function AppShell({ user, onLogout }) {
         <nav className="p-3 space-y-2 flex-1 overflow-auto">
           {menu.map((item) => {
             if (item.type === "group") {
-              const opened = openSettings;
+              const opened = item.label === "Configurações" ? openSettings : openLivroCaixa;
+              const toggle =
+                item.label === "Configurações" ? setOpenSettings : setOpenLivroCaixa;
 
               return (
                 <div key={item.label} className="mt-2">
                   <button
                     type="button"
-                    onClick={() => setOpenSettings((v) => !v)}
+                    onClick={() => toggle((v) => !v)}
                     className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
                     aria-expanded={opened}
                   >
@@ -238,16 +263,53 @@ function AppShell({ user, onLogout }) {
 
                   {opened ? (
                     <div className="space-y-1 mt-1">
-                      {item.children.map((child) => (
-                        <NavLink
-                          key={child.to}
-                          to={child.to}
-                          className={navClass}
-                          style={{ paddingLeft: 28 }} // ✅ "um pouco mais para a direita"
-                        >
-                          {child.label}
-                        </NavLink>
-                      ))}
+                      {item.children.map((child) => {
+                        if (child.type === "subgroup") {
+                          const openedSub = openLancamentos;
+                          return (
+                            <div key={child.label}>
+                              <button
+                                type="button"
+                                onClick={() => setOpenLancamentos((v) => !v)}
+                                className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+                                aria-expanded={openedSub}
+                                style={{ paddingLeft: 28 }}
+                              >
+                                <span>{child.label}</span>
+                                <span className="text-slate-500">
+                                  <Chevron open={openedSub} />
+                                </span>
+                              </button>
+
+                              {openedSub ? (
+                                <div className="space-y-1 mt-1">
+                                  {child.children.map((gchild) => (
+                                    <NavLink
+                                      key={gchild.to}
+                                      to={gchild.to}
+                                      className={navClass}
+                                      style={{ paddingLeft: 44 }}
+                                    >
+                                      {gchild.label}
+                                    </NavLink>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <NavLink
+                            key={child.to}
+                            to={child.to}
+                            className={navClass}
+                            style={{ paddingLeft: 28 }}
+                          >
+                            {child.label}
+                          </NavLink>
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>
@@ -289,6 +351,10 @@ function AppShell({ user, onLogout }) {
           <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
+          <Route path="/livro-caixa/realizar" element={<Placeholder title="Livro Caixa — Realizar" />} />
+          <Route path="/livro-caixa/agendar" element={<Placeholder title="Livro Caixa — Agendar" />} />
+          <Route path="/livro-caixa/visualizacao" element={<Placeholder title="Livro Caixa — Visualização" />} />
+          <Route path="/livro-caixa/emissao" element={<Placeholder title="Livro Caixa — Emissão" />} />
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />
           <Route path="/usuarios" element={<UsuariosPage user={user} />} />
