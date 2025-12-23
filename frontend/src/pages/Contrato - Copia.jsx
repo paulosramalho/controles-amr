@@ -187,7 +187,7 @@ export default function ContratoPage({ user }) {
 
             <Link
               to={renegociarHref}
-              className="rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-slate-900"
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               title="Abrir Pagamentos para renegociar o saldo do contrato"
             >
               Renegociar Saldo
@@ -226,29 +226,6 @@ export default function ContratoPage({ user }) {
                   <Badge tone={stTone}>{stLabel}</Badge>
                 </div>
               </div>
-
-              {contrato?.contratoOrigem ? (
-                <div className="md:col-span-3">
-                  <div className="text-slate-500">Origem</div>
-                  <div className="font-semibold text-slate-900">
-                    Originado da renegociação do contrato{" "}
-                    <Link to={`/contratos/${contrato.contratoOrigem.id}`} className="underline">
-                      {contrato.contratoOrigem.numeroContrato}
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-
-              {contrato?.renegociadoPara ? (
-                <div className="md:col-span-3">
-                  <div className="text-slate-500">Renegociado para</div>
-                  <div className="font-semibold text-slate-900">
-                    <Link to={`/contratos/${contrato.renegociadoPara.id}`} className="underline">
-                      {contrato.renegociadoPara.numeroContrato}
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
 
               <div>
                 <div className="text-slate-500">Valor total</div>
