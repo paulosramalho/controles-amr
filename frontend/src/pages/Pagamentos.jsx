@@ -789,7 +789,28 @@ async function cancelarParcela() {
 
         {formaPagamento === "ENTRADA_PARCELAS" ? (
           <div className="mt-4 space-y-4">
-            formaPagamento === "ENTRADA_PARCELAS"
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <Input
+    label="Qtd. parcelas (após entrada)"
+    value={entradaParcelasQtd}
+    onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
+    placeholder="Ex.: 5"
+    disabled={loading}
+    inputMode="numeric"
+  />
+
+  {/* ✅ VOLTOU: Vencimento 1ª Parcela */}
+  <DateInput
+    label="Vencimento 1ª Parcela"
+    value={entradaParcelasPrimeiroVenc}
+    onChange={setEntradaParcelasPrimeiroVenc}
+    disabled={loading}
+  />
+
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+    A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
+  </div>
+</div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input
