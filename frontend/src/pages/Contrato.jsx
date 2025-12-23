@@ -39,7 +39,6 @@ function normalizeForma(fp) {
 /**
  * Padrão aprovado:
  * computeStatusContrato(c) → "EM_DIA" | "ATRASADO" | "QUITADO" | "CANCELADO" | "RENEGOCIADO"
- * (Badges ficam somente em Pagamentos.jsx)
  */
 function computeStatusContrato(contrato) {
   const parcelas = contrato?.parcelas || [];
@@ -68,6 +67,14 @@ function statusLabel(st) {
   return "Em dia";
 }
 
+function statusTone(st) {
+  if (st === "ATRASADO") return "red";
+  if (st === "QUITADO") return "green";
+  if (st === "CANCELADO") return "slate";
+  if (st === "RENEGOCIADO") return "amber";
+  return "blue";
+}
+
 function Card({ title, right, children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
@@ -77,6 +84,22 @@ function Card({ title, right, children }) {
       </div>
       <div className="p-5">{children}</div>
     </div>
+  );
+}
+
+function Badge({ children, tone = "slate" }) {
+  const map = {
+    slate: "bg-slate-600 text-white",
+    green: "bg-green-600 text-white",
+    red: "bg-red-600 text-white",
+    blue: "bg-blue-600 text-white",
+    amber: "bg-amber-500 text-white",
+  };
+
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+      {children}
+    </span>
   );
 }
 
@@ -142,6 +165,7 @@ export default function ContratoPage({ user }) {
 
   const st = contrato ? computeStatusContrato(contrato) : "EM_DIA";
   const stLabel = statusLabel(st);
+  const stTone = statusTone(st);
 
   // Se for útil para a tela de renegociação em Pagamentos (quando existir),
   // deixamos o id disponível via querystring.
@@ -163,7 +187,7 @@ export default function ContratoPage({ user }) {
 
             <Link
               to={renegociarHref}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               title="Abrir Pagamentos para renegociar o saldo do contrato"
             >
               Renegociar Saldo
@@ -198,7 +222,9 @@ export default function ContratoPage({ user }) {
               </div>
               <div>
                 <div className="text-slate-500">Status</div>
-                <div className="font-semibold text-slate-900">{stLabel}</div>
+                <div className="mt-1">
+                  <Badge tone={stTone}>{stLabel}</Badge>
+                </div>
               </div>
 
               <div>
@@ -238,18 +264,20 @@ export default function ContratoPage({ user }) {
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {parcelas.map((p) => {
                     const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
-                    const label =
-                      p.status === "RECEBIDA"
-                        ? "Recebida"
-                        : p.status === "CANCELADA"
-                          ? "Cancelada"
+
+                    const badge =
+                      p.status === "CANCELADA"
+                        ? { label: "Cancelada", tone: "slate" }
+                        : p.status === "RECEBIDA"
+                          ? { label: "Recebida", tone: "green" }
                           : isOverdue
-                            ? "Atrasada"
-                            : "Prevista";
+                            ? { label: "Atrasada", tone: "red" }
+                            : { label: "Prevista", tone: "blue" };
 
                     const motivo =
-                      p.cancelMotivo ||
+                      p.cancelamentoMotivo ||
                       p.motivoCancelamento ||
+                      p.cancelMotivo ||
                       p.motivo ||
                       "";
 
@@ -258,28 +286,23 @@ export default function ContratoPage({ user }) {
                         <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
                         <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
                         <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <span
-                              className={`font-semibold ${
-                                label === "Atrasada"
-                                  ? "text-red-700"
-                                  : label === "Recebida"
-                                    ? "text-green-700"
-                                    : label === "Cancelada"
-                                      ? "text-slate-600"
-                                      : "text-slate-800"
-                              }`}
-                              title={label === "Cancelada" && motivo ? `Motivo: ${motivo}` : undefined}
-                            >
-                              {label}
-                            </span>
-                            {label === "Cancelada" && motivo ? (
-                              <div className="text-xs text-slate-500 line-clamp-1" title={motivo}>
-                                Motivo: {motivo}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {p.status === "CANCELADA" ? (
+                            <div className="space-y-1">
+                              <Badge tone={badge.tone}>{badge.label}</Badge>
+                              <div className="text-xs text-slate-500">
+                                {p.canceladaEm ? `Cancelada em ${toDDMMYYYY(p.canceladaEm)}` : "Cancelada"}
+                                {p.canceladaPor?.nome ? ` por ${p.canceladaPor.nome}` : ""}
                               </div>
-                            ) : null}
-                          </div>
+                              {motivo ? (
+                                <div className="text-xs text-slate-500 truncate max-w-[260px]" title={motivo}>
+                                  Motivo: {motivo}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <Badge tone={badge.tone}>{badge.label}</Badge>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-800">
                           {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
