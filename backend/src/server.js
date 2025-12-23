@@ -116,10 +116,16 @@ function formatBRL(v) {
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
-  // number
-  if (typeof input === "number") {
-    if (!Number.isFinite(input)) return null;
-    return BigInt(Math.round(input * 100));
+  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
+  if (typeof input === "object" && input !== null && typeof input.toString === "function") {
+    const sObj = String(input.toString()).trim();
+    // "3870" (Decimal) => R$ 3.870,00
+    if (/^\d+$/.test(sObj)) return BigInt(sObj + "00");
+    // "3870.00" => ok
+    if (/^\d+(\.\d{1,2})$/.test(sObj)) {
+      const [i, d = ""] = sObj.split(".");
+      return BigInt(i + d.padEnd(2, "0"));
+    }
   }
 
   const s0 = String(input).trim();
@@ -1835,11 +1841,9 @@ app.patch(
       }
 
       // Se não vier valorRecebido, assume o valor previsto
-      const cents = moneyToCents(
-        valorRecebido ??
-        parcela.valorPrevisto?.toString?.() ??
-        parcela.valorPrevisto
-      );
+      const cents = valorRecebido
+       ? moneyToCents(valorRecebido)
+       : moneyToCents(parcela.valorPrevisto); // passa o Decimal “cru”, não string
 
       if (!cents || cents <= 0n) {
         return res.status(400).json({ message: "Valor recebido inválido." });
