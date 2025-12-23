@@ -1954,9 +1954,18 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
             canceladaPor: { select: { id: true, nome: true } },
           },
         },
-      }
-      }
+      },
     });
+
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+    return res.json(contrato);
+  } catch (err) {
+    console.error("Erro ao buscar contrato:", err);
+    return res.status(500).json({ message: "Erro ao buscar contrato." });
+  }
+});
+
+
 
 // POST /api/contratos/:id/renegociar
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
