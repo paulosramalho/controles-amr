@@ -221,20 +221,22 @@ export default function ContratoPage({ user }) {
 
   // Admin-only: edição (correção de lançamentos)
   const [editContratoOpen, setEditContratoOpen] = useState(false);
-  const [editParcelaOpen, setEditParcelaOpen] = useState(false);
-  const [adminPassword, setAdminPassword] = useState("");
+  const [retParcelaOpen, setRetParcelaOpen] = useState(false);
 
+  const [adminPasswordObs, setAdminPasswordObs] = useState("");
+  const [adminPasswordRet, setAdminPasswordRet] = useState("");
+
+  // Editar (restrito): somente observações
   const [editContratoForm, setEditContratoForm] = useState({
-    numeroContrato: "",
-    valorTotal: "",
-    formaPagamento: "AVISTA",
     observacoes: "",
   });
 
-  const [editParcela, setEditParcela] = useState(null);
-  const [editParcelaForm, setEditParcelaForm] = useState({
+  // Retificar parcela (auditável)
+  const [retParcela, setRetParcela] = useState(null);
+  const [retParcelaForm, setRetParcelaForm] = useState({
     vencimento: "",
     valorPrevisto: "",
+    motivo: "",
   });
 
   async function loadContrato() {
@@ -302,11 +304,8 @@ export default function ContratoPage({ user }) {
 
   function openEditContrato() {
     if (!contrato) return;
-    setAdminPassword("");
+    setAdminPasswordObs("");
     setEditContratoForm({
-      numeroContrato: contrato.numeroContrato || "",
-      valorTotal: contrato.valorTotal || "",
-      formaPagamento: contrato.formaPagamento || "AVISTA",
       observacoes: contrato.observacoes || "",
     });
     setEditContratoOpen(true);
@@ -314,64 +313,73 @@ export default function ContratoPage({ user }) {
 
   async function saveEditContrato() {
     try {
-      if (!adminPassword) {
-        setError("Confirme sua senha de admin para editar.");
+      if (!adminPasswordObs) {
+        setError("Confirme sua senha de admin para editar observações.");
         return;
       }
       await apiFetch(`/contratos/${contrato.id}/admin-edit`, {
         method: "PUT",
         body: {
-          adminPassword,
-          numeroContrato: editContratoForm.numeroContrato,
-          valorTotal: editContratoForm.valorTotal,
-          formaPagamento: editContratoForm.formaPagamento,
+          adminPassword: adminPasswordObs,
           observacoes: editContratoForm.observacoes,
         },
       });
       setEditContratoOpen(false);
-      setAdminPassword("");
+      setAdminPasswordObs("");
       await loadContrato();
     } catch (e) {
       setError(e?.message || "Erro ao editar contrato.");
     }
   }
 
-  function openEditParcela(p) {
+  function openRetParcela(p) {
     setError("");
-    setAdminPassword("");
-    setEditParcela(p);
-    setEditParcelaForm({
+    setAdminPasswordRet("");
+    setRetParcela(p);
+    setRetParcelaForm({
       vencimento: toDDMMYYYY(p?.vencimento),
       valorPrevisto: p?.valorPrevisto ?? "",
+      motivo: "",
     });
-    setEditParcelaOpen(true);
+    setRetParcelaOpen(true);
   }
 
-  async function saveEditParcela() {
+
+  async function saveRetParcela() {
     try {
-      if (!editParcela) return;
-      if (!adminPassword) {
-        setError("Confirme sua senha de admin para editar.");
+      if (!retParcela) return;
+      if (!adminPasswordRet) {
+        setError("Confirme sua senha de admin para retificar.");
         return;
       }
-      await apiFetch(`/parcelas/${editParcela.id}/admin-edit`, {
-        method: "PUT",
+      if (!String(retParcelaForm.motivo || "").trim()) {
+        setError("Informe o motivo da retificação.");
+        return;
+      }
+
+      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+        method: "POST",
         body: {
-          adminPassword,
-          vencimento: editParcelaForm.vencimento,
-          valorPrevisto: editParcelaForm.valorPrevisto,
+          adminPassword: adminPasswordRet,
+          motivo: retParcelaForm.motivo,
+          patch: {
+            vencimento: retParcelaForm.vencimento,
+            valorPrevisto: retParcelaForm.valorPrevisto,
+          },
         },
       });
-      setEditParcelaOpen(false);
-      setEditParcela(null);
-      setAdminPassword("");
+
+      setRetParcelaOpen(false);
+      setRetParcela(null);
+      setAdminPasswordRet("");
       await loadContrato();
     } catch (e) {
-      setError(e?.message || "Erro ao editar parcela.");
+      setError(e?.message || "Erro ao retificar parcela.");
     }
   }
 
-  function openRenegociar() {
+      
+function openRenegociar() {
     if (!contrato) return;
     setRenegError("");
     // defaults (dataBase pré-preenchida e editável)
@@ -503,9 +511,9 @@ export default function ContratoPage({ user }) {
                 type="button"
                 onClick={openEditContrato}
                 className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
-                title="Editar contrato (admin-only)"
+                title="Editar observações (admin-only)"
               >
-                Editar
+                Editar Observações
               </button>
             ) : null}
 
@@ -653,10 +661,10 @@ export default function ContratoPage({ user }) {
                           <td className="px-4 py-3">
                             <button
                               type="button"
-                              onClick={() => openEditParcela(p)}
+                              onClick={() => openRetParcela(p)}
                               className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-100"
                             >
-                              Editar
+                              Retificar
                             </button>
                           </td>
                         ) : null}
@@ -830,10 +838,10 @@ export default function ContratoPage({ user }) {
         {/* Admin-only: Modais de edição */}
         <Modal
           open={editContratoOpen}
-          title="Editar contrato (admin-only)"
+          title="Editar observações (admin-only)"
           onClose={() => {
             setEditContratoOpen(false);
-            setAdminPassword("");
+            setAdminPasswordObs("");
           }}
           footer={
             <div className="flex items-center justify-end gap-2">
@@ -841,7 +849,7 @@ export default function ContratoPage({ user }) {
                 type="button"
                 onClick={() => {
                   setEditContratoOpen(false);
-                  setAdminPassword("");
+                  setAdminPasswordObs("");
                 }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               >
@@ -862,43 +870,11 @@ export default function ContratoPage({ user }) {
               <label className="block text-xs font-semibold text-slate-600 mb-1">Senha (admin)</label>
               <input
                 type="password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
+                value={adminPasswordObs}
+                onChange={(e) => setAdminPasswordObs(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 placeholder="Digite sua senha para confirmar"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Número do contrato</label>
-              <input
-                value={editContratoForm.numeroContrato}
-                onChange={(e) => setEditContratoForm((s) => ({ ...s, numeroContrato: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Valor total (R$)</label>
-              <input
-                value={editContratoForm.valorTotal}
-                onChange={(e) => setEditContratoForm((s) => ({ ...s, valorTotal: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Ex.: 1234,56"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Forma de pagamento</label>
-              <select
-                value={editContratoForm.formaPagamento}
-                onChange={(e) => setEditContratoForm((s) => ({ ...s, formaPagamento: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white"
-              >
-                <option value="AVISTA">À vista</option>
-                <option value="PARCELADO">Parcelado</option>
-                <option value="ENTRADA_PARCELAS">Entrada + Parcelas</option>
-              </select>
             </div>
 
             <div>
@@ -906,28 +882,29 @@ export default function ContratoPage({ user }) {
               <textarea
                 value={editContratoForm.observacoes}
                 onChange={(e) => setEditContratoForm((s) => ({ ...s, observacoes: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm min-h-[90px]"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm min-h-[110px]"
+                placeholder="Digite observações internas (opcional)"
               />
             </div>
           </div>
         </Modal>
 
         <Modal
-          open={editParcelaOpen}
-          title="Editar parcela (admin-only)"
+          open={retParcelaOpen}
+          title="Retificar parcela (admin-only)"
           onClose={() => {
-            setEditParcelaOpen(false);
-            setEditParcela(null);
-            setAdminPassword("");
+            setRetParcelaOpen(false);
+            setRetParcela(null);
+            setAdminPasswordRet("");
           }}
           footer={
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setEditParcelaOpen(false);
-                  setEditParcela(null);
-                  setAdminPassword("");
+                  setRetParcelaOpen(false);
+                  setRetParcela(null);
+                  setAdminPasswordRet("");
                 }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               >
@@ -935,10 +912,10 @@ export default function ContratoPage({ user }) {
               </button>
               <button
                 type="button"
-                onClick={saveEditParcela}
+                onClick={saveRetParcela}
                 className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
-                Salvar
+                Retificar
               </button>
             </div>
           }
@@ -948,28 +925,38 @@ export default function ContratoPage({ user }) {
               <label className="block text-xs font-semibold text-slate-600 mb-1">Senha (admin)</label>
               <input
                 type="password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
+                value={adminPasswordRet}
+                onChange={(e) => setAdminPasswordRet(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 placeholder="Digite sua senha para confirmar"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Motivo</label>
+              <input
+                value={retParcelaForm.motivo}
+                onChange={(e) => setRetParcelaForm((s) => ({ ...s, motivo: e.target.value }))}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Ex.: Correção de vencimento digitado errado"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento (DD/MM/AAAA)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
                 <input
-                  value={editParcelaForm.vencimento}
-                  onChange={(e) => setEditParcelaForm((s) => ({ ...s, vencimento: e.target.value }))}
+                  value={retParcelaForm.vencimento}
+                  onChange={(e) => setRetParcelaForm((s) => ({ ...s, vencimento: e.target.value }))}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="DD/MM/AAAA"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Valor previsto (R$)</label>
                 <input
-                  value={editParcelaForm.valorPrevisto}
-                  onChange={(e) => setEditParcelaForm((s) => ({ ...s, valorPrevisto: e.target.value }))}
+                  value={retParcelaForm.valorPrevisto}
+                  onChange={(e) => setRetParcelaForm((s) => ({ ...s, valorPrevisto: e.target.value }))}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Ex.: 1234,56"
                 />

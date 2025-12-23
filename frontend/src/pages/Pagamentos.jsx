@@ -661,7 +661,6 @@ async function cancelarParcela() {
           ? { label: "Cancelado", tone: "slate" }
           : { label: "Em dia", tone: "blue" };
 
-
                 const totalRecebidoLinha =
                   Number(
                     parcelas

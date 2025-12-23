@@ -1,7 +1,7 @@
 // src/pages/Pagamentos.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -246,6 +246,9 @@ export default function PagamentosPage({ user }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [renegProcessando, setRenegProcessando] = useState(false);
 
   // modal novo contrato
   const [openNovo, setOpenNovo] = useState(false);
@@ -320,6 +323,43 @@ export default function PagamentosPage({ user }) {
     if (!isAdmin) return;
     load();
   }, [isAdmin]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const params = new URLSearchParams(location.search || "");
+    const id = params.get("renegociar");
+    if (!id) return;
+    if (renegProcessando) return;
+
+    (async () => {
+      setError("");
+      setRenegProcessando(true);
+      try {
+        const resp = await apiFetch(`/contratos/${id}/renegociar`, { method: "POST" });
+
+        const novoId =
+          resp?.contratoNovo?.id ??
+          resp?.contratoNovoId ??
+          resp?.id;
+
+        // limpa query param (pra não repetir ao voltar)
+        navigate("/pagamentos", { replace: true });
+
+        await load();
+
+        if (novoId) {
+          navigate(`/contratos/${novoId}`);
+        }
+      } catch (e) {
+        navigate("/pagamentos", { replace: true });
+        setError(e?.message || "Falha ao renegociar saldo.");
+      } finally {
+        setRenegProcessando(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, location.search]);
 
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
@@ -611,15 +651,16 @@ async function cancelarParcela() {
 
                 const st = computeStatusContrato(c);
                 const status =
-                  st === "ATRASADO"
-                    ? { label: "Atrasado", tone: "red" }
-                    : st === "QUITADO"
-                      ? { label: "Quitado", tone: "green" }
-                      : st === "CANCELADO"
-                        ? { label: "Cancelado", tone: "slate" }
-                        : st === "RENEGOCIADO"
-                          ? { label: "Renegociado", tone: "amber" }
-                          : { label: "Em dia", tone: "blue" };
+  st === "ATRASADO"
+    ? { label: "Atrasado", tone: "red" }
+    : st === "RENEGOCIADO"
+      ? { label: "Renegociado", tone: "amber" }
+      : st === "QUITADO"
+        ? { label: "Quitado", tone: "green" }
+        : st === "CANCELADO"
+          ? { label: "Cancelado", tone: "slate" }
+          : { label: "Em dia", tone: "blue" };
+
 
                 const totalRecebidoLinha =
                   Number(
@@ -788,42 +829,56 @@ async function cancelarParcela() {
         ) : null}
 
         {formaPagamento === "ENTRADA_PARCELAS" ? (
-          <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <label className="block">
-                <div className="text-sm font-medium text-slate-700">Valor da entrada</div>
-                <div className="mt-1 relative">
-                  <input
-                    className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                    value={maskBRLFromDigits(entradaValorDigits)}
-                    onChange={(e) => setEntradaValorDigits(onlyDigits(e.target.value))}
-                    placeholder="0,00"
-                    disabled={loading}
-                    inputMode="numeric"
-                  />
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-                </div>
-              </label>
+  <div className="mt-4 space-y-4">
+    {/* Linha 1: Entrada (valor e vencimento) + vencimento 1ª parcela */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <label className="block">
+        <div className="text-sm font-medium text-slate-700">Valor Entrada</div>
+        <div className="mt-1 relative">
+          <input
+            className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+            value={maskBRLFromDigits(entradaValorDigits)}
+            onChange={(e) => setEntradaValorDigits(onlyDigits(e.target.value))}
+            placeholder="0,00"
+            disabled={loading}
+            inputMode="numeric"
+          />
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+        </div>
+      </label>
 
-              <DateInput label="Vencimento da entrada" value={entradaVenc} onChange={setEntradaVenc} disabled={loading} />
-            </div>
+      <DateInput
+        label="Vencimento Entrada"
+        value={entradaVenc}
+        onChange={setEntradaVenc}
+        disabled={loading}
+      />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input
-                label="Qtd. parcelas (após entrada)"
-                value={entradaParcelasQtd}
-                onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
-                placeholder="Ex.: 5"
-                disabled={loading}
-                inputMode="numeric"
-              />
+      <DateInput
+        label="Vencimento 1ª Parcela"
+        value={entradaParcelasPrimeiroVenc}
+        onChange={setEntradaParcelasPrimeiroVenc}
+        disabled={loading}
+      />
+    </div>
 
-              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
-              </div>
-            </div>
-          </div>
-        ) : null}
+    {/* Linha 2: Quantidade de parcelas + aviso */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Input
+        label="Qtd. parcelas (após entrada)"
+        value={entradaParcelasQtd}
+        onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
+        placeholder="Ex.: 5"
+        disabled={loading}
+        inputMode="numeric"
+      />
+
+      <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+        A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
+      </div>
+    </div>
+  </div>
+) : null}
 
         <div className="mt-4">
           <Textarea label="Observações" value={observacoes} onChange={setObservacoes} placeholder="Notas internas…" disabled={loading} />
