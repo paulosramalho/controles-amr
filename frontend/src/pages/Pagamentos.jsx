@@ -788,46 +788,56 @@ async function cancelarParcela() {
         ) : null}
 
         {formaPagamento === "ENTRADA_PARCELAS" ? (
-          <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <Input
-    label="Qtd. parcelas (após entrada)"
-    value={entradaParcelasQtd}
-    onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
-    placeholder="Ex.: 5"
-    disabled={loading}
-    inputMode="numeric"
-  />
+  <div className="mt-4 space-y-4">
+    {/* Linha 1: Entrada (valor e vencimento) + vencimento 1ª parcela */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <label className="block">
+        <div className="text-sm font-medium text-slate-700">Valor Entrada</div>
+        <div className="mt-1 relative">
+          <input
+            className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+            value={maskBRLFromDigits(entradaValorDigits)}
+            onChange={(e) => setEntradaValorDigits(onlyDigits(e.target.value))}
+            placeholder="0,00"
+            disabled={loading}
+            inputMode="numeric"
+          />
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+        </div>
+      </label>
 
-  {/* ✅ VOLTOU: Vencimento 1ª Parcela */}
-  <DateInput
-    label="Vencimento 1ª Parcela"
-    value={entradaParcelasPrimeiroVenc}
-    onChange={setEntradaParcelasPrimeiroVenc}
-    disabled={loading}
-  />
+      <DateInput
+        label="Vencimento Entrada"
+        value={entradaVenc}
+        onChange={setEntradaVenc}
+        disabled={loading}
+      />
 
-  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-    A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
+      <DateInput
+        label="Vencimento 1ª Parcela"
+        value={entradaParcelasPrimeiroVenc}
+        onChange={setEntradaParcelasPrimeiroVenc}
+        disabled={loading}
+      />
+    </div>
+
+    {/* Linha 2: Quantidade de parcelas + aviso */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Input
+        label="Qtd. parcelas (após entrada)"
+        value={entradaParcelasQtd}
+        onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
+        placeholder="Ex.: 5"
+        disabled={loading}
+        inputMode="numeric"
+      />
+
+      <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+        A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
+      </div>
+    </div>
   </div>
-</div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input
-                label="Qtd. parcelas (após entrada)"
-                value={entradaParcelasQtd}
-                onChange={(v) => setEntradaParcelasQtd(onlyDigits(v))}
-                placeholder="Ex.: 5"
-                disabled={loading}
-                inputMode="numeric"
-              />
-
-              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
-              </div>
-            </div>
-          </div>
-        ) : null}
+) : null}
 
         <div className="mt-4">
           <Textarea label="Observações" value={observacoes} onChange={setObservacoes} placeholder="Notas internas…" disabled={loading} />
