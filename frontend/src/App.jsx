@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import logoSrc from "./assets/logo.png";
@@ -6,7 +7,7 @@ import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
 import AdvogadosPage from "./pages/Advogados";
 import PagamentosPage from "./pages/Pagamentos";
 import UsuariosPage from "./pages/Usuarios";
-import modelodistribuicaoPage from "./pages/ModeloDistribuicao";
+import ModeloDistribuicaoPage from "./pages/ModeloDistribuicao";
 import ClientesPage from "./pages/Clientes";
 import ContratoPage from "./pages/Contrato";
 
@@ -25,17 +26,31 @@ function useClock() {
   };
 }
 
-function Spinner() {
+/* ---------------- placeholders ---------------- */
+function Placeholder({ title }) {
   return (
-    <span
-      className="inline-block h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin"
-      aria-label="Carregando"
-      role="status"
-    />
+    <div className="p-6">
+      <div className="text-lg font-semibold text-slate-900">{title}</div>
+      <div className="mt-2 text-sm text-slate-600">Em desenvolvimento.</div>
+    </div>
   );
 }
 
-/* ---------------- login ---------------- */
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+}
+
+/* ---------------- Login ---------------- */
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -63,50 +78,49 @@ function Login({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div className="flex flex-col items-center text-center">
-          <img src={logoSrc} alt="AMR" className="h-10 w-auto" />
-          <div className="mt-5 text-[15px] font-semibold text-slate-800 tracking-wide">
-            Controle de recebimentos, repasses e obrigações internas
-          </div>
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-center mb-5">
+          <img src={logoSrc} alt="AMR" className="h-8" />
         </div>
 
-        <h1 className="mt-6 text-lg font-semibold text-slate-900">Login</h1>
+        <div className="text-lg font-semibold text-slate-900 text-center">Entrar</div>
 
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={submit} className="mt-5 space-y-4">
+        <form onSubmit={submit} className="mt-5 space-y-3">
           <div>
-            <label className="text-sm font-medium text-slate-700">E-mail</label>
+            <label className="text-sm font-semibold text-slate-700">E-mail</label>
             <input
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={isSubmitting}
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="seu@email.com"
+              autoComplete="email"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-700">Senha</label>
+            <label className="text-sm font-semibold text-slate-700">Senha</label>
             <input
-              type="password"
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
-              disabled={isSubmitting}
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="••••••••"
+              type="password"
+              autoComplete="current-password"
             />
           </div>
+
+          {error ? (
+            <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
+              {error}
+            </div>
+          ) : null}
 
           <button
             type="submit"
+            className="w-full rounded-xl bg-blue-700 text-white px-3 py-2 font-semibold hover:bg-blue-800 disabled:opacity-60"
             disabled={isSubmitting}
-            className="w-full rounded-xl bg-slate-900 text-white py-2.5 text-sm font-semibold hover:bg-slate-800"
           >
-            {isSubmitting ? <Spinner /> : "Entrar"}
+            {isSubmitting ? "Entrando..." : "Entrar"}
           </button>
         </form>
       </div>
@@ -114,34 +128,11 @@ function Login({ onLogin }) {
   );
 }
 
-function Placeholder({ title }) {
-  return (
-    <div className="p-6">
-      <div className="text-lg font-semibold text-slate-900">{title}</div>
-      <div className="mt-2 text-sm text-slate-600">Em desenvolvimento.</div>
-    </div>
-  );
-}
-
-function Chevron({ open }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M9 18l6-6-6-6" />
-    </svg>
-  );
-}
-
-/* ---------------- shell ---------------- */
-function AppShell({ user, onLogout }) {
+/* ---------------- Shell ---------------- */
+function Shell({ user, onLogout }) {
   const clock = useClock();
-  const navigate = useNavigate();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
   const [openSettings, setOpenSettings] = useState(false);
@@ -153,50 +144,34 @@ function AppShell({ user, onLogout }) {
     return [
       { to: "/dashboard", label: "Dashboard" },
 
-      /* Pagamentos */
+      // ✅ Pagamentos entre Dashboard e Repasses
       { to: "/pagamentos", label: "Pagamentos" },
 
       { to: "/repasses", label: "Repasses" },
 
-      /* Livro Caixa */
       {
         type: "group",
         label: "Livro Caixa",
         children: [
-          { to: "/livro-caixa/lancamentos", label: "Lançamentos" },
+          { to: "/livro-caixa/lancamentos", label: "Lançamentos" }, // sem expand/retrai
           { to: "/livro-caixa/visualizacao", label: "Visualização" },
           { to: "/livro-caixa/emissao", label: "Emissão" },
         ],
       },
 
-            { to: "/historico", label: "Histórico" },
-      { to: "/relatorios", label: "Relatórios" },
+      { type: "group", label: "Configurações", children: [
+        { to: "/usuarios", label: "Usuários" },
+        { to: "/modelo-distribuicao", label: "Modelo de Distribuição" },
+      ]},
 
-      /* Configurações */
-      {
-        type: "group",
-        label: "Configurações",
-        children: [
-          { to: "/advogados", label: "Advogados" },
-          { to: "/clientes", label: "Clientes" },
-          { to: "/usuarios", label: "Usuários" },
-          { to: "/modelo-distribuicao", label: "Modelo de Distribuição" },
-        ],
-      },
+      { to: "/historico", label: "Histórico" },
+      { to: "/relatorios", label: "Relatórios" },
     ];
   }, [isAdmin]);
 
-  useEffect(() => {
-    if (location.pathname === "/") {
-      navigate("/dashboard", { replace: true });
-    }
-  }, []);
-
   const navClass = ({ isActive }) =>
     `block rounded-lg px-4 py-2 text-sm transition-colors ${
-      isActive
-        ? "bg-blue-200 text-blue-950 font-semibold"
-        : "text-slate-700 hover:bg-blue-50"
+      isActive ? "bg-blue-200 text-blue-950 font-semibold" : "text-slate-700 hover:bg-blue-50"
     }`;
 
   return (
@@ -209,12 +184,8 @@ function AppShell({ user, onLogout }) {
         <nav className="p-3 space-y-2 flex-1 overflow-auto">
           {menu.map((item) => {
             if (item.type === "group") {
-              const opened =
-                item.label === "Configurações" ? openSettings : openLivroCaixa;
-              const toggle =
-                item.label === "Configurações"
-                  ? setOpenSettings
-                  : setOpenLivroCaixa;
+              const opened = item.label === "Configurações" ? openSettings : openLivroCaixa;
+              const toggle = item.label === "Configurações" ? setOpenSettings : setOpenLivroCaixa;
 
               return (
                 <div key={item.label}>
@@ -226,20 +197,15 @@ function AppShell({ user, onLogout }) {
                     <Chevron open={opened} />
                   </button>
 
-                  {opened && (
-                    <div className="mt-1 space-y-1">
-                      {item.children.map((child) => (
-                        <NavLink
-                          key={child.to}
-                          to={child.to}
-                          className={navClass}
-                          style={{ paddingLeft: 28 }}
-                        >
-                          {child.label}
+                  {opened ? (
+                    <div className="mt-1 ml-2 space-y-1">
+                      {item.children.map((ch) => (
+                        <NavLink key={ch.to} to={ch.to} className={navClass}>
+                          {ch.label}
                         </NavLink>
                       ))}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               );
             }
@@ -258,6 +224,7 @@ function AppShell({ user, onLogout }) {
             <span>{clock.time}</span>
           </div>
 
+          {/* ✅ Usuário logado e tipo entre data/hora e sair */}
           <div className="px-3 py-2 text-xs text-slate-600">
             <div className="font-semibold text-slate-800">{user?.nome || "—"}</div>
             <div>
@@ -267,7 +234,11 @@ function AppShell({ user, onLogout }) {
           </div>
 
           <button
-            onClick={onLogout}
+            onClick={() => {
+              clearAuth();
+              onLogout?.();
+              navigate("/");
+            }}
             className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold hover:bg-slate-100"
           >
             Sair
@@ -282,23 +253,17 @@ function AppShell({ user, onLogout }) {
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
 
-          <Route
-            path="/livro-caixa/lancamentos"
-            element={<Placeholder title="Livro Caixa — Lançamentos" />}
-          />
-          <Route
-            path="/livro-caixa/visualizacao"
-            element={<Placeholder title="Livro Caixa — Visualização" />}
-          />
-          <Route
-            path="/livro-caixa/emissao"
-            element={<Placeholder title="Livro Caixa — Emissão" />}
-          />
+          <Route path="/livro-caixa/lancamentos" element={<Placeholder title="Livro Caixa — Lançamentos" />} />
+          <Route path="/livro-caixa/visualizacao" element={<Placeholder title="Livro Caixa — Visualização" />} />
+          <Route path="/livro-caixa/emissao" element={<Placeholder title="Livro Caixa — Emissão" />} />
 
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />
           <Route path="/usuarios" element={<UsuariosPage user={user} />} />
-          <Route path="/modelo-distribuicao" element={ModeloDistribuicaoPage user={user} />} />
+
+          {/* ✅ CORRIGIDO */}
+          <Route path="/modelo-distribuicao" element={<ModeloDistribuicaoPage user={user} />} />
+
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
           <Route path="*" element={<Placeholder title="Página não encontrada" />} />
@@ -308,22 +273,19 @@ function AppShell({ user, onLogout }) {
   );
 }
 
+/* ---------------- App root ---------------- */
 export default function App() {
-  const [user, setUser] = useState(null);
-
-  function handleLogout() {
-    setUser(null);
-    clearAuth?.();
-    localStorage.removeItem("token");
-    localStorage.removeItem("auth");
-  }
+  const [user, setUser] = useState(() => getUser());
+  const token = getToken();
 
   useEffect(() => {
-    const token = getToken?.();
-    const storedUser = getUser?.();
-    if (token && storedUser && !user) setUser(storedUser);
-  }, []);
+    if (!token) return;
+    // opcional: refresh do user
+  }, [token]);
 
-  if (!user) return <Login onLogin={setUser} />;
-  return <AppShell user={user} onLogout={handleLogout} />;
+  if (!token || !user) {
+    return <Login onLogin={(u) => setUser(u)} />;
+  }
+
+  return <Shell user={user} onLogout={() => setUser(null)} />;
 }
