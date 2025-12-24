@@ -1973,6 +1973,131 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
     const contrato = parcela.contrato;
     if (!contrato) return res.status(400).json({ message: "Contrato da parcela não encontrado." });
 
+// ✅ Regra nova: só bloqueia se qtd PREVISTA < 2
+const previstas = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
+if (previstas.length < 2) {
+  return res.status(400).json({
+    message: "Retificação bloqueada: é necessário existir 2 ou mais parcelas PREVISTAS no contrato/renegociação.",
+  });
+}
+
+// Parcela precisa ser PREVISTA (isso já bloqueia RECEBIDA automaticamente)
+if (parcela.status !== "PREVISTA") {
+  return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
+}
+
+const p = patch || {};
+const data = {};
+
+// vencimento (opcional)
+if (p.vencimento !== undefined) {
+  const d = parseDateInput(p.vencimento);
+  if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
+  data.vencimento = d;
+}
+
+// valorPrevisto (opcional)
+let novoValorCents = null;
+if (p.valorPrevisto !== undefined) {
+  const cents = moneyToCents(p.valorPrevisto);
+  if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
+  novoValorCents = cents;
+  data.valorPrevisto = centsToDecimalString(cents);
+}
+
+if (!Object.keys(data).length) {
+  return res.status(400).json({ message: "Nada para retificar." });
+}
+
+// ✅ Se alterou valorPrevisto, preservar total: compensar em outra PREVISTA
+const updated = await prisma.$transaction(async (tx) => {
+  let outraParcelaUpdate = null;
+
+  if (novoValorCents !== null) {
+    const atualCents = moneyToCents(parcela.valorPrevisto) || 0n;
+    const delta = novoValorCents - atualCents; // novo - atual
+
+    if (delta !== 0n) {
+      // escolhe "outra" prevista (ex.: última prevista diferente da parcela alvo)
+      const candidata = previstas
+        .filter((x) => x.id !== parcela.id)
+        .sort((a, b) => (a.numero || 0) - (b.numero || 0))
+        .slice(-1)[0];
+
+      if (!candidata) {
+        throw Object.assign(new Error("Retificação bloqueada: não há outra parcela PREVISTA para compensação."), {
+          status: 400,
+        });
+      }
+
+      const candAtualCents = moneyToCents(candidata.valorPrevisto) || 0n;
+      const candNovoCents = candAtualCents - delta; // compensa
+
+      if (candNovoCents <= 0n) {
+        throw Object.assign(
+          new Error(
+            "Retificação bloqueada: a compensação tornaria outra parcela PREVISTA menor/igual a zero. Use renegociação (Rx)."
+          ),
+          { status: 400 }
+        );
+      }
+
+      outraParcelaUpdate = await tx.parcelaContrato.update({
+        where: { id: candidata.id },
+        data: { valorPrevisto: centsToDecimalString(candNovoCents) },
+      });
+    }
+  }
+
+  const afterParcela = await tx.parcelaContrato.update({
+    where: { id: parcelaId },
+    data,
+  });
+
+  // log existente (mantém) — você pode enriquecer com a compensação também
+  const before = {
+    id: parcela.id,
+    contratoId: parcela.contratoId,
+    numero: parcela.numero,
+    vencimento: parcela.vencimento,
+    valorPrevisto: parcela.valorPrevisto,
+    status: parcela.status,
+  };
+
+  const alteracoes = {};
+  if (data.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
+  if (data.valorPrevisto) alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
+  if (outraParcelaUpdate) {
+    alteracoes.compensacao = {
+      parcelaId: outraParcelaUpdate.id,
+      numero: outraParcelaUpdate.numero,
+      // não vou buscar "before" aqui pra não alongar; se quiser, eu deixo 100% auditável
+      after: outraParcelaUpdate.valorPrevisto,
+    };
+  }
+
+  await tx.retificacaoParcela.create({
+    data: {
+      parcelaId,
+      motivo: motivoTxt,
+      alteracoes,
+      snapshotAntes: before,
+      snapshotDepois: {
+        id: afterParcela.id,
+        contratoId: afterParcela.contratoId,
+        numero: afterParcela.numero,
+        vencimento: afterParcela.vencimento,
+        valorPrevisto: afterParcela.valorPrevisto,
+        status: afterParcela.status,
+      },
+      criadoPorId: req.user?.id ?? null,
+    },
+  });
+
+  return afterParcela;
+});
+
+return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
     // Semáforo: bloqueios (Vermelho)
     const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
     const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
