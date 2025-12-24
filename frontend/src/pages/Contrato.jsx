@@ -271,7 +271,7 @@ async function salvarRetificacao() {
       body: {
         adminPassword: retAdminPassword,
         motivo,
-        valorPrevisto,  // ✅ number
+        patch: { valorPrevisto },  // ✅ number
       },
     });
 
@@ -292,6 +292,8 @@ async function salvarRetificacao() {
   }, [isAdmin, id]);
 
   const parcelas = contrato?.parcelas || [];
+
+  const qtdPrevistas = (parcelas || []).filter((x) => x?.status === "PREVISTA").length;
 
   const totals = useMemo(() => {
     const ativas = parcelas.filter((p) => p?.status !== "CANCELADA");
@@ -538,13 +540,15 @@ async function salvarRetificacao() {
                         <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openRetificar(p)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                            >
-                              Retificar
-                            </button>
+                            {p.status === "PREVISTA" && qtdPrevistas >= 2 ? (
+                              <button
+                                type="button"
+                                onClick={() => openRetificar(p)}
+                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                              >
+                                Retificar
+                              </button>
+                            ) : null}
 
                           </div>
                         </td>
