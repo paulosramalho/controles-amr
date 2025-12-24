@@ -11,35 +11,38 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function onlyDigits(s) {
+  return String(s || "").replace(/\D+/g, "");
+}
+
+/**
+ * Máscara moeda aprovada (digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; 12345→123,45; 123456→1.234,56)
+ * Retorna string sem "R$ " (só número formatado pt-BR).
+ */
+function maskBRLFromDigits(digits) {
+  const d = onlyDigits(digits);
+  const n = d ? Number(d) : 0;
+  const val = n / 100;
+  return val.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function digitsToNumber(digits) {
+  const d = onlyDigits(digits);
+  const n = d ? Number(d) : 0;
+  return n / 100;
+}
+
+function sumMovimentos(parcela) {
+  const movs = Array.isArray(parcela?.movimentos) ? parcela.movimentos : [];
+  return movs.reduce((s, m) => s + Number(m?.valor || 0), 0);
+}
+
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
   const d = new Date(dateLike);
   if (!Number.isFinite(d.getTime())) return "—";
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-function parseDateDDMMYYYY(s) {
-  const raw = String(s || "").trim();
-  if (!raw) return null;
-  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-  if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
-  const dt = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
-  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
-  return dt;
-}
-
-function addMonthsNoon(ddmmyyyy, months) {
-  const base = parseDateDDMMYYYY(ddmmyyyy);
-  if (!base) return "";
-  const d = new Date(base);
-  d.setMonth(d.getMonth() + Number(months || 0));
-  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-  return toDDMMYYYY(out);
 }
 
 function isDateBeforeToday(dateLike) {
@@ -57,51 +60,6 @@ function normalizeForma(fp) {
   if (v === "PARCELADO") return "Parcelado";
   if (v === "ENTRADA_PARCELAS") return "Entrada + Parcelas";
   return fp || "—";
-}
-
-function onlyDigits(v = "") {
-  return String(v ?? "").replace(/\D/g, "");
-}
-
-// moeda (máscara tipo centavos):
-function maskBRLFromDigits(digits = "") {
-  const d = onlyDigits(digits);
-  const n = d ? BigInt(d) : 0n;
-  const intPart = n / 100n;
-  const decPart = n % 100n;
-  const intStr = intPart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${intStr},${decPart.toString().padStart(2, "0")}`;
-}
-
-function DateInput({ label, value, onChange, disabled, className = "" }) {
-  // value: "DD/MM/AAAA"  |  input[type=date] usa "YYYY-MM-DD"
-  const toISO = (ddmmyyyy) => {
-    if (!ddmmyyyy) return "";
-    const m = String(ddmmyyyy).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) return "";
-    const [, dd, mm, yyyy] = m;
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  const fromISO = (iso) => {
-    if (!iso) return "";
-    const [yyyy, mm, dd] = iso.split("-");
-    if (!yyyy || !mm || !dd) return "";
-    return `${dd}/${mm}/${yyyy}`;
-  };
-
-  return (
-    <label className={`block ${className}`}>
-      <div className="text-sm font-medium text-slate-700">{label}</div>
-      <input
-        type="date"
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-        value={toISO(value)}
-        onChange={(e) => onChange(fromISO(e.target.value))}
-        disabled={disabled}
-      />
-    </label>
-  );
 }
 
 /**
@@ -175,22 +133,21 @@ function Modal({ open, title, onClose, children, footer }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-xl rounded-2xl bg-white shadow-xl border border-slate-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <div className="text-base font-bold text-slate-900">{title}</div>
+        <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200">
+          <div className="text-lg font-semibold text-slate-900">{title}</div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
             aria-label="Fechar"
-            title="Fechar"
           >
             ✕
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
-        {footer ? <div className="px-5 py-4 border-t border-slate-200">{footer}</div> : null}
+        <div className="p-5">{children}</div>
+        {footer ? <div className="p-5 border-t border-slate-200 flex justify-end gap-2">{footer}</div> : null}
       </div>
     </div>
   );
@@ -205,39 +162,50 @@ export default function ContratoPage({ user }) {
   const [contrato, setContrato] = useState(null);
   const [error, setError] = useState("");
 
-  // 6.3 — renegociar saldo (modal)
-  const [renegOpen, setRenegOpen] = useState(false);
-  const [renegSaving, setRenegSaving] = useState(false);
-  const [renegError, setRenegError] = useState("");
+  // 6.3.B — movimentos/ajustes em parcelas (contralançamento)
+  const [movOpen, setMovOpen] = useState(false);
+  const [movSaving, setMovSaving] = useState(false);
+  const [movError, setMovError] = useState("");
+  const [movParcela, setMovParcela] = useState(null);
+  const [movTipo, setMovTipo] = useState("AJUSTE");
+  const [movSign, setMovSign] = useState("-");
+  const [movValorDigits, setMovValorDigits] = useState("");
+  const [movData, setMovData] = useState("");
+  const [movMeio, setMovMeio] = useState("PIX");
+  const [movMotivo, setMovMotivo] = useState("");
 
-  const [renegForma, setRenegForma] = useState("AVISTA");
-  const [renegAvistaVenc, setRenegAvistaVenc] = useState("");
-  const [renegParcelasQtd, setRenegParcelasQtd] = useState("3");
-  const [renegParcelasPrimeiroVenc, setRenegParcelasPrimeiroVenc] = useState("");
-  const [renegEntradaValorDigits, setRenegEntradaValorDigits] = useState("");
-  const [renegEntradaVenc, setRenegEntradaVenc] = useState("");
-  const [renegEntradaParcelasQtd, setRenegEntradaParcelasQtd] = useState("3");
-  const [renegEntradaParcelasPrimeiroVenc, setRenegEntradaParcelasPrimeiroVenc] = useState("");
+  const [transfOpen, setTransfOpen] = useState(false);
+  const [transfSaving, setTransfSaving] = useState(false);
+  const [transfError, setTransfError] = useState("");
+  const [transfParcela, setTransfParcela] = useState(null);
+  const [transfDestinoId, setTransfDestinoId] = useState("");
+  const [transfValorDigits, setTransfValorDigits] = useState("");
+  const [transfData, setTransfData] = useState("");
+  const [transfMeio, setTransfMeio] = useState("PIX");
+  const [transfMotivo, setTransfMotivo] = useState("");
 
-  // Admin-only: edição (correção de lançamentos)
-  const [editContratoOpen, setEditContratoOpen] = useState(false);
-  const [retParcelaOpen, setRetParcelaOpen] = useState(false);
+  function openMovimento(parcela) {
+    setMovError("");
+    setMovParcela(parcela);
+    setMovTipo("AJUSTE");
+    setMovSign("-");
+    setMovValorDigits("");
+    setMovData("");
+    setMovMeio("PIX");
+    setMovMotivo("");
+    setMovOpen(true);
+  }
 
-  const [adminPasswordObs, setAdminPasswordObs] = useState("");
-  const [adminPasswordRet, setAdminPasswordRet] = useState("");
-
-  // Editar (restrito): somente observações
-  const [editContratoForm, setEditContratoForm] = useState({
-    observacoes: "",
-  });
-
-  // Retificar parcela (auditável)
-  const [retParcela, setRetParcela] = useState(null);
-  const [retParcelaForm, setRetParcelaForm] = useState({
-    vencimento: "",
-    valorPrevisto: "",
-    motivo: "",
-  });
+  function openTransferencia(parcela) {
+    setTransfError("");
+    setTransfParcela(parcela);
+    setTransfDestinoId("");
+    setTransfValorDigits("");
+    setTransfData("");
+    setTransfMeio("PIX");
+    setTransfMotivo("");
+    setTransfOpen(true);
+  }
 
   async function loadContrato() {
     setError("");
@@ -270,25 +238,13 @@ export default function ContratoPage({ user }) {
   const totals = useMemo(() => {
     const ativas = parcelas.filter((p) => p?.status !== "CANCELADA");
     const totalPrevisto = ativas.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-    const totalRecebido = ativas.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
+    const totalRecebido = ativas.reduce((sum, p) => {
+      if (p?.status !== "RECEBIDA") return sum;
+      const efetivo = Number(p?.valorRecebido || 0) + sumMovimentos(p);
+      return sum + efetivo;
+    }, 0);
     const diferenca = totalRecebido - totalPrevisto;
     return { totalPrevisto, totalRecebido, diferenca };
-  }, [parcelas]);
-
-  const saldoPendente = useMemo(() => {
-    return (parcelas || [])
-      .filter((p) => p?.status === "PREVISTA")
-      .reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-  }, [parcelas]);
-
-  const dataBaseDD = useMemo(() => {
-    const pend = (parcelas || []).filter((p) => p?.status === "PREVISTA" && p?.vencimento);
-    if (!pend.length) return "";
-    const min = pend
-      .map((p) => new Date(p.vencimento))
-      .filter((d) => Number.isFinite(d.getTime()))
-      .sort((a, b) => a.getTime() - b.getTime())[0];
-    return min ? toDDMMYYYY(new Date(min.getFullYear(), min.getMonth(), min.getDate(), 12, 0, 0, 0)) : "";
   }, [parcelas]);
 
   if (!isAdmin) {
@@ -302,183 +258,80 @@ export default function ContratoPage({ user }) {
     );
   }
 
-  function openEditContrato() {
-    if (!contrato) return;
-    setAdminPasswordObs("");
-    setEditContratoForm({
-      observacoes: contrato.observacoes || "",
-    });
-    setEditContratoOpen(true);
-  }
-
-  async function saveEditContrato() {
-    try {
-      if (!adminPasswordObs) {
-        setError("Confirme sua senha de admin para editar observações.");
-        return;
-      }
-      await apiFetch(`/contratos/${contrato.id}/admin-edit`, {
-        method: "PUT",
-        body: {
-          adminPassword: adminPasswordObs,
-          observacoes: editContratoForm.observacoes,
-        },
-      });
-      setEditContratoOpen(false);
-      setAdminPasswordObs("");
-      await loadContrato();
-    } catch (e) {
-      setError(e?.message || "Erro ao editar contrato.");
-    }
-  }
-
-  function openRetParcela(p) {
-    setError("");
-    setAdminPasswordRet("");
-    setRetParcela(p);
-    setRetParcelaForm({
-      vencimento: toDDMMYYYY(p?.vencimento),
-      valorPrevisto: p?.valorPrevisto ?? "",
-      motivo: "",
-    });
-    setRetParcelaOpen(true);
-  }
-
-
-  async function saveRetParcela() {
-    try {
-      if (!retParcela) return;
-      if (!adminPasswordRet) {
-        setError("Confirme sua senha de admin para retificar.");
-        return;
-      }
-      if (!String(retParcelaForm.motivo || "").trim()) {
-        setError("Informe o motivo da retificação.");
-        return;
-      }
-
-      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
-        method: "POST",
-        body: {
-          adminPassword: adminPasswordRet,
-          motivo: retParcelaForm.motivo,
-          patch: {
-            vencimento: retParcelaForm.vencimento,
-            valorPrevisto: retParcelaForm.valorPrevisto,
-          },
-        },
-      });
-
-      setRetParcelaOpen(false);
-      setRetParcela(null);
-      setAdminPasswordRet("");
-      await loadContrato();
-    } catch (e) {
-      setError(e?.message || "Erro ao retificar parcela.");
-    }
-  }
-
-      
-function openRenegociar() {
-    if (!contrato) return;
-    setRenegError("");
-    // defaults (dataBase pré-preenchida e editável)
-    const base = dataBaseDD || toDDMMYYYY(new Date());
-    setRenegForma("AVISTA");
-    setRenegAvistaVenc(base);
-    setRenegParcelasQtd("3");
-    setRenegParcelasPrimeiroVenc(base);
-    setRenegEntradaValorDigits("");
-    setRenegEntradaVenc(base);
-    setRenegEntradaParcelasQtd("3");
-    setRenegEntradaParcelasPrimeiroVenc(addMonthsNoon(base, 1) || "");
-    setRenegOpen(true);
-  }
-
-  function validateReneg() {
-    // não faz sentido abrir sem saldo
-    if (!saldoPendente || saldoPendente <= 0) return "Não há saldo pendente para renegociar.";
-
-    if (renegForma === "AVISTA") {
-      if (!parseDateDDMMYYYY(renegAvistaVenc)) return "Informe um vencimento válido (DD/MM/AAAA) para o à vista.";
-    }
-
-    if (renegForma === "PARCELADO") {
-      const n = Number(renegParcelasQtd || 0);
-      if (!n || n < 1) return "Informe a quantidade de parcelas.";
-      if (!parseDateDDMMYYYY(renegParcelasPrimeiroVenc)) return "Informe o primeiro vencimento (DD/MM/AAAA).";
-    }
-
-    if (renegForma === "ENTRADA_PARCELAS") {
-      const entrada = BigInt(onlyDigits(renegEntradaValorDigits) || "0");
-      if (entrada <= 0n) return "Informe o valor da entrada.";
-      if (!parseDateDDMMYYYY(renegEntradaVenc)) return "Informe o vencimento da entrada (DD/MM/AAAA).";
-
-      const n = Number(renegEntradaParcelasQtd || 0);
-      if (!n || n < 1) return "Informe a quantidade de parcelas após a entrada.";
-      if (!parseDateDDMMYYYY(renegEntradaParcelasPrimeiroVenc)) return "Informe o vencimento da 1ª parcela (DD/MM/AAAA).";
-    }
-
-    return null;
-  }
-
-  async function salvarRenegociacao() {
-    if (!contrato) return;
-    const msg = validateReneg();
-    if (msg) {
-      setRenegError(msg);
-      return;
-    }
-
-    setRenegSaving(true);
-    setRenegError("");
-    try {
-      const payload = { formaPagamento: renegForma };
-
-      if (renegForma === "AVISTA") {
-        payload.avista = { vencimento: renegAvistaVenc };
-      }
-
-      if (renegForma === "PARCELADO") {
-        payload.parcelas = {
-          quantidade: Number(renegParcelasQtd),
-          primeiroVencimento: renegParcelasPrimeiroVenc,
-        };
-      }
-
-      if (renegForma === "ENTRADA_PARCELAS") {
-        payload.entrada = { valor: onlyDigits(renegEntradaValorDigits), vencimento: renegEntradaVenc };
-        payload.parcelas = {
-          quantidade: Number(renegEntradaParcelasQtd),
-          primeiroVencimento: renegEntradaParcelasPrimeiroVenc,
-        };
-      }
-
-      const resp = await apiFetch(`/contratos/${contrato.id}/renegociar`, { method: "POST", body: payload });
-
-      const novoId = resp?.contratoNovo?.id ?? resp?.contratoNovoId ?? resp?.id;
-      setRenegOpen(false);
-      await loadContrato();
-
-      if (novoId) {
-        nav(`/contratos/${novoId}`);
-      }
-    } catch (e) {
-      setRenegError(e?.message || "Falha ao renegociar saldo.");
-    } finally {
-      setRenegSaving(false);
-    }
-  }
-
   const st = contrato ? computeStatusContrato(contrato) : "EM_DIA";
   const stLabel = statusLabel(st);
   const stTone = statusTone(st);
 
-  const podeRenegociar =
-    !!contrato &&
-    !!contrato.ativo &&
-    !contrato.renegociadoParaId &&
-    saldoPendente > 0;
+  const renegociarHref = contrato ? `/pagamentos?renegociar=${encodeURIComponent(String(contrato.id))}` : "/pagamentos";
+
+  async function salvarMovimento() {
+    if (!movParcela?.id) return;
+    setMovError("");
+
+    const motivo = String(movMotivo || "").trim();
+    if (!motivo) return setMovError("Informe o motivo.");
+    if (!movData) return setMovError("Informe a data do movimento (DD/MM/AAAA).");
+
+    // valor
+    const base = digitsToNumber(movValorDigits);
+    if (!base || base <= 0) return setMovError("Informe um valor válido.");
+    const valor = movSign === "-" ? -base : base;
+
+    setMovSaving(true);
+    try {
+      await apiFetch(`/parcelas/${movParcela.id}/movimentos`, {
+        method: "POST",
+        body: {
+          tipo: movTipo,
+          valor,
+          dataMovimento: movData,
+          meio: movMeio,
+          motivo,
+        },
+      });
+      setMovOpen(false);
+      await loadContrato();
+    } catch (e) {
+      // ✅ a mensagem fica DENTRO do modal
+      setMovError(e?.message || "Falha ao salvar movimento.");
+    } finally {
+      setMovSaving(false);
+    }
+  }
+
+  async function salvarTransferencia() {
+    if (!transfParcela?.id) return;
+    setTransfError("");
+
+    const motivo = String(transfMotivo || "").trim();
+    if (!motivo) return setTransfError("Informe o motivo.");
+    if (!transfData) return setTransfError("Informe a data do movimento (DD/MM/AAAA).");
+    if (!transfDestinoId) return setTransfError("Informe o ID da parcela destino.");
+
+    const base = digitsToNumber(transfValorDigits);
+    if (!base || base <= 0) return setTransfError("Informe um valor válido.");
+
+    setTransfSaving(true);
+    try {
+      await apiFetch(`/parcelas/${transfParcela.id}/transferir-recebimento`, {
+        method: "POST",
+        body: {
+          parcelaDestinoId: Number(transfDestinoId),
+          valor: base,
+          dataMovimento: transfData,
+          meio: transfMeio,
+          motivo,
+        },
+      });
+      setTransfOpen(false);
+      await loadContrato();
+    } catch (e) {
+      // ✅ a mensagem fica DENTRO do modal
+      setTransfError(e?.message || "Falha ao transferir recebimento.");
+    } finally {
+      setTransfSaving(false);
+    }
+  }
 
   return (
     <div className="p-6">
@@ -494,28 +347,13 @@ function openRenegociar() {
               ← Voltar
             </button>
 
-            {podeRenegociar ? (
-              <button
-                type="button"
-                onClick={openRenegociar}
-                className="rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:opacity-70"
-                disabled={loading}
-                title="Renegociar saldo"
-              >
-                Renegociar Saldo
-              </button>
-            ) : null}
-
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={openEditContrato}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
-                title="Editar observações (admin-only)"
-              >
-                Editar Observações
-              </button>
-            ) : null}
+            <Link
+              to={renegociarHref}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              title="Abrir Pagamentos para renegociar o saldo do contrato"
+            >
+              Renegociar Saldo
+            </Link>
 
             <Link
               to="/pagamentos"
@@ -534,6 +372,7 @@ function openRenegociar() {
           <div className="text-sm text-slate-600">{loading ? "Carregando..." : "Contrato não encontrado."}</div>
         ) : (
           <div className="space-y-5">
+            {/* Bloco “como foi lançado” */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Cliente</div>
@@ -563,30 +402,6 @@ function openRenegociar() {
                 <div className="font-semibold text-slate-900">{contrato.ativo ? "Sim" : "Não"}</div>
               </div>
 
-              {contrato?.contratoOrigem ? (
-                <div className="md:col-span-3">
-                  <div className="text-slate-500">Origem</div>
-                  <div className="font-semibold text-slate-900">
-                    Originado da renegociação do contrato{" "}
-                    <Link className="underline" to={`/contratos/${contrato.contratoOrigem.id}`}>
-                      {contrato.contratoOrigem.numeroContrato}
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-
-              {contrato?.renegociadoPara ? (
-                <div className="md:col-span-3">
-                  <div className="text-slate-500">Renegociação</div>
-                  <div className="font-semibold text-slate-900">
-                    Ver contrato renegociado:{" "}
-                    <Link className="underline" to={`/contratos/${contrato.renegociadoPara.id}`}>
-                      {contrato.renegociadoPara.numeroContrato}
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-
               {contrato.observacoes ? (
                 <div className="md:col-span-3">
                   <div className="text-slate-500">Observações</div>
@@ -595,8 +410,9 @@ function openRenegociar() {
               ) : null}
             </div>
 
+            {/* Parcelas */}
             <div className="overflow-auto rounded-2xl border border-slate-200">
-              <table className="min-w-[900px] w-full text-sm">
+              <table className="min-w-[1000px] w-full text-sm">
                 <thead className="bg-white text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-4 py-3 font-semibold">#</th>
@@ -605,7 +421,7 @@ function openRenegociar() {
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
                     <th className="text-left px-4 py-3 font-semibold">Recebido</th>
                     <th className="text-left px-4 py-3 font-semibold">Meio</th>
-                    {isAdmin ? <th className="text-left px-4 py-3 font-semibold">Ações</th> : null}
+                    <th className="text-right px-4 py-3 font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -615,17 +431,13 @@ function openRenegociar() {
                       p.status === "CANCELADA"
                         ? { label: "Cancelada", tone: "slate" }
                         : p.status === "RECEBIDA"
-                          ? { label: "Recebida", tone: "green" }
-                          : isOverdue
-                            ? { label: "Atrasada", tone: "red" }
-                            : { label: "Prevista", tone: "blue" };
+                        ? { label: "Recebida", tone: "green" }
+                        : isOverdue
+                        ? { label: "Atrasada", tone: "red" }
+                        : { label: "Prevista", tone: "blue" };
 
                     const motivo =
-                      p.cancelamentoMotivo ||
-                      p.motivoCancelamento ||
-                      p.cancelMotivo ||
-                      p.motivo ||
-                      "";
+                      p.cancelamentoMotivo || p.motivoCancelamento || p.cancelMotivo || p.motivo || "";
 
                     return (
                       <tr key={p.id}>
@@ -655,26 +467,42 @@ function openRenegociar() {
                           {p.dataRecebimento ? (
                             <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
                           ) : null}
+
+                          {p.status === "RECEBIDA" && (p.movimentos?.length || 0) > 0 ? (
+                            <div className="mt-2 text-xs text-slate-600">
+                              <div className="font-semibold text-slate-700">
+                                Recebido efetivo: R${" "}
+                                {formatBRLFromDecimal(Number(p.valorRecebido || 0) + sumMovimentos(p))}
+                              </div>
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                        {isAdmin ? (
-                          <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex gap-2">
                             <button
                               type="button"
-                              onClick={() => openRetParcela(p)}
-                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                              onClick={() => openMovimento(p)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
                             >
-                              Retificar
+                              Movimento
                             </button>
-                          </td>
-                        ) : null}
+                            <button
+                              type="button"
+                              onClick={() => openTransferencia(p)}
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            >
+                              Transferir
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
 
                   {!parcelas.length ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-slate-500" colSpan={isAdmin ? 7 : 6}>
+                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
                         Nenhuma parcela cadastrada.
                       </td>
                     </tr>
@@ -683,6 +511,7 @@ function openRenegociar() {
               </table>
             </div>
 
+            {/* Totais */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Total previsto</div>
@@ -696,7 +525,11 @@ function openRenegociar() {
                 <div className="text-slate-500">Diferença</div>
                 <div
                   className={`font-semibold ${
-                    totals.diferenca < 0 ? "text-red-600" : totals.diferenca > 0 ? "text-blue-600" : "text-slate-900"
+                    totals.diferenca < 0
+                      ? "text-red-600"
+                      : totals.diferenca > 0
+                      ? "text-blue-600"
+                      : "text-slate-900"
                   }`}
                 >
                   R$ {formatBRLFromDecimal(totals.diferenca)}
@@ -705,266 +538,216 @@ function openRenegociar() {
             </div>
           </div>
         )}
-
-        {/* 6.3 — Modal Renegociar Saldo */}
-        <Modal
-          open={renegOpen}
-          title={contrato ? `Renegociar saldo — ${contrato.numeroContrato}` : "Renegociar saldo"}
-          onClose={() => (!renegSaving ? setRenegOpen(false) : null)}
-          footer={
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setRenegOpen(false)}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                disabled={renegSaving}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={salvarRenegociacao}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:opacity-70"
-                disabled={renegSaving}
-              >
-                {renegSaving ? "Renegociando..." : "Confirmar renegociação"}
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            {renegError ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{renegError}</div>
-            ) : null}
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="text-slate-600">Saldo pendente</div>
-              <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(saldoPendente)}</div>
-              {dataBaseDD ? <div className="mt-1 text-xs text-slate-500">Base sugerida: {dataBaseDD}</div> : null}
-            </div>
-
-            <label className="block">
-              <div className="text-sm font-medium text-slate-700">Forma de pagamento</div>
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                value={renegForma}
-                onChange={(e) => setRenegForma(e.target.value)}
-                disabled={renegSaving}
-              >
-                <option value="AVISTA">À vista</option>
-                <option value="PARCELADO">Parcelado</option>
-                <option value="ENTRADA_PARCELAS">Entrada + Parcelas</option>
-              </select>
-            </label>
-
-            {renegForma === "AVISTA" ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <DateInput label="Vencimento (à vista)" value={renegAvistaVenc} onChange={setRenegAvistaVenc} disabled={renegSaving} />
-              </div>
-            ) : null}
-
-            {renegForma === "PARCELADO" ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <label className="block">
-                  <div className="text-sm font-medium text-slate-700">Quantidade de parcelas</div>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                    value={renegParcelasQtd}
-                    onChange={(e) => setRenegParcelasQtd(onlyDigits(e.target.value))}
-                    disabled={renegSaving}
-                    inputMode="numeric"
-                  />
-                </label>
-                <DateInput
-                  label="1º vencimento"
-                  value={renegParcelasPrimeiroVenc}
-                  onChange={setRenegParcelasPrimeiroVenc}
-                  disabled={renegSaving}
-                />
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                  O backend divide o valor automaticamente e ajusta os centavos.
-                </div>
-              </div>
-            ) : null}
-
-            {renegForma === "ENTRADA_PARCELAS" ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <label className="block">
-                    <div className="text-sm font-medium text-slate-700">Valor Entrada</div>
-                    <div className="mt-1 relative">
-                      <input
-                        className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                        value={maskBRLFromDigits(renegEntradaValorDigits)}
-                        onChange={(e) => setRenegEntradaValorDigits(onlyDigits(e.target.value))}
-                        placeholder="0,00"
-                        disabled={renegSaving}
-                        inputMode="numeric"
-                      />
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-                    </div>
-                  </label>
-
-                  <DateInput label="Vencimento Entrada" value={renegEntradaVenc} onChange={setRenegEntradaVenc} disabled={renegSaving} />
-
-                  <DateInput
-                    label="Vencimento 1ª Parcela"
-                    value={renegEntradaParcelasPrimeiroVenc}
-                    onChange={setRenegEntradaParcelasPrimeiroVenc}
-                    disabled={renegSaving}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <label className="block">
-                    <div className="text-sm font-medium text-slate-700">Qtd. parcelas (após entrada)</div>
-                    <input
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                      value={renegEntradaParcelasQtd}
-                      onChange={(e) => setRenegEntradaParcelasQtd(onlyDigits(e.target.value))}
-                      disabled={renegSaving}
-                      inputMode="numeric"
-                    />
-                  </label>
-                  <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
-                    A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </Modal>
-
-        {/* Admin-only: Modais de edição */}
-        <Modal
-          open={editContratoOpen}
-          title="Editar observações (admin-only)"
-          onClose={() => {
-            setEditContratoOpen(false);
-            setAdminPasswordObs("");
-          }}
-          footer={
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditContratoOpen(false);
-                  setAdminPasswordObs("");
-                }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={saveEditContrato}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Salvar
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Senha (admin)</label>
-              <input
-                type="password"
-                value={adminPasswordObs}
-                onChange={(e) => setAdminPasswordObs(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Digite sua senha para confirmar"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Observações</label>
-              <textarea
-                value={editContratoForm.observacoes}
-                onChange={(e) => setEditContratoForm((s) => ({ ...s, observacoes: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm min-h-[110px]"
-                placeholder="Digite observações internas (opcional)"
-              />
-            </div>
-          </div>
-        </Modal>
-
-        <Modal
-          open={retParcelaOpen}
-          title="Retificar parcela (admin-only)"
-          onClose={() => {
-            setRetParcelaOpen(false);
-            setRetParcela(null);
-            setAdminPasswordRet("");
-          }}
-          footer={
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setRetParcelaOpen(false);
-                  setRetParcela(null);
-                  setAdminPasswordRet("");
-                }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={saveRetParcela}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Retificar
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Senha (admin)</label>
-              <input
-                type="password"
-                value={adminPasswordRet}
-                onChange={(e) => setAdminPasswordRet(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Digite sua senha para confirmar"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Motivo</label>
-              <input
-                value={retParcelaForm.motivo}
-                onChange={(e) => setRetParcelaForm((s) => ({ ...s, motivo: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Ex.: Correção de vencimento digitado errado"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
-                <input
-                  value={retParcelaForm.vencimento}
-                  onChange={(e) => setRetParcelaForm((s) => ({ ...s, vencimento: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="DD/MM/AAAA"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Valor previsto (R$)</label>
-                <input
-                  value={retParcelaForm.valorPrevisto}
-                  onChange={(e) => setRetParcelaForm((s) => ({ ...s, valorPrevisto: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="Ex.: 1234,56"
-                />
-              </div>
-            </div>
-          </div>
-        </Modal>
       </Card>
+
+      {/* =========================
+          MODAL: Movimento (contralançamento)
+          - ✅ Erros DENTRO do modal
+          - ✅ Valor com máscara BRL aprovada
+         ========================= */}
+      <Modal
+        open={movOpen}
+        title={`Movimento na Parcela #${movParcela?.numero ?? "—"}`}
+        onClose={() => setMovOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setMovOpen(false)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              disabled={movSaving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={salvarMovimento}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              disabled={movSaving}
+            >
+              {movSaving ? "Salvando..." : "Salvar"}
+            </button>
+          </>
+        }
+      >
+        {movError ? (
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+            {movError}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Tipo</label>
+            <select
+              value={movTipo}
+              onChange={(e) => setMovTipo(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="AJUSTE">AJUSTE</option>
+              <option value="ESTORNO">ESTORNO</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Sinal</label>
+            <select
+              value={movSign}
+              onChange={(e) => setMovSign(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="-">- (diminuir)</option>
+              <option value="+">+ (aumentar)</option>
+            </select>
+          </div>
+
+          <div>
+            {/* ✅ Máscara no padrão */}
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
+            <input
+              value={maskBRLFromDigits(movValorDigits)}
+              onChange={(e) => setMovValorDigits(onlyDigits(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="0,00"
+              inputMode="numeric"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
+            <input
+              value={movData}
+              onChange={(e) => setMovData(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="24/12/2025"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
+            <select
+              value={movMeio}
+              onChange={(e) => setMovMeio(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="PIX">PIX</option>
+              <option value="TED">TED</option>
+              <option value="BOLETO">BOLETO</option>
+              <option value="CARTAO">CARTÃO</option>
+              <option value="DINHEIRO">DINHEIRO</option>
+              <option value="OUTRO">OUTRO</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
+            <input
+              value={movMotivo}
+              onChange={(e) => setMovMotivo(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="Ex.: Valor recebido a maior"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* =========================
+          MODAL: Transferência (erro de contrato)
+          - ✅ Erros DENTRO do modal
+          - ✅ Valor com máscara BRL aprovada
+         ========================= */}
+      <Modal
+        open={transfOpen}
+        title={`Transferir recebimento da Parcela #${transfParcela?.numero ?? "—"}`}
+        onClose={() => setTransfOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setTransfOpen(false)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              disabled={transfSaving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={salvarTransferencia}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              disabled={transfSaving}
+            >
+              {transfSaving ? "Transferindo..." : "Transferir"}
+            </button>
+          </>
+        }
+      >
+        {transfError ? (
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+            {transfError}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Parcela destino (ID)</label>
+            <input
+              value={transfDestinoId}
+              onChange={(e) => setTransfDestinoId(onlyDigits(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="Ex.: 999"
+              inputMode="numeric"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
+            <input
+              value={transfData}
+              onChange={(e) => setTransfData(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="24/12/2025"
+            />
+          </div>
+
+          <div>
+            {/* ✅ Máscara no padrão */}
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
+            <input
+              value={maskBRLFromDigits(transfValorDigits)}
+              onChange={(e) => setTransfValorDigits(onlyDigits(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="0,00"
+              inputMode="numeric"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
+            <select
+              value={transfMeio}
+              onChange={(e) => setTransfMeio(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="PIX">PIX</option>
+              <option value="TED">TED</option>
+              <option value="BOLETO">BOLETO</option>
+              <option value="CARTAO">CARTÃO</option>
+              <option value="DINHEIRO">DINHEIRO</option>
+              <option value="OUTRO">OUTRO</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
+            <input
+              value={transfMotivo}
+              onChange={(e) => setTransfMotivo(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="Ex.: Recebimento lançado no contrato errado"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
