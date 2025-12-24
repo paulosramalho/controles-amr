@@ -2098,22 +2098,7 @@ const updated = await prisma.$transaction(async (tx) => {
 });
 
 return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
-    // Semáforo: bloqueios (Vermelho)
-    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
-    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
-    if (inCadeiaReneg || temRecebida) {
-      return res.status(400).json({
-        message:
-          "Retificação bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida. Faça correção via estorno/contralançamento, preservando integridade.",
-      });
-    }
-
-    // Parcela precisa ser PREVISTA
-    if (parcela.status !== "PREVISTA") {
-      return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
-    }
-
-    const p = patch || {};
+   
     const data = {};
 
     if (p.vencimento !== undefined) {
