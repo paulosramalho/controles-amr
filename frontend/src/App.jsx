@@ -4,9 +4,10 @@ import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
 
 import AdvogadosPage from "./pages/Advogados";
-import UsuariosPage from "./pages/Usuarios";
-import ClientesPage from "./pages/Clientes";
 import PagamentosPage from "./pages/Pagamentos";
+import UsuariosPage from "./pages/Usuarios";
+import modelodistribuicaoPage from "./pages/ModeloDistribuicao";
+import ClientesPage from "./pages/Clientes";
 import ContratoPage from "./pages/Contrato";
 
 /* ---------------- clock ---------------- */
@@ -151,6 +152,10 @@ function AppShell({ user, onLogout }) {
 
     return [
       { to: "/dashboard", label: "Dashboard" },
+
+      /* Pagamentos */
+      { to: "/pagamentos", label: "Pagamentos" },
+
       { to: "/repasses", label: "Repasses" },
 
       /* Livro Caixa */
@@ -164,10 +169,7 @@ function AppShell({ user, onLogout }) {
         ],
       },
 
-      /* Pagamentos */
-      { to: "/pagamentos", label: "Pagamentos" },
-
-      { to: "/historico", label: "Histórico" },
+            { to: "/historico", label: "Histórico" },
       { to: "/relatorios", label: "Relatórios" },
 
       /* Configurações */
@@ -178,6 +180,7 @@ function AppShell({ user, onLogout }) {
           { to: "/advogados", label: "Advogados" },
           { to: "/clientes", label: "Clientes" },
           { to: "/usuarios", label: "Usuários" },
+          { to: "/modelo-distribuicao", label: "Modelo de Distribuição" },
         ],
       },
     ];
@@ -255,6 +258,14 @@ function AppShell({ user, onLogout }) {
             <span>{clock.time}</span>
           </div>
 
+          <div className="px-3 py-2 text-xs text-slate-600">
+            <div className="font-semibold text-slate-800">{user?.nome || "—"}</div>
+            <div>
+              {String(user?.tipoUsuario || "").toUpperCase() || "—"}
+              {user?.role ? ` • ${String(user.role).toUpperCase()}` : ""}
+            </div>
+          </div>
+
           <button
             onClick={onLogout}
             className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold hover:bg-slate-100"
@@ -267,8 +278,8 @@ function AppShell({ user, onLogout }) {
       <main className="ml-64 h-screen overflow-y-auto">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
-          <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
+          <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
 
           <Route
@@ -287,6 +298,7 @@ function AppShell({ user, onLogout }) {
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />
           <Route path="/usuarios" element={<UsuariosPage user={user} />} />
+          <Route path="/modelo-distribuicao" element={ModeloDistribuicaoPage user={user} />} />
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
           <Route path="*" element={<Placeholder title="Página não encontrada" />} />
