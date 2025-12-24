@@ -1522,17 +1522,20 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const contratos = await prisma.contratoPagamento.findMany({
       where,
       include: {
-  cliente: true,
-  parcelas: {
-    orderBy: { numero: "asc" },
-    include: {
-      canceladaPor: {
-        select: { id: true, nome: true }
+        cliente: true,
+        parcelas: {
+          orderBy: { numero: "asc" },
+          include: {
+            canceladaPor: { select: { id: true, nome: true } },
+          },
+        },
+        // ✅ vínculos pai ⇄ filho (dossiê)
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        derivados: { select: { id: true, numeroContrato: true } },
+        renegociadosDele: { select: { id: true, numeroContrato: true } },
       }
-    }
-  }
-}
-,
+    ,
       orderBy: [{ createdAt: "desc" }],
       take: 200,
     });
@@ -1548,6 +1551,12 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
       return {
         id: c.id,
         numeroContrato: c.numeroContrato,
+        contratoOrigemId: c.contratoOrigemId ?? null,
+        renegociadoParaId: c.renegociadoParaId ?? null,
+        contratoOrigem: c.contratoOrigem ?? null,
+        renegociadoPara: c.renegociadoPara ?? null,
+        derivados: c.derivados ?? null,
+        renegociadosDele: c.renegociadosDele ?? null,
         clienteId: c.clienteId,
         cliente: serializeCliente({ ...c.cliente, ordens: [] }),
         valorTotal: c.valorTotal,
@@ -1715,17 +1724,20 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
       return tx.contratoPagamento.findUnique({
         where: { id: contrato.id },
         include: {
-  cliente: true,
-  parcelas: {
-    orderBy: { numero: "asc" },
-    include: {
-      canceladaPor: {
-        select: { id: true, nome: true }
+        cliente: true,
+        parcelas: {
+          orderBy: { numero: "asc" },
+          include: {
+            canceladaPor: { select: { id: true, nome: true } },
+          },
+        },
+        // ✅ vínculos pai ⇄ filho (dossiê)
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        derivados: { select: { id: true, numeroContrato: true } },
+        renegociadosDele: { select: { id: true, numeroContrato: true } },
       }
-    }
-  }
-}
-,
+    ,
       });
     });
 
@@ -1767,17 +1779,20 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       where: { id },
       data,
       include: {
-  cliente: true,
-  parcelas: {
-    orderBy: { numero: "asc" },
-    include: {
-      canceladaPor: {
-        select: { id: true, nome: true }
+        cliente: true,
+        parcelas: {
+          orderBy: { numero: "asc" },
+          include: {
+            canceladaPor: { select: { id: true, nome: true } },
+          },
+        },
+        // ✅ vínculos pai ⇄ filho (dossiê)
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        derivados: { select: { id: true, numeroContrato: true } },
+        renegociadosDele: { select: { id: true, numeroContrato: true } },
       }
-    }
-  }
-}
-,
+    ,
     });
 
     res.json(updated);
@@ -2059,9 +2074,8 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
           valorTotal: centsToDecimalString(saldoCents),
           formaPagamento: "AVISTA",
           observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
-          // se você já tem campos pai/renegociado no model, ajuste aqui:
-          // contratoPaiId: contrato.id,
-          // renegociadoDeId: contrato.id,
+          // ✅ vínculo pai ⇄ filho
+          contratoOrigemId: contratoId,
           parcelas: {
             create: [
               {
@@ -2080,10 +2094,8 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
-          // ajuste os campos conforme você criou no Prisma:
-          // renegociadoEm: new Date(),
-          // renegociadoPorId: usuarioId ?? null,
-          // renegociadoParaId: filho.id,
+          // ✅ aponta o pai para o filho (para aparecer "Renegociado")
+          renegociadoParaId: filho.id,
         },
       });
 
