@@ -112,10 +112,21 @@ function formatBRL(v) {
 // - number (ex.: 1234.56)
 // - string "1.234,56" ou "1234,56" ou "1234.56"
 // - string só dígitos (ex.: "123456" => R$ 1.234,56)  ✅ padrão de máscara do front
+// Parse de moeda/valor (R$) — aceita:
+// - number (ex.: 1234.56)  ✅ TRATAR COMO REAIS
+// - string "1.234,56" ou "1234,56" ou "1234.56"
+// - string só dígitos (ex.: "123456" => R$ 1.234,56) ✅ padrão de máscara do front (centavos)
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
-  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
+  // ✅ number => REAIS (não centavos)
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) return null;
+    // arredonda para evitar 0.1+0.2 etc
+    return BigInt(Math.round(input * 100));
+  }
+
+  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como "centavos"
   if (typeof input === "object" && input !== null && typeof input.toString === "function") {
     const sObj = String(input.toString()).trim();
     // "3870" (Decimal) => R$ 3.870,00
@@ -130,7 +141,7 @@ function moneyToCents(input) {
   const s0 = String(input).trim();
   if (!s0) return null;
 
-  // só dígitos: já é centavos
+  // só dígitos: já é centavos (padrão da máscara do front)
   if (/^\d+$/.test(s0)) return BigInt(s0);
 
   // BR: "1.234,56"
