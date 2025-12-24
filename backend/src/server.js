@@ -69,26 +69,27 @@ function parseDateInput(input) {
   const s = String(input).trim();
   if (!s) return null;
 
-  // DD/MM/AAAA → data local (12:00) para evitar D-1 por fuso
+  // DD/MM/AAAA
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const dd = Number(m[1]);
     const mm = Number(m[2]);
     const yyyy = Number(m[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // YYYY-MM-DD (input date) → data local (12:00)
+  // YYYY-MM-DD (input date)
   const isoShort = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoShort) {
     const yyyy = Number(isoShort[1]);
     const mm = Number(isoShort[2]);
     const dd = Number(isoShort[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd, 0, 0, 0));
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
+  // ISO / demais formatos
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -112,21 +113,10 @@ function formatBRL(v) {
 // - number (ex.: 1234.56)
 // - string "1.234,56" ou "1234,56" ou "1234.56"
 // - string só dígitos (ex.: "123456" => R$ 1.234,56)  ✅ padrão de máscara do front
-// Parse de moeda/valor (R$) — aceita:
-// - number (ex.: 1234.56)  ✅ TRATAR COMO REAIS
-// - string "1.234,56" ou "1234,56" ou "1234.56"
-// - string só dígitos (ex.: "123456" => R$ 1.234,56) ✅ padrão de máscara do front (centavos)
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
-  // ✅ number => REAIS (não centavos)
-  if (typeof input === "number") {
-    if (!Number.isFinite(input)) return null;
-    // arredonda para evitar 0.1+0.2 etc
-    return BigInt(Math.round(input * 100));
-  }
-
-  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como "centavos"
+  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
   if (typeof input === "object" && input !== null && typeof input.toString === "function") {
     const sObj = String(input.toString()).trim();
     // "3870" (Decimal) => R$ 3.870,00
@@ -141,7 +131,7 @@ function moneyToCents(input) {
   const s0 = String(input).trim();
   if (!s0) return null;
 
-  // só dígitos: já é centavos (padrão da máscara do front)
+  // só dígitos: já é centavos
   if (/^\d+$/.test(s0)) return BigInt(s0);
 
   // BR: "1.234,56"
@@ -164,16 +154,6 @@ function moneyToCents(input) {
   // fallback: tenta dígitos
   const d = onlyDigits(s0);
   return d ? BigInt(d) : null;
-}
-
-
-function signedMoneyToCents(input) {
-  const raw = String(input ?? "").trim();
-  if (!raw) return 0;
-  const neg = raw.startsWith("-");
-  const val = neg ? raw.slice(1).trim() : raw;
-  const cents = moneyToCents(val);
-  return neg ? -cents : cents;
 }
 
 function centsToDecimalString(cents) {
@@ -242,61 +222,6 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
-
-
-async function assertAdminPassword(req, adminPassword) {
-  const pwd = String(adminPassword ?? "").trim();
-  if (!pwd) {
-    const err = new Error("Confirme sua senha de administrador.");
-    err.status = 400;
-    throw err;
-  }
-  const userId = req.user?.id;
-  if (!userId) {
-    const err = new Error("Sessão inválida.");
-    err.status = 401;
-    throw err;
-  }
-  const u = await prisma.usuario.findUnique({ where: { id: Number(userId) } });
-  if (!u) {
-    const err = new Error("Usuário não encontrado.");
-    err.status = 401;
-    throw err;
-  }
-  const { bcrypt } = await getAuthLibs();
-  const ok = await bcrypt.compare(pwd, u.senhaHash);
-  if (!ok) {
-    const err = new Error("Senha inválida.");
-    err.status = 401;
-    throw err;
-  }
-  return true;
-}
-
-
-async function verifyAdminPassword(req, adminPassword) {
-  if (!adminPassword) return false;
-  if (!prisma.usuario) return false;
-  const { bcrypt } = await getAuthLibs();
-
-  const userId = Number(req.user?.id);
-  if (!Number.isFinite(userId)) return false;
-
-  const u = await prisma.usuario.findUnique({ where: { id: userId } });
-  if (!u) return false;
-
-  return bcrypt.compare(String(adminPassword), u.senhaHash);
-}
-
-async function requireAdminPassword(req, res, adminPassword) {
-  const ok = await verifyAdminPassword(req, adminPassword);
-  if (!ok) {
-    res.status(401).json({ message: "Senha de admin inválida." });
-    return false;
-  }
-  return true;
-}
-
 
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
@@ -673,44 +598,6 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
     console.error(err);
     return res.status(500).json({ message: "Erro ao atualizar status." });
   }
-});
-
-// Modelo de Distribuição (admin-only)
-app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
-  const rows = await prisma.modeloDistribuicao.findMany({ orderBy: { cod: "asc" } });
-  res.json(rows);
-});
-
-app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
-  const { cod, descricao, ativo } = req.body || {};
-  if (!cod || !String(cod).trim()) return res.status(400).json({ message: "Informe o código." });
-
-  const row = await prisma.modeloDistribuicao.create({
-    data: { cod: String(cod).trim(), descricao: descricao ? String(descricao).trim() : null, ativo: ativo !== false },
-  });
-  res.json(row);
-});
-
-app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
-
-  const { cod, descricao, ativo } = req.body || {};
-  const data = {};
-  if (cod !== undefined) data.cod = String(cod).trim();
-  if (descricao !== undefined) data.descricao = descricao ? String(descricao).trim() : null;
-  if (ativo !== undefined) data.ativo = !!ativo;
-
-  const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
-  res.json(row);
-});
-
-app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
-
-  await prisma.modeloDistribuicao.delete({ where: { id } });
-  res.json({ ok: true });
 });
 
 /* =========================
@@ -1635,16 +1522,17 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const contratos = await prisma.contratoPagamento.findMany({
       where,
       include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: {
-          orderBy: { numero: "asc" },
-          include: {
-            canceladaPor: { select: { id: true, nome: true } },
-          },
-        },
-      },
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
+      }
+    }
+  }
+}
+,
       orderBy: [{ createdAt: "desc" }],
       take: 200,
     });
@@ -1652,20 +1540,14 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const out = contratos.map((c) => {
       const parcelas = c.parcelas || [];
       const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
-      const totalRecebido = recebidas.reduce((acc, p) => {
-        const movs = Array.isArray(p.movimentos) ? p.movimentos : [];
-        const somaMovs = movs.reduce((s, m) => s + Number(m.valor || 0), 0);
-        const efetivo = Number(p.valorRecebido || 0) + somaMovs;
-        return acc + efetivo;
-      }, 0);
+      const totalRecebido = recebidas.reduce(
+        (acc, p) => acc + Number(p.valorRecebido || 0),
+        0
+      );
 
       return {
         id: c.id,
         numeroContrato: c.numeroContrato,
-        renegociadoParaId: c.renegociadoParaId,
-        contratoOrigemId: c.contratoOrigemId,
-        contratoOrigem: c.contratoOrigem ? { id: c.contratoOrigem.id, numeroContrato: c.contratoOrigem.numeroContrato } : null,
-        renegociadoPara: c.renegociadoPara ? { id: c.renegociadoPara.id, numeroContrato: c.renegociadoPara.numeroContrato } : null,
         clienteId: c.clienteId,
         cliente: serializeCliente({ ...c.cliente, ordens: [] }),
         valorTotal: c.valorTotal,
@@ -1839,10 +1721,6 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     include: {
       canceladaPor: {
         select: { id: true, nome: true }
-      },
-      movimentos: {
-        orderBy: { createdAt: "asc" },
-        include: { criadoPor: { select: { id: true, nome: true } } }
       }
     }
   }
@@ -1895,10 +1773,6 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     include: {
       canceladaPor: {
         select: { id: true, nome: true }
-      },
-      movimentos: {
-        orderBy: { createdAt: "asc" },
-        include: { criadoPor: { select: { id: true, nome: true } } }
       }
     }
   }
@@ -1914,369 +1788,6 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ message: "Erro ao atualizar contrato." });
   }
 });
-
-
-
-// =====================
-// ADMIN-ONLY: EDIÇÃO (restrita) e RETIFICAÇÃO (auditável)
-// Decisão do projeto:
-// - "Editar" = somente observações (texto) + confirmação de senha
-// - "Retificar" = correção de vencimento/valor (e, no verde, reestruturação) com LOG
-// =====================
-
-// Editar contrato (somente observações)
-app.put("/api/contratos/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
-
-    const { adminPassword, observacoes } = req.body || {};
-    const ok = await requireAdminPassword(req, res, adminPassword);
-    if (!ok) return;
-
-    const updated = await prisma.contratoPagamento.update({
-      where: { id },
-      data: {
-        observacoes: observacoes === undefined ? undefined : String(observacoes),
-      },
-      include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
-      },
-    });
-
-    return res.json(updated);
-  } catch (err) {
-    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
-    console.error("Erro ao editar observações do contrato:", err);
-    return res.status(500).json({ message: "Erro ao editar observações do contrato." });
-  }
-});
-
-// Editar parcela (desativado; use retificação)
-app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (_req, res) => {
-  return res.status(400).json({
-    message: "Edição direta de parcela foi desativada. Use Retificar (admin) para correção com log.",
-  });
-});
-
-// Retificar parcela (auditável)
-// Retificar parcela (auditável) — preserva total do contrato/renegociação
-app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const parcelaId = Number(req.params.id);
-    if (!Number.isFinite(parcelaId)) return res.status(400).json({ message: "ID inválido." });
-
-    const { adminPassword, motivo, patch } = req.body || {};
-    const ok = await requireAdminPassword(req, res, adminPassword);
-    if (!ok) return;
-
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
-
-    const parcela = await prisma.parcelaContrato.findUnique({
-      where: { id: parcelaId },
-      include: { contrato: { include: { parcelas: true } } },
-    });
-    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
-
-    const contrato = parcela.contrato;
-    if (!contrato) return res.status(400).json({ message: "Contrato da parcela não encontrado." });
-
-    // ✅ Regra: só bloqueia o fluxo de retificação se qtd PREVISTA < 2
-    const previstas = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
-    if (previstas.length < 2) {
-      return res.status(400).json({
-        message: "Retificação bloqueada: é necessário existir 2 ou mais parcelas PREVISTAS no contrato/renegociação.",
-      });
-    }
-
-    // ✅ Parcela precisa ser PREVISTA (RECEBIDA não retifica)
-    if (parcela.status !== "PREVISTA") {
-      return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
-    }
-
-    const patchIn = patch || {};
-    const dataToUpdate = {};
-
-    // vencimento (opcional)
-    if (patchIn.vencimento !== undefined) {
-      const d = parseDateInput(patchIn.vencimento);
-      if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
-      dataToUpdate.vencimento = d;
-    }
-
-    // valorPrevisto (opcional)
-    let novoValorCents = null;
-    if (patchIn.valorPrevisto !== undefined) {
-      const cents = moneyToCents(patchIn.valorPrevisto);
-      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
-      novoValorCents = cents;
-      dataToUpdate.valorPrevisto = centsToDecimalString(cents);
-    }
-
-    if (!Object.keys(dataToUpdate).length) {
-      return res.status(400).json({ message: "Nada para retificar." });
-    }
-
-    // snapshot BEFORE (parcela alvo)
-    const before = {
-      id: parcela.id,
-      contratoId: parcela.contratoId,
-      numero: parcela.numero,
-      vencimento: parcela.vencimento,
-      valorPrevisto: parcela.valorPrevisto,
-      status: parcela.status,
-    };
-
-    const parcelaAtualizada = await prisma.$transaction(async (tx) => {
-      let outraParcelaAntes = null;
-      let outraParcelaDepois = null;
-
-      // ✅ Se alterou valor, preserva total: compensa em outra PREVISTA
-      if (novoValorCents !== null) {
-        const atualCents = moneyToCents(parcela.valorPrevisto) || 0n;
-        const delta = novoValorCents - atualCents; // novo - atual
-
-        if (delta !== 0n) {
-          // escolhe outra prevista (ex.: última prevista diferente da parcela alvo)
-          const candidata = previstas
-            .filter((x) => x.id !== parcela.id)
-            .sort((a, b) => (a.numero || 0) - (b.numero || 0))
-            .slice(-1)[0];
-
-          if (!candidata) {
-            throw Object.assign(new Error("Retificação bloqueada: não há outra parcela PREVISTA para compensação."), {
-              status: 400,
-            });
-          }
-
-          outraParcelaAntes = await tx.parcelaContrato.findUnique({ where: { id: candidata.id } });
-
-          const candAtualCents = moneyToCents(candidata.valorPrevisto) || 0n;
-          const candNovoCents = candAtualCents - delta; // compensa
-
-          if (candNovoCents <= 0n) {
-            throw Object.assign(
-              new Error(
-                "Retificação bloqueada: a compensação tornaria outra parcela PREVISTA menor/igual a zero. Use renegociação (Rx)."
-              ),
-              { status: 400 }
-            );
-          }
-
-          outraParcelaDepois = await tx.parcelaContrato.update({
-            where: { id: candidata.id },
-            data: { valorPrevisto: centsToDecimalString(candNovoCents) },
-          });
-        }
-      }
-
-      const afterParcela = await tx.parcelaContrato.update({
-        where: { id: parcelaId },
-        data: dataToUpdate,
-      });
-
-      const alteracoes = {};
-      if (dataToUpdate.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
-      if (dataToUpdate.valorPrevisto)
-        alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
-
-      if (outraParcelaAntes && outraParcelaDepois) {
-        alteracoes.compensacao = {
-          parcelaId: outraParcelaDepois.id,
-          numero: outraParcelaDepois.numero,
-          before: outraParcelaAntes.valorPrevisto,
-          after: outraParcelaDepois.valorPrevisto,
-        };
-      }
-
-      await tx.retificacaoParcela.create({
-        data: {
-          parcelaId,
-          motivo: motivoTxt,
-          alteracoes,
-          snapshotAntes: before,
-          snapshotDepois: {
-            id: afterParcela.id,
-            contratoId: afterParcela.contratoId,
-            numero: afterParcela.numero,
-            vencimento: afterParcela.vencimento,
-            valorPrevisto: afterParcela.valorPrevisto,
-            status: afterParcela.status,
-          },
-          criadoPorId: req.user?.id ?? null,
-        },
-      });
-
-      return afterParcela;
-    });
-
-    return res.json({ message: "Parcela retificada com sucesso.", parcela: parcelaAtualizada });
-  } catch (err) {
-    const status = err?.status || 500;
-    console.error("Erro ao retificar parcela:", err);
-    return res.status(status).json({ message: err?.message || "Erro ao retificar parcela." });
-  }
-});
-
-// Retificar contrato (verde): reestrutura parcelas PREVISTAS conforme payload (com log)
-app.post("/api/contratos/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const contratoId = Number(req.params.id);
-    if (!Number.isFinite(contratoId)) return res.status(400).json({ message: "ID inválido." });
-
-    const { adminPassword, motivo, payload } = req.body || {};
-    const ok = await requireAdminPassword(req, res, adminPassword);
-    if (!ok) return;
-
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
-
-    const contrato = await prisma.contratoPagamento.findUnique({
-      where: { id: contratoId },
-      include: { parcelas: true },
-    });
-    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
-
-    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
-    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
-    if (inCadeiaReneg || temRecebida) {
-      return res.status(400).json({
-        message:
-          "Retificação estrutural bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida.",
-      });
-    }
-
-    const allPrevistas = (contrato.parcelas || []).every((p) => p.status === "PREVISTA");
-    if (!allPrevistas) {
-      return res.status(400).json({ message: "Retificação estrutural permitida somente quando todas as parcelas são PREVISTAS." });
-    }
-
-    const totalCents = moneyToCents(contrato.valorTotal);
-    if (totalCents === null || totalCents <= 0n) return res.status(400).json({ message: "Valor total inválido no contrato." });
-
-    // reutiliza a mesma lógica de plano de parcelas do endpoint de renegociação:
-    const b = payload || {};
-    const fp = String(b.formaPagamento || contrato.formaPagamento || "AVISTA").trim().toUpperCase();
-    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
-      return res.status(400).json({ message: "Forma de pagamento inválida." });
-    }
-
-    // default: usa o vencimento da primeira parcela atual (normalizado) como base
-    const firstV = (contrato.parcelas || []).map((p) => p.vencimento).filter(Boolean).sort((a,b)=>new Date(a)-new Date(b))[0];
-    const base0 = firstV ? new Date(firstV) : new Date();
-    const dataBase = new Date(base0.getFullYear(), base0.getMonth(), base0.getDate(), 12, 0, 0, 0);
-
-    const parseDateOrDefault = (v, field, fallbackDate) => {
-      if (v === undefined || v === null || String(v).trim() === "") return fallbackDate;
-      const d = parseDateInput(v);
-      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
-      return d;
-    };
-
-    const addMonthsLocalNoon = (date, months) => {
-      const d = new Date(date);
-      d.setMonth(d.getMonth() + months);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-    };
-
-    let parcelasPlan = [];
-
-    if (fp === "AVISTA") {
-      const venc = parseDateOrDefault(b?.avista?.vencimento, "avista.vencimento", dataBase);
-      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: totalCents }];
-    }
-
-    if (fp === "PARCELADO") {
-      const qtd = Number(b?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
-      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
-      const valoresCents = splitCents(totalCents, qtd);
-      for (let i = 0; i < qtd; i++) {
-        parcelasPlan.push({ numero: i + 1, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
-      }
-    }
-
-    if (fp === "ENTRADA_PARCELAS") {
-      const eValorCents = moneyToCents(b?.entrada?.valor);
-      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
-      if (eValorCents >= totalCents) return res.status(400).json({ message: "A entrada deve ser menor que o total." });
-
-      const eVenc = parseDateOrDefault(b?.entrada?.vencimento, "entrada.vencimento", dataBase);
-
-      const qtd = Number(b?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
-
-      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
-      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
-
-      const restante = totalCents - eValorCents;
-      const valoresCents = splitCents(restante, qtd);
-
-      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
-      for (let i = 0; i < qtd; i++) {
-        parcelasPlan.push({ numero: i + 2, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
-      }
-    }
-
-    const snapshotAntes = {
-      id: contrato.id,
-      numeroContrato: contrato.numeroContrato,
-      formaPagamento: contrato.formaPagamento,
-      valorTotal: contrato.valorTotal,
-      parcelas: contrato.parcelas,
-    };
-
-    const result = await prisma.$transaction(async (tx) => {
-      // apaga e recria parcelas (todas eram PREVISTAS)
-      await tx.parcelaContrato.deleteMany({ where: { contratoId } });
-
-      await tx.parcelaContrato.createMany({
-        data: parcelasPlan.map((p) => ({
-          contratoId,
-          numero: p.numero,
-          vencimento: p.vencimento,
-          valorPrevisto: centsToDecimalString(p.valorCents),
-          status: "PREVISTA",
-        })),
-      });
-
-      const contratoDepois = await tx.contratoPagamento.update({
-        where: { id: contratoId },
-        data: { formaPagamento: fp },
-        include: { parcelas: { orderBy: { numero: "asc" } } },
-      });
-
-      await tx.retificacaoContrato.create({
-        data: {
-          contratoId,
-          motivo: motivoTxt,
-          alteracoes: { formaPagamento: { before: contrato.formaPagamento, after: fp } },
-          snapshotAntes,
-          snapshotDepois: {
-            id: contratoDepois.id,
-            numeroContrato: contratoDepois.numeroContrato,
-            formaPagamento: contratoDepois.formaPagamento,
-            valorTotal: contratoDepois.valorTotal,
-            parcelas: contratoDepois.parcelas,
-          },
-          criadoPorId: req.user?.id ?? null,
-        },
-      });
-
-      return contratoDepois;
-    });
-
-    return res.json({ message: "Contrato retificado com sucesso.", contrato: result });
-  } catch (err) {
-    console.error("Erro ao retificar contrato:", err);
-    return res.status(500).json({ message: err?.message || "Erro ao retificar contrato." });
-  }
-});
-
 
 // Ativar/Inativar contrato (soft)
 app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
@@ -2424,145 +1935,6 @@ app.patch(
   }
 );
 
-
-// =========================
-// 6.3.B — Movimentos (Ajustes / Estornos / Transferências) em Parcela (admin-only + senha)
-// =========================
-
-app.post("/api/parcelas/:id/movimentos", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const parcelaId = Number(req.params.id);
-    if (!parcelaId) return res.status(400).json({ message: "ID da parcela inválido." });
-
-    const { adminPassword, tipo, valor, dataMovimento, meio, motivo } = req.body || {};
-
-    await assertAdminPassword(req, adminPassword);
-
-    const tipoUp = String(tipo || "").toUpperCase();
-    const allowed = ["AJUSTE", "ESTORNO", "TRANSFERENCIA_SAIDA", "TRANSFERENCIA_ENTRADA"];
-    if (!allowed.includes(tipoUp)) return res.status(400).json({ message: "Tipo de movimento inválido." });
-
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo do movimento." });
-
-    const parcela = await prisma.parcelaContrato.findUnique({
-      where: { id: parcelaId },
-      include: { contrato: true },
-    });
-    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
-
-    if (parcela.status !== "RECEBIDA") {
-      return res.status(400).json({ message: "Somente parcelas RECEBIDAS podem receber movimentos (ajustes/estornos)." });
-    }
-
-    const dt = dataMovimento ? parseDate(dataMovimento, "dataMovimento") : new Date();
-    const dtNoon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0, 0);
-
-    const cents = signedMoneyToCents(valor);
-    if (!Number.isFinite(cents) || cents === 0) {
-      return res.status(400).json({ message: "Informe um valor diferente de zero." });
-    }
-
-    const created = await prisma.parcelaMovimento.create({
-      data: {
-        parcelaId: parcelaId,
-        tipo: tipoUp,
-        valor: centsToDecimalString(cents),
-        dataMovimento: dtNoon,
-        meio: meio ? String(meio).toUpperCase() : null,
-        motivo: motivoTxt,
-        criadoPorId: req.user?.id ? Number(req.user.id) : null,
-      },
-    });
-
-    const updated = await prisma.parcelaContrato.findUnique({
-      where: { id: parcelaId },
-      include: {
-        movimentos: { orderBy: { createdAt: "asc" }, include: { criadoPor: { select: { id: true, nome: true } } } },
-      },
-    });
-
-    return res.json({ ok: true, movimento: created, parcela: updated });
-  } catch (err) {
-    const status = err?.status || 500;
-    console.error("Erro ao criar movimento da parcela:", err);
-    return res.status(status).json({ message: err?.message || "Erro ao criar movimento." });
-  }
-});
-
-app.post("/api/parcelas/:id/transferir-recebimento", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const parcelaOrigemId = Number(req.params.id);
-    if (!parcelaOrigemId) return res.status(400).json({ message: "ID da parcela inválido." });
-
-    const { adminPassword, parcelaDestinoId, valor, dataMovimento, meio, motivo } = req.body || {};
-    await assertAdminPassword(req, adminPassword);
-
-    const destinoId = Number(parcelaDestinoId);
-    if (!destinoId) return res.status(400).json({ message: "Informe a parcela de destino." });
-
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da transferência." });
-
-    const dt = dataMovimento ? parseDate(dataMovimento, "dataMovimento") : new Date();
-    const dtNoon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0, 0);
-
-    const centsPos = moneyToCents(valor);
-    if (!Number.isFinite(centsPos) || centsPos <= 0) {
-      return res.status(400).json({ message: "Informe um valor positivo para transferir." });
-    }
-
-    const userId = req.user?.id ? Number(req.user.id) : null;
-
-    const result = await prisma.$transaction(async (tx) => {
-      const origem = await tx.parcelaContrato.findUnique({ where: { id: parcelaOrigemId } });
-      const destino = await tx.parcelaContrato.findUnique({ where: { id: destinoId } });
-      if (!origem || !destino) throw Object.assign(new Error("Parcela origem/destino não encontrada."), { status: 404 });
-      if (origem.status !== "RECEBIDA" || destino.status !== "RECEBIDA") {
-        throw Object.assign(new Error("Transferência exige parcelas RECEBIDAS (origem e destino)."), { status: 400 });
-      }
-
-      const movSaida = await tx.parcelaMovimento.create({
-        data: {
-          parcelaId: parcelaOrigemId,
-          tipo: "TRANSFERENCIA_SAIDA",
-          valor: centsToDecimalString(-centsPos),
-          dataMovimento: dtNoon,
-          meio: meio ? String(meio).toUpperCase() : null,
-          motivo: motivoTxt,
-          criadoPorId: userId,
-        },
-      });
-
-      const movEntrada = await tx.parcelaMovimento.create({
-        data: {
-          parcelaId: destinoId,
-          tipo: "TRANSFERENCIA_ENTRADA",
-          valor: centsToDecimalString(centsPos),
-          dataMovimento: dtNoon,
-          meio: meio ? String(meio).toUpperCase() : null,
-          motivo: motivoTxt,
-          criadoPorId: userId,
-          referenciaMovimentoId: movSaida.id,
-        },
-      });
-
-      await tx.parcelaMovimento.update({
-        where: { id: movSaida.id },
-        data: { referenciaMovimentoId: movEntrada.id },
-      });
-
-      return { movSaida, movEntrada };
-    });
-
-    return res.json({ ok: true, ...result });
-  } catch (err) {
-    const status = err?.status || 500;
-    console.error("Erro ao transferir recebimento:", err);
-    return res.status(status).json({ message: err?.message || "Erro ao transferir recebimento." });
-  }
-});
-
 app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -2572,8 +1944,6 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       where: { id },
       include: {
         cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
         parcelas: {
           orderBy: { numero: "asc" },
           include: {
@@ -2584,25 +1954,28 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     });
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
-    return res.json(contrato);
+
+    return res.json({
+      ...contrato,
+      cliente: serializeCliente({ ...contrato.cliente, ordens: [] }),
+    });
   } catch (err) {
     console.error("Erro ao buscar contrato:", err);
     return res.status(500).json({ message: "Erro ao buscar contrato." });
   }
 });
 
-
-
 // POST /api/contratos/:id/renegociar
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
   try {
     const contratoId = Number(req.params.id);
-    const usuarioId = req.user?.id ?? null;
+    const usuarioId = req.user?.id; // ajuste conforme seu requireAuth injeta o user
 
     if (!Number.isFinite(contratoId)) {
       return res.status(400).json({ message: "ID do contrato inválido." });
     }
 
+    // 1) Busca contrato + parcelas
     const contrato = await prisma.contratoPagamento.findUnique({
       where: { id: contratoId },
       include: {
@@ -2613,194 +1986,104 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
 
+    // 2) Identifica parcelas pendentes (NO BANCO: só PREVISTA)
     const pendentes = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
+
     if (pendentes.length === 0) {
       return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
     }
 
-    // dataBase (default inteligente): menor vencimento dentre pendentes (normalizado para 12:00)
-    const dataBaseRaw = pendentes
-      .map((p) => p.vencimento)
-      .filter(Boolean)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+    // 3) Calcula saldo pendente (Decimal)
+    // Se seu projeto usa helper moneyToCents/centsToDecimalString, pode usar.
+    // Aqui faço soma em cents (BigInt) de forma segura:
+    const toCents = (v) => {
+      if (v === null || v === undefined) return 0n;
+      // v pode vir como string/Decimal
+      const s = String(v).replace(/\./g, "").replace(",", ".");
+      // Garantir 2 casas
+      const n = Number(s);
+      if (!Number.isFinite(n)) return 0n;
+      return BigInt(Math.round(n * 100));
+    };
+    const centsToDecimalString = (cents) => {
+      const sign = cents < 0n ? "-" : "";
+      const a = cents < 0n ? -cents : cents;
+      const i = a / 100n;
+      const d = a % 100n;
+      return `${sign}${i.toString()}.${d.toString().padStart(2, "0")}`;
+    };
 
-    const db0 = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
-    const dataBase = new Date(db0.getFullYear(), db0.getMonth(), db0.getDate(), 12, 0, 0, 0);
-
-    // saldo pendente em centavos
-    const saldoCents = pendentes.reduce((acc, p) => acc + (moneyToCents(p.valorPrevisto) || 0n), 0n);
+    const saldoCents = pendentes.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
     if (saldoCents <= 0n) {
       return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
     }
 
-    // raiz do número (remove -R{n} repetidamente no final)
-    function getNumeroRaiz(numeroContrato) {
-      let base = String(numeroContrato || "").trim();
-      while (/-R\d+$/.test(base)) base = base.replace(/-R\d+$/, "");
-      return base;
-    }
-
-    const raiz = getNumeroRaiz(contrato.numeroContrato);
-
-    // próximo sufixo R{n} baseado na raiz
+    // 4) Gera número do contrato renegociado: ORIGINAL-RN (R1, R2...)
+    const base = contrato.numeroContrato;
     const existing = await prisma.contratoPagamento.findMany({
-      where: { numeroContrato: { startsWith: `${raiz}-R` } },
+      where: { numeroContrato: { startsWith: `${base}-R` } },
       select: { numeroContrato: true },
     });
 
     const used = new Set(existing.map((x) => x.numeroContrato));
     let seq = 1;
-    let novoNumero = `${raiz}-R${seq}`;
+    let novoNumero = `${base}-R${seq}`;
     while (used.has(novoNumero)) {
       seq += 1;
-      novoNumero = `${raiz}-R${seq}`;
+      novoNumero = `${base}-R${seq}`;
     }
 
-    const motivo = `Renegociação do saldo pendente do contrato ${contrato.numeroContrato} -> ${novoNumero}`;
+    const motivo = `Renegociação automática do saldo pendente do contrato ${base} -> ${novoNumero}`;
 
-    const body = req.body || {};
-    const fp = String(body.formaPagamento || "AVISTA").trim().toUpperCase();
-    if (!["AVISTA", "PARCELADO", "ENTRADA_PARCELAS"].includes(fp)) {
-      return res.status(400).json({ message: "Forma de pagamento inválida." });
-    }
-
-    const parseDateOrDefault = (v, field, fallback) => {
-      if (v === undefined || v === null || String(v).trim() === "") return fallback;
-      const d = parseDateInput(v);
-      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
-      return d;
-    };
-
-    const addMonthsLocalNoon = (date, months) => {
-      const d = new Date(date);
-      d.setMonth(d.getMonth() + months);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-    };
-
-    // monta plano de parcelas (sempre total = saldoCents)
-    let parcelasPlan = [];
-
-    if (fp === "AVISTA") {
-      const venc = parseDateOrDefault(body?.avista?.vencimento, "avista.vencimento", dataBase);
-      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: saldoCents }];
-    }
-
-    if (fp === "PARCELADO") {
-      const qtd = Number(body?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
-
-      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
-
-      // se vier valorParcela, valida soma; senão divide automaticamente
-      let valoresCents;
-      const valorParcelaRaw = body?.parcelas?.valorParcela;
-      if (valorParcelaRaw !== undefined && valorParcelaRaw !== null && String(valorParcelaRaw).trim() !== "") {
-        const vParc = moneyToCents(valorParcelaRaw);
-        if (!vParc || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
-        valoresCents = Array.from({ length: qtd }, () => vParc);
-        const soma = valoresCents.reduce((a, b) => a + b, 0n);
-        if (soma !== saldoCents) {
-          return res.status(400).json({
-            message: "Soma das parcelas diferente do saldo pendente. Ajuste o valor da parcela ou deixe em branco para dividir automaticamente.",
-          });
-        }
-      } else {
-        valoresCents = splitCents(saldoCents, qtd);
-      }
-
-      for (let i = 0; i < qtd; i++) {
-        const venc = addMonthsLocalNoon(primeiroVenc, i);
-        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
-      }
-    }
-
-    if (fp === "ENTRADA_PARCELAS") {
-      const eValorCents = moneyToCents(body?.entrada?.valor);
-      if (!eValorCents || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
-      if (eValorCents >= saldoCents) return res.status(400).json({ message: "A entrada deve ser menor que o saldo pendente." });
-
-      const eVenc = parseDateOrDefault(body?.entrada?.vencimento, "entrada.vencimento", dataBase);
-
-      const qtd = Number(body?.parcelas?.quantidade || 0);
-      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após entrada)." });
-
-      // default: 1ª parcela = dataBase + 1 mês (editável no front)
-      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
-      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
-
-      const restante = saldoCents - eValorCents;
-
-      let valoresCents;
-      const valorParcelaRaw = body?.parcelas?.valorParcela;
-      if (valorParcelaRaw !== undefined && valorParcelaRaw !== null && String(valorParcelaRaw).trim() !== "") {
-        const vParc = moneyToCents(valorParcelaRaw);
-        if (!vParc || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
-        valoresCents = Array.from({ length: qtd }, () => vParc);
-        const soma = valoresCents.reduce((a, b) => a + b, 0n);
-        if (soma !== restante) {
-          return res.status(400).json({
-            message: "Soma das parcelas diferente do restante (saldo - entrada). Ajuste o valor da parcela ou deixe em branco para dividir automaticamente.",
-          });
-        }
-      } else {
-        valoresCents = splitCents(restante, qtd);
-      }
-
-      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
-
-      for (let i = 0; i < qtd; i++) {
-        const venc = addMonthsLocalNoon(primeiroVenc, i);
-        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
-      }
-    }
-
+    // 5) Transação: cancela pendentes + cria contrato filho + marca original como renegociado
     const result = await prisma.$transaction(async (tx) => {
-      // cancela pendentes do contrato que está sendo renegociado
+      // 5.1 cancela TODAS pendentes
       await tx.parcelaContrato.updateMany({
-        where: { contratoId, status: { in: ["PREVISTA"] } },
+        where: {
+          contratoId,
+          status: { in: ["PREVISTA"] }, // ✅ SEM ATRASADA
+        },
         data: {
           status: "CANCELADA",
           canceladaEm: new Date(),
-          canceladaPorId: usuarioId,
+          canceladaPorId: usuarioId ?? null,
           cancelamentoMotivo: motivo,
         },
       });
 
+      // 5.2 cria contrato filho (1 parcela à vista)
       const filho = await tx.contratoPagamento.create({
         data: {
           numeroContrato: novoNumero,
           clienteId: contrato.clienteId,
           valorTotal: centsToDecimalString(saldoCents),
-          formaPagamento: fp,
-          observacoes: `Originado da renegociação do contrato ${contrato.numeroContrato}.`,
-          contratoOrigemId: contrato.id,
+          formaPagamento: "AVISTA",
+          observacoes: `Contrato gerado por renegociação do contrato ${base}.`,
+          // se você já tem campos pai/renegociado no model, ajuste aqui:
+          // contratoPaiId: contrato.id,
+          // renegociadoDeId: contrato.id,
           parcelas: {
-            create: parcelasPlan.map((p) => ({
-              numero: p.numero,
-              vencimento: p.vencimento,
-              valorPrevisto: centsToDecimalString(p.valorCents),
-              status: "PREVISTA",
-            })),
+            create: [
+              {
+                numero: 1,
+                vencimento: new Date(), // vencimento hoje
+                valorPrevisto: centsToDecimalString(saldoCents),
+                status: "PREVISTA",
+              },
+            ],
           },
         },
-        include: {
-          cliente: true,
-          contratoOrigem: { select: { id: true, numeroContrato: true } },
-          parcelas: { orderBy: { numero: "asc" } },
-        },
+        include: { parcelas: true },
       });
 
+      // 5.3 marca original como renegociado (sem desativar)
       const originalAtualizado = await tx.contratoPagamento.update({
         where: { id: contratoId },
         data: {
-          renegociadoEm: new Date(),
-          renegociadoPorId: usuarioId,
-          renegociadoParaId: filho.id,
-        },
-        include: {
-          cliente: true,
-          renegociadoPara: { select: { id: true, numeroContrato: true } },
-          parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
+          // ajuste os campos conforme você criou no Prisma:
+          // renegociadoEm: new Date(),
+          // renegociadoPorId: usuarioId ?? null,
+          // renegociadoParaId: filho.id,
         },
       });
 
@@ -2814,7 +2097,7 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     });
   } catch (err) {
     console.error("Erro ao renegociar saldo:", err);
-    return res.status(500).json({ message: err?.message || "Erro ao renegociar saldo." });
+    return res.status(500).json({ message: "Erro ao renegociar saldo." });
   }
 });
 
