@@ -540,13 +540,6 @@ async function salvarRetificacao() {
                           <div className="inline-flex gap-2">
                             <button
                               type="button"
-                              onClick={() => openMovimento(p)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                            >
-                              Movimento
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => openRetificar(p)}
                               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
                             >
