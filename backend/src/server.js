@@ -2098,8 +2098,6 @@ const updated = await prisma.$transaction(async (tx) => {
 });
 
 return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
-   
-    const data = {};
 
     if (p.vencimento !== undefined) {
       const d = parseDateInput(p.vencimento);
