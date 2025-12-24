@@ -155,6 +155,16 @@ function moneyToCents(input) {
   return d ? BigInt(d) : null;
 }
 
+
+function signedMoneyToCents(input) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return 0;
+  const neg = raw.startsWith("-");
+  const val = neg ? raw.slice(1).trim() : raw;
+  const cents = moneyToCents(val);
+  return neg ? -cents : cents;
+}
+
 function centsToDecimalString(cents) {
   if (cents === null || cents === undefined) return null;
   const c = BigInt(cents);
@@ -220,6 +230,36 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ message: "Acesso restrito a administradores." });
   }
   next();
+}
+
+
+async function assertAdminPassword(req, adminPassword) {
+  const pwd = String(adminPassword ?? "").trim();
+  if (!pwd) {
+    const err = new Error("Confirme sua senha de administrador.");
+    err.status = 400;
+    throw err;
+  }
+  const userId = req.user?.id;
+  if (!userId) {
+    const err = new Error("Sessão inválida.");
+    err.status = 401;
+    throw err;
+  }
+  const u = await prisma.usuario.findUnique({ where: { id: Number(userId) } });
+  if (!u) {
+    const err = new Error("Usuário não encontrado.");
+    err.status = 401;
+    throw err;
+  }
+  const { bcrypt } = await getAuthLibs();
+  const ok = await bcrypt.compare(pwd, u.senhaHash);
+  if (!ok) {
+    const err = new Error("Senha inválida.");
+    err.status = 401;
+    throw err;
+  }
+  return true;
 }
 
 
@@ -622,6 +662,44 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
     console.error(err);
     return res.status(500).json({ message: "Erro ao atualizar status." });
   }
+});
+
+// Modelo de Distribuição (admin-only)
+app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
+  const rows = await prisma.modeloDistribuicao.findMany({ orderBy: { cod: "asc" } });
+  res.json(rows);
+});
+
+app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
+  const { cod, descricao, ativo } = req.body || {};
+  if (!cod || !String(cod).trim()) return res.status(400).json({ message: "Informe o código." });
+
+  const row = await prisma.modeloDistribuicao.create({
+    data: { cod: String(cod).trim(), descricao: descricao ? String(descricao).trim() : null, ativo: ativo !== false },
+  });
+  res.json(row);
+});
+
+app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+  const { cod, descricao, ativo } = req.body || {};
+  const data = {};
+  if (cod !== undefined) data.cod = String(cod).trim();
+  if (descricao !== undefined) data.descricao = descricao ? String(descricao).trim() : null;
+  if (ativo !== undefined) data.ativo = !!ativo;
+
+  const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
+  res.json(row);
+});
+
+app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+  await prisma.modeloDistribuicao.delete({ where: { id } });
+  res.json({ ok: true });
 });
 
 /* =========================
@@ -1563,10 +1641,12 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const out = contratos.map((c) => {
       const parcelas = c.parcelas || [];
       const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
-      const totalRecebido = recebidas.reduce(
-        (acc, p) => acc + Number(p.valorRecebido || 0),
-        0
-      );
+      const totalRecebido = recebidas.reduce((acc, p) => {
+        const movs = Array.isArray(p.movimentos) ? p.movimentos : [];
+        const somaMovs = movs.reduce((s, m) => s + Number(m.valor || 0), 0);
+        const efetivo = Number(p.valorRecebido || 0) + somaMovs;
+        return acc + efetivo;
+      }, 0);
 
       return {
         id: c.id,
@@ -1748,6 +1828,10 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     include: {
       canceladaPor: {
         select: { id: true, nome: true }
+      },
+      movimentos: {
+        orderBy: { createdAt: "asc" },
+        include: { criadoPor: { select: { id: true, nome: true } } }
       }
     }
   }
@@ -1800,6 +1884,10 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     include: {
       canceladaPor: {
         select: { id: true, nome: true }
+      },
+      movimentos: {
+        orderBy: { createdAt: "asc" },
+        include: { criadoPor: { select: { id: true, nome: true } } }
       }
     }
   }
@@ -2267,6 +2355,145 @@ app.patch(
     }
   }
 );
+
+
+// =========================
+// 6.3.B — Movimentos (Ajustes / Estornos / Transferências) em Parcela (admin-only + senha)
+// =========================
+
+app.post("/api/parcelas/:id/movimentos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parcelaId = Number(req.params.id);
+    if (!parcelaId) return res.status(400).json({ message: "ID da parcela inválido." });
+
+    const { adminPassword, tipo, valor, dataMovimento, meio, motivo } = req.body || {};
+
+    await assertAdminPassword(req, adminPassword);
+
+    const tipoUp = String(tipo || "").toUpperCase();
+    const allowed = ["AJUSTE", "ESTORNO", "TRANSFERENCIA_SAIDA", "TRANSFERENCIA_ENTRADA"];
+    if (!allowed.includes(tipoUp)) return res.status(400).json({ message: "Tipo de movimento inválido." });
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo do movimento." });
+
+    const parcela = await prisma.parcelaContrato.findUnique({
+      where: { id: parcelaId },
+      include: { contrato: true },
+    });
+    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+
+    if (parcela.status !== "RECEBIDA") {
+      return res.status(400).json({ message: "Somente parcelas RECEBIDAS podem receber movimentos (ajustes/estornos)." });
+    }
+
+    const dt = dataMovimento ? parseDate(dataMovimento, "dataMovimento") : new Date();
+    const dtNoon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0, 0);
+
+    const cents = signedMoneyToCents(valor);
+    if (!Number.isFinite(cents) || cents === 0) {
+      return res.status(400).json({ message: "Informe um valor diferente de zero." });
+    }
+
+    const created = await prisma.parcelaMovimento.create({
+      data: {
+        parcelaId: parcelaId,
+        tipo: tipoUp,
+        valor: centsToDecimalString(cents),
+        dataMovimento: dtNoon,
+        meio: meio ? String(meio).toUpperCase() : null,
+        motivo: motivoTxt,
+        criadoPorId: req.user?.id ? Number(req.user.id) : null,
+      },
+    });
+
+    const updated = await prisma.parcelaContrato.findUnique({
+      where: { id: parcelaId },
+      include: {
+        movimentos: { orderBy: { createdAt: "asc" }, include: { criadoPor: { select: { id: true, nome: true } } } },
+      },
+    });
+
+    return res.json({ ok: true, movimento: created, parcela: updated });
+  } catch (err) {
+    const status = err?.status || 500;
+    console.error("Erro ao criar movimento da parcela:", err);
+    return res.status(status).json({ message: err?.message || "Erro ao criar movimento." });
+  }
+});
+
+app.post("/api/parcelas/:id/transferir-recebimento", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parcelaOrigemId = Number(req.params.id);
+    if (!parcelaOrigemId) return res.status(400).json({ message: "ID da parcela inválido." });
+
+    const { adminPassword, parcelaDestinoId, valor, dataMovimento, meio, motivo } = req.body || {};
+    await assertAdminPassword(req, adminPassword);
+
+    const destinoId = Number(parcelaDestinoId);
+    if (!destinoId) return res.status(400).json({ message: "Informe a parcela de destino." });
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da transferência." });
+
+    const dt = dataMovimento ? parseDate(dataMovimento, "dataMovimento") : new Date();
+    const dtNoon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0, 0);
+
+    const centsPos = moneyToCents(valor);
+    if (!Number.isFinite(centsPos) || centsPos <= 0) {
+      return res.status(400).json({ message: "Informe um valor positivo para transferir." });
+    }
+
+    const userId = req.user?.id ? Number(req.user.id) : null;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const origem = await tx.parcelaContrato.findUnique({ where: { id: parcelaOrigemId } });
+      const destino = await tx.parcelaContrato.findUnique({ where: { id: destinoId } });
+      if (!origem || !destino) throw Object.assign(new Error("Parcela origem/destino não encontrada."), { status: 404 });
+      if (origem.status !== "RECEBIDA" || destino.status !== "RECEBIDA") {
+        throw Object.assign(new Error("Transferência exige parcelas RECEBIDAS (origem e destino)."), { status: 400 });
+      }
+
+      const movSaida = await tx.parcelaMovimento.create({
+        data: {
+          parcelaId: parcelaOrigemId,
+          tipo: "TRANSFERENCIA_SAIDA",
+          valor: centsToDecimalString(-centsPos),
+          dataMovimento: dtNoon,
+          meio: meio ? String(meio).toUpperCase() : null,
+          motivo: motivoTxt,
+          criadoPorId: userId,
+        },
+      });
+
+      const movEntrada = await tx.parcelaMovimento.create({
+        data: {
+          parcelaId: destinoId,
+          tipo: "TRANSFERENCIA_ENTRADA",
+          valor: centsToDecimalString(centsPos),
+          dataMovimento: dtNoon,
+          meio: meio ? String(meio).toUpperCase() : null,
+          motivo: motivoTxt,
+          criadoPorId: userId,
+          referenciaMovimentoId: movSaida.id,
+        },
+      });
+
+      await tx.parcelaMovimento.update({
+        where: { id: movSaida.id },
+        data: { referenciaMovimentoId: movEntrada.id },
+      });
+
+      return { movSaida, movEntrada };
+    });
+
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    const status = err?.status || 500;
+    console.error("Erro ao transferir recebimento:", err);
+    return res.status(status).json({ message: err?.message || "Erro ao transferir recebimento." });
+  }
+});
 
 app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
