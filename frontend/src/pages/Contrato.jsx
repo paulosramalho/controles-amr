@@ -184,6 +184,15 @@ export default function ContratoPage({ user }) {
   const [transfMeio, setTransfMeio] = useState("PIX");
   const [transfMotivo, setTransfMotivo] = useState("");
 
+  const [retOpen, setRetOpen] = useState(false);
+  const [retSaving, setRetSaving] = useState(false);
+  const [retError, setRetError] = useState("");
+  const [retParcela, setRetParcela] = useState(null);
+
+  const [retValorDigits, setRetValorDigits] = useState(""); // máscara moeda padrão
+  const [retMotivo, setRetMotivo] = useState("");
+  const [retAdminPassword, setRetAdminPassword] = useState("");
+
   function openMovimento(parcela) {
     setMovError("");
     setMovParcela(parcela);
@@ -226,6 +235,55 @@ export default function ContratoPage({ user }) {
       setLoading(false);
     }
   }
+
+function openRetificar(parcela) {
+  setRetError("");
+  setRetParcela(parcela);
+
+  // pré-preenche com o valor previsto atual
+  const v = Number(parcela?.valorPrevisto || 0);
+  const digits = String(Math.round(v * 100)); // transforma 1234.56 -> "123456"
+  setRetValorDigits(digits);
+
+  setRetMotivo("");
+  setRetAdminPassword("");
+  setRetOpen(true);
+}
+
+async function salvarRetificacao() {
+  if (!retParcela?.id) return;
+
+  setRetError("");
+
+  const motivo = String(retMotivo || "").trim();
+  if (!motivo) return setRetError("Informe o motivo.");
+
+  // ✅ valor como number (não manda '1.234,56' pra API)
+  const valorPrevisto = digitsToNumber(retValorDigits);
+  if (!valorPrevisto || valorPrevisto <= 0) return setRetError("Informe um valor previsto válido.");
+
+  if (!retAdminPassword) return setRetError("Confirme a senha do admin.");
+
+  setRetSaving(true);
+  try {
+    await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+      method: "POST",
+      body: {
+        adminPassword: retAdminPassword,
+        motivo,
+        valorPrevisto,  // ✅ number
+      },
+    });
+
+    setRetOpen(false);
+    await loadContrato();
+  } catch (e) {
+    // ✅ aqui entra a mensagem de bloqueio no modal
+    setRetError(e?.message || "Falha ao retificar.");
+  } finally {
+    setRetSaving(false);
+  }
+}
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -489,11 +547,12 @@ export default function ContratoPage({ user }) {
                             </button>
                             <button
                               type="button"
-                              onClick={() => openTransferencia(p)}
+                              onClick={() => openRetificar(p)}
                               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
                             >
-                              Transferir
+                              Retificar
                             </button>
+
                           </div>
                         </td>
                       </tr>
@@ -744,6 +803,74 @@ export default function ContratoPage({ user }) {
               onChange={(e) => setTransfMotivo(e.target.value)}
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="Ex.: Recebimento lançado no contrato errado"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={retOpen}
+        title={`Retificar Parcela #${retParcela?.numero ?? "—"}`}
+        onClose={() => setRetOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRetOpen(false)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              disabled={retSaving}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={salvarRetificacao}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              disabled={retSaving}
+            >
+              {retSaving ? "Salvando..." : "Retificar"}
+            </button>
+          </>
+        }
+      >
+        {retError ? (
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+            {retError}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor previsto (R$)</label>
+    
+            {/* ✅ máscara padrão adotada */}
+            <input
+              value={maskBRLFromDigits(retValorDigits)}
+              onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="0,00"
+              inputMode="numeric"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Senha do admin</label>
+            <input
+              value={retAdminPassword}
+              onChange={(e) => setRetAdminPassword(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="••••••••"
+              type="password"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
+            <input
+              value={retMotivo}
+              onChange={(e) => setRetMotivo(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              placeholder="Ex.: Valor previsto lançado errado"
             />
           </div>
         </div>
