@@ -160,6 +160,8 @@ function Shell({ user, onLogout }) {
       },
 
       { type: "group", label: "Configurações", children: [
+       { to: "/advogados", label: "Advogados" },
+        { to: "/clientes", label: "Clientes" },
         { to: "/usuarios", label: "Usuários" },
         { to: "/modelo-distribuicao", label: "Modelo de Distribuição" },
       ]},
