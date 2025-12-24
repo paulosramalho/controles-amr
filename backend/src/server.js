@@ -2111,69 +2111,6 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
   }
 });
 
-    if (p.vencimento !== undefined) {
-      const d = parseDateInput(p.vencimento);
-      if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
-      data.vencimento = d;
-    }
-
-    if (p.valorPrevisto !== undefined) {
-      const cents = moneyToCents(p.valorPrevisto);
-      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
-      data.valorPrevisto = centsToDecimalString(cents);
-    }
-
-    if (!Object.keys(data).length) {
-      return res.status(400).json({ message: "Nada para retificar." });
-    }
-
-    const before = {
-      id: parcela.id,
-      contratoId: parcela.contratoId,
-      numero: parcela.numero,
-      vencimento: parcela.vencimento,
-      valorPrevisto: parcela.valorPrevisto,
-      status: parcela.status,
-    };
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const afterParcela = await tx.parcelaContrato.update({
-        where: { id: parcelaId },
-        data,
-      });
-
-      const alteracoes = {};
-      if (data.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
-      if (data.valorPrevisto) alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
-
-      await tx.retificacaoParcela.create({
-        data: {
-          parcelaId,
-          motivo: motivoTxt,
-          alteracoes,
-          snapshotAntes: before,
-          snapshotDepois: {
-            id: afterParcela.id,
-            contratoId: afterParcela.contratoId,
-            numero: afterParcela.numero,
-            vencimento: afterParcela.vencimento,
-            valorPrevisto: afterParcela.valorPrevisto,
-            status: afterParcela.status,
-          },
-          criadoPorId: req.user?.id ?? null,
-        },
-      });
-
-      return afterParcela;
-    });
-
-    return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
-  } catch (err) {
-    console.error("Erro ao retificar parcela:", err);
-    return res.status(500).json({ message: err?.message || "Erro ao retificar parcela." });
-  }
-});
-
 // Retificar contrato (verde): reestrutura parcelas PREVISTAS conforme payload (com log)
 app.post("/api/contratos/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
   try {
