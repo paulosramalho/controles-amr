@@ -462,6 +462,56 @@ async function salvarRetificacao() {
                 <div className="font-semibold text-slate-900">{contrato.ativo ? "Sim" : "Não"}</div>
               </div>
 
+
+              {/* Links pai ⇄ filho (contrato original ⇄ renegociações) */}
+              {contrato?.contratoOrigem?.id || contrato?.renegociadoPara?.id || (contrato?.renegociacoesDerivadas || []).length ? (
+                <div className="md:col-span-3">
+                  <div className="text-slate-500">Vínculos</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {contrato?.contratoOrigem?.id ? (
+                      <span className="text-slate-800">
+                        Originado da renegociação do contrato{" "}
+                        <Link
+                          to={`/contratos/${contrato.contratoOrigem.id}`}
+                          className="font-semibold text-slate-900 underline hover:text-slate-700"
+                        >
+                          {contrato.contratoOrigem.numeroContrato}
+                        </Link>
+                      </span>
+                    ) : null}
+
+                    {contrato?.renegociadoPara?.id ? (
+                      <span className="text-slate-800">
+                        Renegociado para{" "}
+                        <Link
+                          to={`/contratos/${contrato.renegociadoPara.id}`}
+                          className="font-semibold text-slate-900 underline hover:text-slate-700"
+                        >
+                          {contrato.renegociadoPara.numeroContrato}
+                        </Link>
+                      </span>
+                    ) : null}
+
+                    {(contrato?.renegociacoesDerivadas || []).length ? (
+                      <span className="text-slate-800">
+                        Derivados:{" "}
+                        {(contrato.renegociacoesDerivadas || []).map((c, idx) => (
+                          <React.Fragment key={c.id}>
+                            {idx > 0 ? ", " : ""}
+                            <Link
+                              to={`/contratos/${c.id}`}
+                              className="font-semibold text-slate-900 underline hover:text-slate-700"
+                            >
+                              {c.numeroContrato}
+                            </Link>
+                          </React.Fragment>
+                        ))}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {contrato.observacoes ? (
                 <div className="md:col-span-3">
                   <div className="text-slate-500">Observações</div>
