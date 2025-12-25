@@ -32,11 +32,7 @@ function parseDateDDMMYYYY(s) {
 
   // Create local date at noon to avoid timezone/D-1 issues
   const dt = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
-  if (
-    dt.getFullYear() !== yyyy ||
-    dt.getMonth() !== mm - 1 ||
-    dt.getDate() !== dd
-  ) {
+  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) {
     return null;
   }
   return dt;
@@ -251,6 +247,88 @@ app.put("/api/clientes/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (e) {
     return res.status(500).json({ message: e?.message || "Falha ao atualizar cliente." });
   }
+});
+
+/* ===========================
+   Usuários (para não dar 404/HTML no front)
+   CRUD mínimo admin-only
+   =========================== */
+app.get("/api/usuarios", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const users = await prisma.usuario.findMany({
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, createdAt: true, updatedAt: true },
+    });
+    return res.json(users);
+  } catch (e) {
+    return res.status(500).json({ message: e?.message || "Falha ao listar usuários." });
+  }
+});
+
+app.post("/api/usuarios", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const nome = String(req.body?.nome || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const role = String(req.body?.role || "user");
+    const ativo = req.body?.ativo === undefined ? true : Boolean(req.body.ativo);
+    const senha = String(req.body?.senha || "");
+
+    if (!nome) return res.status(400).json({ message: "Nome é obrigatório." });
+    if (!email) return res.status(400).json({ message: "E-mail é obrigatório." });
+    if (!senha) return res.status(400).json({ message: "Senha é obrigatória." });
+
+    const hash = await bcrypt.hash(senha, 10);
+    const created = await prisma.usuario.create({
+      data: { nome, email, role, ativo, senha_hash: hash },
+      select: { id: true, nome: true, email: true, role: true, ativo: true },
+    });
+    return res.json(created);
+  } catch (e) {
+    return res.status(500).json({ message: e?.message || "Falha ao criar usuário." });
+  }
+});
+
+app.put("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const nome = req.body?.nome !== undefined ? String(req.body.nome).trim() : undefined;
+    const email = req.body?.email !== undefined ? String(req.body.email).trim().toLowerCase() : undefined;
+    const role = req.body?.role !== undefined ? String(req.body.role) : undefined;
+    const ativo = req.body?.ativo !== undefined ? Boolean(req.body.ativo) : undefined;
+    const senha = req.body?.senha !== undefined ? String(req.body.senha) : undefined;
+
+    const data = {};
+    if (nome) data.nome = nome;
+    if (email) data.email = email;
+    if (role) data.role = role;
+    if (ativo !== undefined) data.ativo = ativo;
+    if (senha) data.senha_hash = await bcrypt.hash(senha, 10);
+
+    const updated = await prisma.usuario.update({
+      where: { id },
+      data,
+      select: { id: true, nome: true, email: true, role: true, ativo: true },
+    });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ message: e?.message || "Falha ao atualizar usuário." });
+  }
+});
+
+/* ===========================
+   Advogados (placeholder JSON para não quebrar front)
+   ⚠️ Sem mexer no schema: devolve [] e endpoints estáveis.
+   =========================== */
+app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
+  return res.json([]);
+});
+
+/* ===========================
+   Modelo de Distribuição (placeholder JSON para não quebrar front)
+   ⚠️ Sem mexer no schema: devolve [] e endpoints estáveis.
+   =========================== */
+app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (_req, res) => {
+  return res.json([]);
 });
 
 /* ===========================
@@ -593,7 +671,8 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
       });
 
       const alteracoes = {};
-      if (dataToUpdate.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
+      if (dataToUpdate.vencimento)
+        alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
       if (dataToUpdate.valorPrevisto)
         alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
 
@@ -633,6 +712,21 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
     console.error("Erro ao retificar parcela:", err);
     return res.status(status).json({ message: err?.message || "Erro ao retificar parcela." });
   }
+});
+
+/* ===========================
+   Aliases sem /api (se o front chamar direto)
+   =========================== */
+app.get("/clientes", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/clientes"));
+app.get("/usuarios", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/usuarios"));
+app.get("/advogados", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/advogados"));
+app.get("/modelo-distribuicao", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/modelo-distribuicao"));
+
+/* ===========================
+   404 em JSON (nunca HTML)
+   =========================== */
+app.use((req, res) => {
+  res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
 });
 
 /* ===========================
