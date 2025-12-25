@@ -1,26 +1,6 @@
-// src/pages/Contrato.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-
-/* ---------------- helpers (mantidos) ---------------- */
-function onlyDigits(v = "") {
-  return String(v ?? "").replace(/\D/g, "");
-}
-
-function parseDateDDMMYYYY(s) {
-  const raw = String(s || "").trim();
-  if (!raw) return null;
-  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-  if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
-  const dt = new Date(yyyy, mm - 1, dd);
-  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
-  return dt;
-}
 
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
@@ -31,15 +11,6 @@ function toDDMMYYYY(dateLike) {
 }
 
 function toDateOnly(d) {
-  if (!d) return null;
-
-  if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
-    const parsed = parseDateDDMMYYYY(d);
-    if (!parsed) return null;
-    parsed.setHours(0, 0, 0, 0);
-    return parsed;
-  }
-
   const x = new Date(d);
   if (!Number.isFinite(x.getTime())) return null;
   x.setHours(0, 0, 0, 0);
@@ -55,16 +26,7 @@ function isParcelaAtrasada(p) {
   const venc = toDateOnly(p.vencimento);
 
   if (!hoje || !venc) return false;
-
   return venc < hoje;
-}
-
-function normalizeForma(fp) {
-  const v = String(fp || "").toUpperCase();
-  if (v === "AVISTA") return "À vista";
-  if (v === "PARCELADO") return "Parcelado";
-  if (v === "ENTRADA_PARCELAS") return "Entrada + Parcelas";
-  return fp || "—";
 }
 
 function formatBRLFromDecimal(value) {
@@ -74,12 +36,10 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/* ---------------- status helpers (mantidos) ---------------- */
 function computeStatusContrato(contrato) {
   const parcelas = contrato?.parcelas || [];
   if (!parcelas.length) return "EM_DIA";
 
-  // prioridade: RENEGOCIADO
   if (contrato?.renegociadoParaId) return "RENEGOCIADO";
 
   const todasCanceladas = parcelas.every((p) => p.status === "CANCELADA");
@@ -110,19 +70,6 @@ function statusTone(st) {
   return "blue";
 }
 
-/* ---------------- UI components ---------------- */
-function Card({ title, right, children }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-        <div className="text-xl font-semibold text-slate-900">{title}</div>
-        {right ? <div className="pt-0.5">{right}</div> : null}
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  );
-}
-
 function Badge({ children, tone = "slate" }) {
   const map = {
     slate: "bg-slate-600 text-white",
@@ -139,7 +86,18 @@ function Badge({ children, tone = "slate" }) {
   );
 }
 
-/* ---------------- Page ---------------- */
+function Card({ title, right, children }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white">
+      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+        <div className="text-xl font-semibold text-slate-900">{title}</div>
+        {right ? <div className="pt-0.5">{right}</div> : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
 export default function ContratoPage({ user }) {
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
   const { id } = useParams();
@@ -215,7 +173,6 @@ export default function ContratoPage({ user }) {
           <div className="text-sm text-slate-600">{loading ? "Carregando..." : "Contrato não encontrado."}</div>
         ) : (
           <div className="space-y-5">
-            {/* Bloco “como foi lançado” */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Cliente</div>
@@ -223,7 +180,7 @@ export default function ContratoPage({ user }) {
               </div>
               <div>
                 <div className="text-slate-500">Forma</div>
-                <div className="font-semibold text-slate-900">{normalizeForma(contrato.formaPagamento)}</div>
+                <div className="font-semibold text-slate-900">{contrato.formaPagamento || "—"}</div>
               </div>
               <div>
                 <div className="text-slate-500">Status</div>
@@ -252,8 +209,6 @@ export default function ContratoPage({ user }) {
                 </div>
               ) : null}
             </div>
-
-            {/* ✅ Vínculos (pai/filho) — renegociação */}
             {(() => {
               const parent = contrato?.contratoOrigem;
               const child = contrato?.renegociadoPara;
@@ -318,7 +273,6 @@ export default function ContratoPage({ user }) {
               );
             })()}
 
-            {/* Parcelas */}
             <div className="overflow-auto rounded-2xl border border-slate-200">
               <table className="min-w-[900px] w-full text-sm">
                 <thead className="bg-slate-50 text-slate-700">
