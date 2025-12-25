@@ -7,289 +7,88 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Usuario {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  email      String   @unique
+  senha_hash String
+  role       String   @default("user")
+  ativo      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // relations
+  solicitacoesCriadas SolicitacaoUsuario[] @relation("SolicitacaoCriadaPor")
+  retificacoesParcela RetificacaoParcela[]
+  historicosContrato  HistoricoContrato[]
+  parcelasCanceladas  ParcelaContrato[]    @relation("ParcelaCanceladaPor")
+}
+
 model Cliente {
-  id              Int                 @id @default(autoincrement())
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  cpfCnpj         String              @unique
+  id              Int      @id @default(autoincrement())
   nomeRazaoSocial String
-  email           String?
-  telefone        String?
-  observacoes     String?
-  ativo           Boolean             @default(true)
-  ordens          OrdemPagamento[]
-  contratos       ContratoPagamento[]
+  cpfCnpj         String   @unique
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@index([ativo])
-  @@index([nomeRazaoSocial])
-}
-
-model OrdemPagamento {
-  id                 Int             @id @default(autoincrement())
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  clienteId          Int
-  sequenciaCliente   Int
-  codigoInterno      String?
-  descricao          String?
-  tipoContrato       String?
-  valorTotalPrevisto Decimal?
-  modeloPagamento    ModeloPagamento
-  dataInicio         DateTime
-  dataFimPrevista    DateTime?
-  status             StatusOrdem
-  cliente            Cliente         @relation(fields: [clienteId], references: [id])
-  pagamentos         Pagamento[]
-  repasses           Repasse[]
-
-  @@unique([clienteId, sequenciaCliente])
-  @@index([status])
-  @@index([modeloPagamento])
-}
-
-model Pagamento {
-  id               Int              @id @default(autoincrement())
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  dataPagamento    DateTime?
-  status           StatusPagamento?
-  ordemPagamentoId Int?
-  valor            Decimal?
-  ordemPagamento   OrdemPagamento?  @relation(fields: [ordemPagamentoId], references: [id])
-
-  @@index([dataPagamento])
-}
-
-// =========================
-// NOVO — PAGAMENTOS (CONTRATOS + PARCELAS)
-// =========================
-
-enum FormaPagamentoContrato {
-  AVISTA
-  ENTRADA_PARCELAS
-  PARCELADO
-}
-
-enum StatusParcela {
-  PREVISTA
-  RECEBIDA
-  CANCELADA
-}
-
-enum MeioRecebimento {
-  PIX
-  TED
-  BOLETO
-  CARTAO
-  DINHEIRO
-  OUTRO
-}
-
-enum TipoMovimentoParcela {
-  AJUSTE
-  ESTORNO
-  TRANSFERENCIA_SAIDA
-  TRANSFERENCIA_ENTRADA
+  contratos ContratoPagamento[]
 }
 
 model ContratoPagamento {
-  id        Int      @id @default(autoincrement())
+  id             Int     @id @default(autoincrement())
+  numeroContrato String  @unique
+  clienteId      Int
+  cliente        Cliente @relation(fields: [clienteId], references: [id])
+
+  formaPagamento String
+  valorTotal     Decimal @db.Decimal(14, 2)
+  observacoes    String?
+  ativo          Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Número do contrato (global, único)
-  numeroContrato String @unique @db.VarChar(60)
-
-  clienteId Int
-  cliente   Cliente @relation(fields: [clienteId], references: [id])
-
-  valorTotal     Decimal                @db.Decimal(12, 2)
-  formaPagamento FormaPagamentoContrato
-
-  observacoes String? @db.Text
-  ativo       Boolean @default(true)
-
-  parcelas ParcelaContrato[]
-
-  // 👇 6.3 — renegociação (pai/filho)
+  // ===== Renegociação (pai/filho) =====
   contratoOrigemId Int?
-  contratoOrigem   ContratoPagamento?  @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
-  derivados        ContratoPagamento[] @relation("ContratoOrigem")
+  contratoOrigem   ContratoPagamento? @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
 
   renegociadoParaId Int?
-  renegociadoPara   ContratoPagamento?  @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
-  renegociadosDele  ContratoPagamento[] @relation("ContratoRenegociadoPara")
+  renegociadoPara   ContratoPagamento? @relation("RenegociadoPara", fields: [renegociadoParaId], references: [id])
 
-  renegociadoEm       DateTime?
-  renegociadoPorId    Int?
-  renegociadoPor      Usuario?              @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
-  RetificacaoContrato RetificacaoContrato[]
+  // filhos do contrato (R1, R2...)
+  derivados ContratoPagamento[] @relation("ContratoOrigem")
 
-  @@index([clienteId])
-  @@index([formaPagamento])
-  @@index([ativo])
-  @@index([contratoOrigemId])
-  @@index([renegociadoParaId])
+  // contratos que apontam para este como "renegociadoPara"
+  renegociadosDele ContratoPagamento[] @relation("RenegociadoPara")
+
+  parcelas  ParcelaContrato[]
+  historico HistoricoContrato[]
 }
 
 model ParcelaContrato {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  contratoId Int
-  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-
-  numero        Int // 1..N (ordem)
-  vencimento    DateTime
-  valorPrevisto Decimal  @db.Decimal(12, 2)
-
-  status StatusParcela @default(PREVISTA)
-
-  dataRecebimento DateTime?
-  valorRecebido   Decimal?         @db.Decimal(12, 2)
-  meioRecebimento MeioRecebimento?
-
-  observacoes String? @db.Text
-
-  // trilha de cancelamento
-  canceladaEm        DateTime?
-  canceladaPorId     Int?
-  cancelamentoMotivo String?              @db.Text
-  canceladaPor       Usuario?             @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
-  RetificacaoParcela RetificacaoParcela[]
-
-  // movimentos/ajustes (B — contralançamento)
-  movimentos ParcelaMovimento[]
-
-  @@unique([contratoId, numero])
-  @@index([vencimento])
-  @@index([status])
-}
-
-model ParcelaMovimento {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-
-  parcelaId Int
-  parcela   ParcelaContrato @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
-
-  tipo TipoMovimentoParcela
-
-  // valor do movimento (pode ser negativo)
-  valor Decimal @db.Decimal(12, 2)
-
-  // Data referência do movimento (normalizada para 12:00)
-  dataMovimento DateTime
-
-  meio   MeioRecebimento?
-  motivo String           @db.Text
-
-  criadoPorId Int?
-  criadoPor   Usuario? @relation("MovimentoCriadoPor", fields: [criadoPorId], references: [id])
-
-  // ligação opcional entre movimentos casados (transferência)
-  referenciaMovimentoId Int?
-  referenciaMovimento   ParcelaMovimento?  @relation("MovimentoReferencia", fields: [referenciaMovimentoId], references: [id])
-  referenciados         ParcelaMovimento[] @relation("MovimentoReferencia")
-
-  @@index([parcelaId])
-  @@index([tipo])
-  @@index([dataMovimento])
-  @@index([criadoPorId])
-}
-
-model Repasse {
-  id               Int             @id @default(autoincrement())
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  valor            Decimal?
-  competenciaAno   Int?
-  competenciaMes   Int?
-  ordemPagamentoId Int?
-  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
-
-  @@index([competenciaAno, competenciaMes])
-}
-
-model Usuario {
-  id          Int         @id @default(autoincrement())
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  nome        String
-  email       String      @unique
-  senhaHash   String
-  ativo       Boolean     @default(true)
-  /// Vínculo 1:1 opcional com Advogado (FASE 1)
-  advogadoId  Int?        @unique
-  role        UserRole    @default(USER)
-  cpf         String?     @unique
-  telefone    String?
-  tipoUsuario TipoUsuario @default(USUARIO)
-  advogado    Advogado?   @relation(fields: [advogadoId], references: [id])
-
-  parcelasCanceladas ParcelaContrato[] @relation("ParcelaCanceladaPor")
-
-  contratosRenegociados ContratoPagamento[]   @relation("ContratoRenegociadoPor")
-  RetificacaoContrato   RetificacaoContrato[]
-  RetificacaoParcela    RetificacaoParcela[]
-
-  movimentosParcela ParcelaMovimento[] @relation("MovimentoCriadoPor")
-
-  @@index([ativo])
-  @@index([role])
-  @@index([tipoUsuario])
-}
-
-model Advogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  nome      String
-  cpf       String   @unique
-  email     String
-  telefone  String
-  ativo     Boolean  @default(true)
-  oab       String   @unique
-  chavePix  String?  @db.VarChar(255)
-  usuario   Usuario?
-
-  @@index([ativo])
-}
-
-model ModeloDistribuicao {
-  id           Int      @id @default(autoincrement())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
-  codigo       String?
-  origem       String?
-  tipo         String?
-  percentual   Decimal?
-  destinatario String?
-  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
-  cod          String?  @unique
-
-  @@index([cod])
-}
-
-model RetificacaoContrato {
   id         Int               @id @default(autoincrement())
   contratoId Int
   contrato   ContratoPagamento @relation(fields: [contratoId], references: [id])
 
-  motivo         String
-  alteracoes     Json // { campo: { before, after }, ... }
-  snapshotAntes  Json?
-  snapshotDepois Json?
+  numero        Int
+  vencimento    DateTime
+  valorPrevisto Decimal  @db.Decimal(14, 2)
+  status        String   @default("PREVISTA")
 
-  criadoPorId Int?
-  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+  valorRecebido   Decimal?  @db.Decimal(14, 2)
+  dataRecebimento DateTime?
+  meioRecebimento String?
 
-  criadoEm DateTime @default(now())
+  canceladaEm        DateTime?
+  canceladaPorId     Int?
+  canceladaPor       Usuario?  @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  cancelamentoMotivo String?
 
-  @@index([contratoId])
-  @@index([criadoPorId])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  retificacoes RetificacaoParcela[]
 }
 
 model RetificacaoParcela {
@@ -298,55 +97,41 @@ model RetificacaoParcela {
   parcela   ParcelaContrato @relation(fields: [parcelaId], references: [id])
 
   motivo         String
-  alteracoes     Json // { campo: { before, after }, ... }
-  snapshotAntes  Json?
-  snapshotDepois Json?
+  alteracoes     Json
+  snapshotAntes  Json
+  snapshotDepois Json
 
   criadoPorId Int?
   criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
 
-  criadoEm DateTime @default(now())
-
-  @@index([parcelaId])
-  @@index([criadoPorId])
+  createdAt DateTime @default(now())
 }
 
-enum UserRole {
-  ADMIN
-  USER
+model HistoricoContrato {
+  id         Int               @id @default(autoincrement())
+  contratoId Int
+  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id])
+
+  tipo      String
+  descricao String
+
+  criadoPorId Int?
+  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+
+  createdAt DateTime @default(now())
 }
 
-enum ModeloPagamento {
-  AVISTA
-  ENTRADA_E_PARCELAS
-  PARCELAS
-  APENAS_PARCELAS
-}
+model SolicitacaoUsuario {
+  id           Int    @id @default(autoincrement())
+  nomeCompleto String
+  email        String
+  telefone     String
+  cpf          String
+  status       String @default("PENDENTE")
 
-enum StatusOrdem {
-  ATIVA
-  CONCLUIDA
-  CANCELADA
-}
+  criadoPorId Int?
+  criadoPor   Usuario? @relation("SolicitacaoCriadaPor", fields: [criadoPorId], references: [id])
 
-enum StatusPagamento {
-  PREVISTO
-  PAGO
-  ATRASADO
-  CANCELADO
-  EM_ABERTO
-  PARCIAL
-}
-
-enum TipoAdvogado {
-  SOCIO
-  ASSOCIADO
-  CORRESPONDENTE
-  OUTRO
-}
-
-enum TipoUsuario {
-  ADVOGADO
-  USUARIO
-  ESTAGIARIO
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
