@@ -115,6 +115,11 @@ function formatBRL(v) {
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
+  // ✅ Se vier number (front manda em reais), converte para centavos
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return BigInt(Math.round(input * 100));
+  }
+
   // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
   if (typeof input === "object" && input !== null && typeof input.toString === "function") {
     const sObj = String(input.toString()).trim();
@@ -2288,8 +2293,15 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
       },
     });
 
+    // filhos (renegociações derivadas) do contrato atual
+    const renegociacoesDerivadas = await prisma.contratoPagamento.findMany({
+      where: { contratoOrigemId: id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, numeroContrato: true, createdAt: true },
+    });
+
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
-    return res.json(contrato);
+    return res.json({ ...contrato, renegociacoesDerivadas });
   } catch (err) {
     console.error("Erro ao buscar contrato:", err);
     return res.status(500).json({ message: "Erro ao buscar contrato." });
