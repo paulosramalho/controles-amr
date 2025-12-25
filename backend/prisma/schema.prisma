@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum FormaPagamentoContrato {
+  AVISTA
+  ENTRADA_PARCELAS
+  PARCELADO
+}
+
 enum StatusParcela {
   PREVISTA
   RECEBIDA
