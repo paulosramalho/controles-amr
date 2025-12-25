@@ -7,10 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum FormaPagamentoContrato {
+  AVISTA
+  ENTRADA_PARCELAS
+  PARCELADO
+}
+
 enum StatusParcela {
   PREVISTA
   RECEBIDA
   CANCELADA
+}
+
+enum MeioRecebimento {
+  PIX
+  TED
+  BOLETO
+  CARTAO
+  DINHEIRO
+  OUTRO
+}
+
+enum TipoMovimentoParcela {
+  AJUSTE
+  ESTORNO
+  TRANSFERENCIA_SAIDA
+  TRANSFERENCIA_ENTRADA
 }
 
 model Usuario {
