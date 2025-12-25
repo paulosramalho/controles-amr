@@ -79,8 +79,8 @@ model ParcelaContrato {
 
   numero        Int
   vencimento    DateTime
-  valorPrevisto Decimal  @db.Decimal(14, 2)
-  status        String   @default(PREVISTA)
+  valorPrevisto Decimal       @db.Decimal(14, 2)
+  status        StatusParcela @default(PREVISTA)
 
   valorRecebido   Decimal?  @db.Decimal(14, 2)
   dataRecebimento DateTime?
