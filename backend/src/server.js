@@ -1,70 +1,126 @@
+// backend/src/server.js
 import express from "express";
 import cors from "cors";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import morgan from "morgan";
+import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "5mb" }));
+const PORT = process.env.PORT || 4000;
 
-const PORT = process.env.PORT || 10000;
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+// Prisma
+const prisma = new PrismaClient();
 
-/* ===========================
-   Helpers (mask/parse)
-   =========================== */
-function onlyDigits(v = "") {
-  return String(v ?? "").replace(/\D/g, "");
-}
+app.use(express.json());
+app.use(morgan("dev"));
 
-function parseDateDDMMYYYY(s) {
-  const raw = String(s || "").trim();
-  if (!raw) return null;
-  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-  if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
+/* =========================
+   DIRETRIZES — HELPERS
+========================= */
+async function nextRenegNumber(prisma, numeroOriginal) {
+  const prefix = `${numeroOriginal}-R`;
+  const existentes = await prisma.contratoPagamento.findMany({
+    where: { numeroContrato: { startsWith: prefix } },
+    select: { numeroContrato: true },
+  });
 
-  // Create local date at noon to avoid timezone/D-1 issues
-  const dt = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
-  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) {
-    return null;
+  let max = 0;
+  for (const e of existentes) {
+    const m = e.numeroContrato.match(/-R(\d+)$/);
+    if (m) max = Math.max(max, Number(m[1]));
   }
-  return dt;
+  return `${numeroOriginal}-R${max + 1}`;
 }
 
-function centsToDecimalString(cents) {
-  // cents: BigInt
-  const sign = cents < 0n ? "-" : "";
-  const abs = cents < 0n ? -cents : cents;
-  const s = abs.toString().padStart(3, "0");
-  const intPart = s.slice(0, -2);
-  const decPart = s.slice(-2);
-  return `${sign}${intPart}.${decPart}`;
+function onlyDigits(v = "") {
+  return String(v).replace(/\D/g, "");
+}
+
+const normCPF = (v) => onlyDigits(v); // 11 dígitos esperado
+const normPhone = (v) => onlyDigits(v); // 11 dígitos esperado
+const normEmail = (v) => String(v || "").trim().toLowerCase();
+const normOAB = (v) => String(v || "").trim().toUpperCase();
+const normPix = (v) => (v === undefined ? undefined : (String(v || "").trim() || null));
+// Datas sempre DD/MM/AAAA (quando exibidas)
+function formatDateBR(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+// Hora sempre HH:MM:SS (quando exibida)
+function formatTimeBR(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Aceita data em DD/MM/AAAA, YYYY-MM-DD ou ISO
+function parseDateInput(input) {
+  if (!input) return null;
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
+
+  const s = String(input).trim();
+  if (!s) return null;
+
+  // DD/MM/AAAA → data local (12:00) para evitar D-1 por fuso
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const yyyy = Number(m[3]);
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // YYYY-MM-DD (input date) → data local (12:00)
+  const isoShort = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoShort) {
+    const yyyy = Number(isoShort[1]);
+    const mm = Number(isoShort[2]);
+    const dd = Number(isoShort[3]);
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Valores sempre numéricos limpos
+function toNumberOrNull(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Exibição BRL opcional (não usar para cálculo!)
+function formatBRL(v) {
+  const n = toNumberOrNull(v);
+  if (n === null) return null;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 // Parse de moeda/valor (R$) — aceita:
-// - number (ex.: 1234.56)  ✅ TRATAR COMO REAIS
+// - number (ex.: 1234.56)
 // - string "1.234,56" ou "1234,56" ou "1234.56"
-// - string só dígitos (ex.: "123456" => R$ 1.234,56) ✅ padrão de máscara do front (centavos)
+// - string só dígitos (ex.: "123456" => R$ 1.234,56)  ✅ padrão de máscara do front
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
-  // ✅ number => REAIS (não centavos)
-  if (typeof input === "number") {
-    if (!Number.isFinite(input)) return null;
-    return BigInt(Math.round(input * 100));
-  }
-
-  // ✅ Decimal-like object
+  // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
   if (typeof input === "object" && input !== null && typeof input.toString === "function") {
     const sObj = String(input.toString()).trim();
+    // "3870" (Decimal) => R$ 3.870,00
     if (/^\d+$/.test(sObj)) return BigInt(sObj + "00");
+    // "3870.00" => ok
     if (/^\d+(\.\d{1,2})$/.test(sObj)) {
       const [i, d = ""] = sObj.split(".");
       return BigInt(i + d.padEnd(2, "0"));
@@ -74,7 +130,7 @@ function moneyToCents(input) {
   const s0 = String(input).trim();
   if (!s0) return null;
 
-  // só dígitos: já é centavos (padrão máscara)
+  // só dígitos: já é centavos
   if (/^\d+$/.test(s0)) return BigInt(s0);
 
   // BR: "1.234,56"
@@ -94,250 +150,1389 @@ function moneyToCents(input) {
     return BigInt(all);
   }
 
-  // fallback
+  // fallback: tenta dígitos
   const d = onlyDigits(s0);
   return d ? BigInt(d) : null;
 }
 
-/* ===========================
-   Auth middleware
-   =========================== */
-function makeToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      nome: user.nome,
-      email: user.email,
-      role: user.role,
-      ativo: user.ativo,
-    },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+function centsToDecimalString(cents) {
+  if (cents === null || cents === undefined) return null;
+  const c = BigInt(cents);
+  const neg = c < 0n;
+  const abs = neg ? -c : c;
+  const intPart = abs / 100n;
+  const decPart = abs % 100n;
+  return `${neg ? "-" : ""}${intPart.toString()}.${decPart.toString().padStart(2, "0")}`;
 }
 
-function requireAuth(req, res, next) {
-  try {
-    const hdr = req.headers.authorization || "";
-    const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : null;
-    if (!token) return res.status(401).json({ message: "Não autenticado." });
-
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
-    return next();
-  } catch (e) {
-    return res.status(401).json({ message: "Sessão inválida." });
+// Divide um total em N parcelas, distribuindo o "resto" em +1 centavo nas primeiras parcelas
+function splitCents(totalCents, n) {
+  const total = BigInt(totalCents);
+  const N = BigInt(n);
+  const base = total / N;
+  const rem = total % N;
+  const out = [];
+  for (let i = 0n; i < N; i++) {
+    out.push(base + (i < rem ? 1n : 0n));
   }
+  return out;
+}
+
+/**
+ * Serializa registros sem quebrar contrato:
+ * - mantém datas originais
+ * - adiciona campos *BR* (DD/MM/AAAA) + *TimeBR* (HH:MM:SS)
+ * - normaliza Decimals para Number em campos conhecidos
+ */
+function serializeCliente(c) {
+  return {
+    ...c,
+    createdAtBR: formatDateBR(c.createdAt),
+    updatedAtBR: formatDateBR(c.updatedAt),
+    ordens: Array.isArray(c.ordens) ? c.ordens.map(serializeOrdem) : c.ordens,
+  };
+}
+
+function serializeOrdem(o) {
+  const valorNum = toNumberOrNull(o.valorTotalPrevisto);
+  return {
+    ...o,
+    createdAtBR: formatDateBR(o.createdAt),
+    updatedAtBR: formatDateBR(o.updatedAt),
+    dataInicioBR: formatDateBR(o.dataInicio),
+    dataFimPrevistaBR: formatDateBR(o.dataFimPrevista),
+    valorTotalPrevisto: valorNum,
+    valorTotalPrevistoBR: valorNum === null ? null : formatBRL(valorNum),
+  };
+}
+
+function calcAnoMes(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
 
 function requireAdmin(req, res, next) {
-  const role = String(req.user?.role || "").toUpperCase();
-  if (role !== "ADMIN") return res.status(403).json({ message: "Acesso restrito a admin." });
-  return next();
+  if (!req.user || req.user.role !== "ADMIN") {
+    return res.status(403).json({ message: "Acesso restrito a administradores." });
+  }
+  next();
+}
+
+
+async function verifyAdminPassword(req, adminPassword) {
+  if (!adminPassword) return false;
+  if (!prisma.usuario) return false;
+  const { bcrypt } = await getAuthLibs();
+
+  const userId = Number(req.user?.id);
+  if (!Number.isFinite(userId)) return false;
+
+  const u = await prisma.usuario.findUnique({ where: { id: userId } });
+  if (!u) return false;
+
+  return bcrypt.compare(String(adminPassword), u.senhaHash);
 }
 
 async function requireAdminPassword(req, res, adminPassword) {
-  const pwd = String(adminPassword || "");
-  if (!pwd) {
-    res.status(400).json({ message: "Confirme a senha do admin." });
-    return false;
-  }
-  const adminId = req.user?.id;
-  const adminUser = await prisma.usuario.findUnique({ where: { id: adminId } });
-  if (!adminUser) {
-    res.status(401).json({ message: "Admin inválido." });
-    return false;
-  }
-  const ok = await bcrypt.compare(pwd, adminUser.senha_hash || "");
+  const ok = await verifyAdminPassword(req, adminPassword);
   if (!ok) {
-    res.status(401).json({ message: "Senha do admin inválida." });
+    res.status(401).json({ message: "Senha de admin inválida." });
     return false;
   }
   return true;
 }
 
-/* ===========================
-   Health
-   =========================== */
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+
+/* =========================
+   AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
+========================= */
+
+const JWT_SECRET = process.env.JWT_SECRET || "DEV_ONLY_CHANGE_ME";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+
+// Lazy-load libs
+let _bcrypt = null;
+let _jwt = null;
+
+async function getAuthLibs() {
+  if (!_bcrypt) {
+    const mod = await import("bcryptjs");
+    _bcrypt = mod.default || mod;
+  }
+  if (!_jwt) {
+    const mod = await import("jsonwebtoken");
+    _jwt = mod.default || mod;
+  }
+  return { bcrypt: _bcrypt, jwt: _jwt };
+}
+
+function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    role: u.role,
+    ativo: u.ativo,
+    tipoUsuario: u.tipoUsuario ?? null,
+    cpf: u.cpf ?? null,
+    telefone: u.telefone ?? null,
+    // ✅ IMPORTANTE: precisa existir para /api/advogados/me
+    advogadoId: u.advogadoId ?? null,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+    createdAtBR: formatDateBR(u.createdAt),
+    updatedAtBR: formatDateBR(u.updatedAt),
+  };
+}
+
+function getBearerToken(req) {
+  const h = req.headers.authorization || "";
+  const m = String(h).match(/^Bearer\s+(.+)$/i);
+  return m ? m[1] : null;
+}
+
+// Middleware: tenta anexar user se token existir (não obriga)
+async function attachUserIfPresent(req, _res, next) {
+  const token = getBearerToken(req);
+  if (!token) return next();
+
+  try {
+    const { jwt } = await getAuthLibs();
+    const payload = jwt.verify(token, JWT_SECRET);
+
+    // Se o schema ainda não tiver Usuario, não quebra
+    if (!prisma.usuario) return next();
+
+    // payload.sub vem como string (ex: "1") e o Prisma espera Int.
+    const userId = Number(payload.sub);
+    if (!Number.isFinite(userId)) return next();
+
+    const u = await prisma.usuario.findUnique({ where: { id: userId } });
+    if (u && u.ativo) req.user = publicUser(u);
+  } catch {
+    // token inválido/expirado etc — não trava a navegação pública
+  }
+  return next();
+}
+
+app.use(attachUserIfPresent);
+
+function requireAuth(req, res, next) {
+  if (!req.user) return res.status(401).json({ message: "Não autenticado." });
+  return next();
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: "Não autenticado." });
+    if (req.user.role !== role) return res.status(403).json({ message: "Acesso negado." });
+    return next();
+  };
+}
+
+/* =========================
+   ROTAS
+========================= */
+
+app.get("/api/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ok", message: "Controles-AMR backend ativo", db: "ok" });
+  } catch (err) {
+    console.error("Erro ao checar DB:", err);
+    res.status(500).json({ status: "erro", message: "Falha ao acessar o banco" });
+  }
 });
 
-/* ===========================
-   Auth routes
-   =========================== */
+const allowedOrigins = [
+  "https://controles-amr.vercel.app",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // requests sem origin (ex.: healthcheck/curl) passam
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  })
+);
+
+// garantir preflight para todas as rotas
+app.options("*", cors());
+
+/* =========================
+   ADVOGADOS — ROTAS (Admin + User)
+   Observação:
+   - Admin: CRUD (soft delete via ativo)
+   - User: /me (editar seus próprios dados)
+========================= */
+
+// ✅ BUG FIX: era "authRequired" (inexistente). O certo é requireAuth.
+app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
+  const advogados = await prisma.advogado.findMany({
+    orderBy: { nome: "asc" },
+  });
+  res.json(advogados);
+});
+
+app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { nome, cpf, oab, email, telefone, chavePix, criarUsuario, senha, confirmarSenha } = req.body;
+
+    const nomeNorm = String(nome || "").trim();
+    const cpfLimpo = normCPF(cpf);
+    const oabNorm = normOAB(oab);
+    const emailNorm = normEmail(email);
+    const telefoneNorm = normPhone(telefone);
+    const pixNorm = normPix(chavePix);
+
+    const criar = Boolean(criarUsuario);
+
+    // Obrigatórios do Advogado
+    if (!nomeNorm || !cpfLimpo || !oabNorm || !emailNorm) {
+      return res.status(400).json({ message: "Informe nome, CPF, OAB e e-mail." });
+    }
+    if (!isValidCPF(cpfLimpo)) {
+      return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    // Se for criar usuário junto, exige senha + confirmação
+    if (criar) {
+      if (!String(senha || "").trim()) {
+        return res.status(400).json({ message: "Informe a senha inicial (para o usuário)." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+    }
+
+    const data = {
+      nome: nomeNorm,
+      cpf: cpfLimpo,
+      oab: oabNorm,
+      email: emailNorm,
+      telefone: telefoneNorm,
+      ativo: true,
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    if (criar) {
+      const { bcrypt } = await getAuthLibs();
+      const senhaHash = await bcrypt.hash(String(senha), 10);
+      data.usuario = {
+  create: {
+    nome: nomeNorm,
+    email: emailNorm,
+    senhaHash,
+    role: "USER",
+    ativo: true,
+
+    // ✅ AQUI: força o tipo correto
+    tipoUsuario: "ADVOGADO",
+  },
+};
+
+    }
+
+    const advogado = await prisma.advogado.create({ data });
+    return res.status(201).json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+
+    // Duplicidades (CPF/OAB/Email)
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao cadastrar advogado." });
+  }
+});
+
+app.put("/api/advogados/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
+
+    // Normalização
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
+
+    // Senha com confirmação
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    // Se mudou nome/email, espelha no Usuario vinculado (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data,
+    });
+
+    res.json(advogado);
+  } catch (err) {
+    // Unique violations etc.
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "CPF/OAB/E-mail já cadastrado." });
+    }
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar advogado." });
+  }
+});
+
+// USER — Meu Perfil Profissional
+app.get("/api/advogados/me", requireAuth, async (req, res) => {
+  if (!req.user?.advogadoId) {
+    return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+  }
+
+  const advogado = await prisma.advogado.findUnique({
+    where: { id: Number(req.user.advogadoId) },
+  });
+
+  if (!advogado) return res.status(404).json({ message: "Advogado não encontrado." });
+  return res.json(advogado);
+});
+
+app.put("/api/advogados/me", requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.advogadoId) {
+      return res.status(404).json({ message: "Usuário não vinculado a advogado." });
+    }
+
+    const { nome, email, telefone, chavePix, senha, confirmarSenha } = req.body;
+
+    const nomeNorm = nome !== undefined ? String(nome).trim() : undefined;
+    const emailNorm = email !== undefined ? normEmail(email) : undefined;
+    const telNorm = telefone !== undefined ? normPhone(telefone) : undefined;
+    const pixNorm = chavePix !== undefined ? normPix(chavePix) : undefined;
+
+    if (senha !== undefined && String(senha).length > 0) {
+      if (!confirmarSenha || String(confirmarSenha) !== String(senha)) {
+        return res.status(400).json({ message: "As senhas não conferem." });
+      }
+      if (String(senha).length < 8) {
+        return res.status(400).json({ message: "Senha deve ter no mínimo 8 caracteres." });
+      }
+    }
+
+    const data = {
+      ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
+      ...(emailNorm !== undefined ? { email: emailNorm } : {}),
+      ...(telNorm !== undefined ? { telefone: telNorm } : {}),
+      ...(pixNorm !== undefined ? { chavePix: pixNorm } : {}),
+    };
+
+    // Espelha no Usuario (login)
+    const userUpdate = {};
+    if (nomeNorm !== undefined) userUpdate.nome = nomeNorm;
+    if (emailNorm !== undefined) userUpdate.email = emailNorm;
+
+    if (Object.keys(userUpdate).length > 0 || (senha && String(senha).length > 0)) {
+      const { bcrypt } = await getAuthLibs();
+      data.usuario = {
+        update: {
+          ...userUpdate,
+          ...(senha && String(senha).length > 0
+            ? { senhaHash: await bcrypt.hash(String(senha), 10) }
+            : {}),
+        },
+      };
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(req.user.advogadoId) },
+      data,
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      return res.status(409).json({ message: "E-mail já cadastrado." });
+    }
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar perfil." });
+  }
+});
+
+// Admin — Ativar/Inativar Advogado (soft delete)
+app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ativo } = req.body;
+
+    if (typeof ativo !== "boolean") {
+      return res.status(400).json({ message: "Campo 'ativo' deve ser boolean." });
+    }
+
+    const advogado = await prisma.advogado.update({
+      where: { id: Number(id) },
+      data: {
+        ativo,
+        usuario: { update: { ativo } },
+      },
+    });
+
+    return res.json(advogado);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao atualizar status." });
+  }
+});
+
+/* =========================
+   AUTH — ROTAS
+========================= */
+
 app.post("/api/auth/login", async (req, res) => {
   try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt, jwt } = await getAuthLibs();
+
     const email = String(req.body?.email || "").trim().toLowerCase();
-    const password = String(req.body?.password || "");
-    if (!email || !password) return res.status(400).json({ message: "Informe e-mail e senha." });
+    const senha = String(req.body?.senha || "");
 
-    const user = await prisma.usuario.findUnique({ where: { email } });
-    if (!user || !user.ativo) return res.status(401).json({ message: "Credenciais inválidas." });
+    if (!email || !senha) return res.status(400).json({ message: "Informe email e senha." });
 
-    const ok = await bcrypt.compare(password, user.senha_hash || "");
+    const u = await prisma.usuario.findUnique({ where: { email } });
+    if (!u || !u.ativo) return res.status(401).json({ message: "Credenciais inválidas." });
+
+    const ok = await bcrypt.compare(senha, u.senhaHash);
     if (!ok) return res.status(401).json({ message: "Credenciais inválidas." });
 
-    const token = makeToken(user);
-    return res.json({
-      token,
-      user: { id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo },
+    const token = jwt.sign({ role: u.role }, JWT_SECRET, {
+      subject: String(u.id),
+      expiresIn: JWT_EXPIRES_IN,
     });
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha no login." });
+
+    return res.json({ token, user: publicUser(u) });
+  } catch (err) {
+    console.error("Erro no login:", err);
+    return res.status(500).json({ message: "Erro no login" });
   }
 });
 
-/* ===========================
-   Clientes
-   =========================== */
-app.get("/api/clientes", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const q = String(req.query?.q || "").trim();
-    const where = q
-      ? {
-          OR: [
-            { nomeRazaoSocial: { contains: q, mode: "insensitive" } },
-            { cpfCnpj: { contains: onlyDigits(q) } },
-          ],
-        }
-      : undefined;
+app.get("/api/auth/me", requireAuth, async (req, res) => {
+  return res.json({ user: req.user });
+});
 
-    const itens = await prisma.cliente.findMany({ where, orderBy: { nomeRazaoSocial: "asc" } });
-    return res.json(itens);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao listar clientes." });
+app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const senhaAtual = String(req.body?.senhaAtual || "");
+    const novaSenha = String(req.body?.novaSenha || "");
+
+    if (!senhaAtual || !novaSenha) {
+      return res.status(400).json({ message: "Informe senha atual e nova senha." });
+    }
+    if (novaSenha.length < 8) {
+      return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+    }
+
+    const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
+    if (!u || !u.ativo) return res.status(401).json({ message: "Usuário inválido." });
+
+    const ok = await bcrypt.compare(senhaAtual, u.senhaHash);
+    if (!ok) return res.status(401).json({ message: "Senha atual inválida." });
+
+    const novoHash = await bcrypt.hash(novaSenha, 10);
+
+    await prisma.usuario.update({
+      where: { id: u.id },
+      data: { senhaHash: novoHash },
+    });
+
+    return res.json({ message: "Senha alterada com sucesso." });
+  } catch (err) {
+    console.error("Erro ao trocar senha:", err);
+    return res.status(500).json({ message: "Erro ao trocar senha" });
   }
 });
 
-app.post("/api/clientes", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/admin/users", requireRole("ADMIN"), async (req, res) => {
   try {
+    if (!prisma.usuario) {
+      return res.status(501).json({
+        message: "Auth ainda não ativado no banco. Aguarde o schema.prisma com model Usuario.",
+      });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = String(req.body?.nome || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const role = String(req.body?.role || "USER").toUpperCase();
+    const senhaInicial = String(req.body?.senhaInicial || "");
+
+    if (!nome || !email || !senhaInicial) {
+      return res.status(400).json({ message: "Informe nome, email e senhaInicial." });
+    }
+    if (!["ADMIN", "USER"].includes(role)) {
+      return res.status(400).json({ message: 'role inválido. Use "ADMIN" ou "USER".' });
+    }
+    if (senhaInicial.length < 8) {
+      return res.status(400).json({ message: "senhaInicial deve ter no mínimo 8 caracteres." });
+    }
+
+    const senhaHash = await bcrypt.hash(senhaInicial, 10);
+
+    const created = await prisma.usuario.create({
+      data: { nome, email, role, senhaHash, ativo: true },
+    });
+
+    return res.status(201).json({ user: publicUser(created) });
+  } catch (err) {
+    console.error("Erro ao criar usuário:", err);
+    return res.status(500).json({ message: "Erro ao criar usuário", error: err.message });
+  }
+});
+
+/* =========================
+   DADOS — ROTAS
+========================= */
+
+// ===== CLIENTES (Admin only) — CRUD + Soft delete =====
+
+// helpers locais (CPF/CNPJ)
+function isValidCNPJ(cnpj) {
+  const s = onlyDigits(cnpj);
+  if (s.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(s)) return false;
+
+  const calc = (base, weights) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * weights[i];
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  const d1 = calc(s.slice(0, 12), w1);
+  const d2 = calc(s.slice(0, 12) + String(d1), w2);
+
+  return d1 === Number(s[12]) && d2 === Number(s[13]);
+}
+
+function isValidCpfCnpj(doc) {
+  const d = onlyDigits(doc);
+  if (d.length === 11) return isValidCPF(d);
+  if (d.length === 14) return isValidCNPJ(d);
+  return false;
+}
+
+function normalizeCpfCnpj(doc) {
+  return onlyDigits(doc);
+}
+
+// ✅ GET /api/clients — Admin only
+app.get("/api/clients", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const clientes = await prisma.cliente.findMany({
+      orderBy: { nomeRazaoSocial: "asc" },
+    });
+
+    // serializeCliente espera ordens no objeto (mesmo que vazio)
+    res.json(clientes.map((c) => serializeCliente({ ...c, ordens: [] })));
+  } catch (err) {
+    console.error("Erro ao listar clientes:", err);
+    res.status(500).json({ message: "Erro ao listar clientes" });
+  }
+});
+
+// ✅ POST /api/clients — cria só o cliente (sem ordem)
+app.post("/api/clients", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const cpfCnpj = normalizeCpfCnpj(req.body?.cpfCnpj || "");
     const nomeRazaoSocial = String(req.body?.nomeRazaoSocial || "").trim();
-    const cpfCnpj = onlyDigits(req.body?.cpfCnpj || "");
-    if (!nomeRazaoSocial) return res.status(400).json({ message: "Nome/Razão social é obrigatório." });
-    if (!cpfCnpj) return res.status(400).json({ message: "CPF/CNPJ é obrigatório." });
+    const email = req.body?.email ? normEmail(req.body.email) : null;
+    const telefone = req.body?.telefone ? normPhone(req.body.telefone) : null;
+    const observacoes = req.body?.observacoes ? String(req.body.observacoes).trim() : null;
+
+    if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+    if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    if (!nomeRazaoSocial) return res.status(400).json({ message: "Informe Nome/Razão Social." });
+
+    // telefone: se veio algo e não for 10/11 dígitos, rejeita
+    if (req.body?.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
 
     const created = await prisma.cliente.create({
-      data: { nomeRazaoSocial, cpfCnpj, ativo: true },
+      data: {
+        cpfCnpj,
+        nomeRazaoSocial,
+        email,
+        telefone,
+        observacoes,
+        ativo: true,
+      },
     });
 
-    return res.json(created);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao criar cliente." });
+    return res.status(201).json(serializeCliente({ ...created, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao criar cliente:", err);
+    return res.status(500).json({ message: "Erro ao criar cliente." });
   }
 });
 
-app.put("/api/clientes/:id", requireAuth, requireAdmin, async (req, res) => {
+// ✅ PUT /api/clients/:id — edita dados
+app.put("/api/clients/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const nomeRazaoSocial = String(req.body?.nomeRazaoSocial || "").trim();
-    const cpfCnpj = onlyDigits(req.body?.cpfCnpj || "");
-    const ativo = req.body?.ativo === undefined ? undefined : Boolean(req.body.ativo);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const cpfCnpj = req.body?.cpfCnpj !== undefined ? normalizeCpfCnpj(req.body.cpfCnpj) : undefined;
+    const nomeRazaoSocial =
+      req.body?.nomeRazaoSocial !== undefined ? String(req.body.nomeRazaoSocial || "").trim() : undefined;
+
+    const email = req.body?.email !== undefined ? (req.body.email ? normEmail(req.body.email) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normPhone(req.body.telefone) : null) : undefined;
+
+    const observacoes =
+      req.body?.observacoes !== undefined ? (req.body.observacoes ? String(req.body.observacoes).trim() : null) : undefined;
+
+    if (cpfCnpj !== undefined) {
+      if (!cpfCnpj) return res.status(400).json({ message: "Informe CPF ou CNPJ." });
+      if (!isValidCpfCnpj(cpfCnpj)) return res.status(400).json({ message: "CPF/CNPJ inválido." });
+    }
+    if (nomeRazaoSocial !== undefined && !nomeRazaoSocial) {
+      return res.status(400).json({ message: "Informe Nome/Razão Social." });
+    }
+    if (req.body?.telefone !== undefined && req.body.telefone && (!telefone || (telefone.length !== 10 && telefone.length !== 11))) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
 
     const updated = await prisma.cliente.update({
       where: { id },
       data: {
-        ...(nomeRazaoSocial ? { nomeRazaoSocial } : {}),
-        ...(cpfCnpj ? { cpfCnpj } : {}),
-        ...(ativo !== undefined ? { ativo } : {}),
+        ...(cpfCnpj !== undefined ? { cpfCnpj } : {}),
+        ...(nomeRazaoSocial !== undefined ? { nomeRazaoSocial } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(telefone !== undefined ? { telefone } : {}),
+        ...(observacoes !== undefined ? { observacoes } : {}),
       },
     });
 
-    return res.json(updated);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao atualizar cliente." });
+    return res.json(serializeCliente({ ...updated, ordens: [] }));
+  } catch (err) {
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Já existe cliente com este CPF/CNPJ." });
+    }
+    console.error("Erro ao atualizar cliente:", err);
+    return res.status(500).json({ message: "Erro ao atualizar cliente." });
   }
 });
 
-/* ===========================
-   Usuários (para não dar 404/HTML no front)
-   CRUD mínimo admin-only
-   =========================== */
+// ✅ PATCH /api/clients/:id/toggle — Ativar/Inativar (soft delete)
+app.patch("/api/clients/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const current = await prisma.cliente.findUnique({ where: { id }, select: { ativo: true } });
+    if (!current) return res.status(404).json({ message: "Cliente não encontrado." });
+
+    const updated = await prisma.cliente.update({
+      where: { id },
+      data: { ativo: !current.ativo },
+    });
+
+    return res.json({ id: updated.id, ativo: updated.ativo });
+  } catch (err) {
+    console.error("Erro ao alternar status do cliente:", err);
+    return res.status(500).json({ message: "Erro ao ativar/inativar cliente." });
+  }
+});
+
+
+app.get("/api/orders", async (_req, res) => {
+  try {
+    const ordens = await prisma.ordemPagamento.findMany({
+      include: { cliente: true },
+      orderBy: [{ clienteId: "asc" }, { sequenciaCliente: "asc" }],
+    });
+
+    res.json(
+      ordens.map((o) => ({
+        ...serializeOrdem(o),
+        cliente: o.cliente ? serializeCliente({ ...o.cliente, ordens: [] }) : o.cliente,
+      }))
+    );
+  } catch (err) {
+    console.error("Erro ao listar ordens de pagamento:", err);
+    res.status(500).json({ message: "Erro ao listar ordens de pagamento" });
+  }
+});
+
+app.get("/api/config/distribution-models", async (_req, res) => {
+  try {
+    // ⚠️ Ajuste aqui se o campo for "cod" no schema atual:
+    const modelos = await prisma.modeloDistribuicao.findMany({
+      orderBy: [{ cod: "asc" }, { id: "asc" }],
+    });
+    res.json(modelos);
+  } catch (err) {
+    console.error("Erro ao listar modelos de distribuição:", err);
+    res.status(500).json({ message: "Erro ao listar modelos de distribuição" });
+  }
+});
+
+app.post("/api/clients-and-orders", async (req, res) => {
+  const { client, order } = req.body;
+
+  if (!client || !order) {
+    return res.status(400).json({
+      message: "Payload inválido. Envie { client: {...}, order: {...} }",
+    });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      let cliente;
+
+      if (client.id) {
+        cliente = await tx.cliente.findUnique({ where: { id: client.id } });
+        if (!cliente) throw new Error("Cliente informado não existe.");
+      } else {
+        const cpfCnpj = client.cpfCnpj ? onlyDigits(client.cpfCnpj) : "";
+        const telefone = client.telefone ? onlyDigits(client.telefone) : null;
+
+        cliente = await tx.cliente.create({
+          data: {
+            cpfCnpj,
+            nomeRazaoSocial: client.nomeRazaoSocial,
+            email: client.email ?? null,
+            telefone,
+            observacoes: client.observacoes ?? null,
+            ativo: true,
+          },
+        });
+      }
+
+      const ultimaOrdem = await tx.ordemPagamento.findFirst({
+        where: { clienteId: cliente.id },
+        orderBy: { sequenciaCliente: "desc" },
+      });
+      const proximaSequencia = (ultimaOrdem?.sequenciaCliente ?? 0) + 1;
+
+      const dataInicio = parseDateInput(order.dataInicio);
+      const anoMesInicio = calcAnoMes(dataInicio);
+      const dataFimPrevista = parseDateInput(order.dataFimPrevista);
+
+      const valor = toNumberOrNull(order.valorTotalPrevisto);
+
+      const novaOrdem = await tx.ordemPagamento.create({
+        data: {
+          clienteId: cliente.id,
+          sequenciaCliente: proximaSequencia,
+          codigoInterno: order.codigoInterno ?? null,
+          descricao: order.descricao ?? null,
+          tipoContrato: order.tipoContrato ?? null,
+          valorTotalPrevisto: valor,
+          modeloPagamento: order.modeloPagamento,
+          dataInicio: dataInicio ?? new Date(),
+          dataFimPrevista,
+          status: order.status ?? "ATIVA",
+          anoMesInicio: anoMesInicio ?? null,
+        },
+      });
+
+      return { cliente, ordem: novaOrdem };
+    });
+
+    res.status(201).json({
+      cliente: serializeCliente({ ...result.cliente, ordens: [] }),
+      ordem: serializeOrdem(result.ordem),
+    });
+  } catch (err) {
+    console.error("Erro ao criar cliente + ordem:", err);
+    res.status(500).json({
+      message: "Erro ao criar cliente e ordem de pagamento",
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/clients-with-orders", requireAuth, requireAdmin, async (req, res) => {
+  const search = req.query.q ?? req.query.search;
+  const status = req.query.status;
+  const fromDate = req.query.fromDate;
+  const toDate = req.query.toDate;
+
+  try {
+    const whereClient = {};
+    if (search) {
+      whereClient.OR = [
+        { nomeRazaoSocial: { contains: String(search), mode: "insensitive" } },
+        { cpfCnpj: { contains: onlyDigits(String(search)) || String(search) } },
+      ];
+    }
+
+    const whereOrder = {};
+    if (status && status !== "ALL") whereOrder.status = status;
+
+    if (fromDate || toDate) {
+      whereOrder.dataInicio = {};
+
+      const from = parseDateInput(fromDate);
+      const to = parseDateInput(toDate);
+
+      if (from) whereOrder.dataInicio.gte = from;
+
+      if (to) {
+        const end = new Date(to);
+        end.setUTCHours(23, 59, 59, 999);
+        whereOrder.dataInicio.lte = end;
+      }
+    }
+
+    const clientes = await prisma.cliente.findMany({
+      where: whereClient,
+      include: {
+        ordens: {
+          where: Object.keys(whereOrder).length ? whereOrder : undefined,
+          orderBy: { sequenciaCliente: "asc" },
+        },
+      },
+      orderBy: { nomeRazaoSocial: "asc" },
+    });
+
+    res.json(clientes.map(serializeCliente));
+  } catch (err) {
+    console.error("Erro ao listar clientes + ordens:", err);
+    res.status(500).json({ message: "Erro ao listar clientes + ordens" });
+  }
+});
+
+app.get("/api/dashboard/summary", async (_req, res) => {
+  try {
+    const [totalClients, totalOrders, totalAtivas, totalConcluidas, sumValores] =
+      await Promise.all([
+        prisma.cliente.count(),
+        prisma.ordemPagamento.count(),
+        prisma.ordemPagamento.count({ where: { status: "ATIVA" } }),
+        prisma.ordemPagamento.count({ where: { status: "CONCLUIDA" } }),
+        prisma.ordemPagamento.aggregate({ _sum: { valorTotalPrevisto: true } }),
+      ]);
+
+    const totalValorPrevisto = toNumberOrNull(sumValores?._sum?.valorTotalPrevisto) ?? 0;
+
+    const ordensPorMes = await prisma.ordemPagamento
+      .groupBy({
+        by: ["anoMesInicio"],
+        _count: { _all: true },
+        _sum: { valorTotalPrevisto: true },
+      })
+      .then((rows) =>
+        rows.map((r) => ({
+          ...r,
+          _sum: {
+            ...r._sum,
+            valorTotalPrevisto: toNumberOrNull(r?._sum?.valorTotalPrevisto) ?? 0,
+          },
+        }))
+      )
+      .catch(() => []);
+
+    res.json({
+      totalClients,
+      totalOrders,
+      totalAtivas,
+      totalConcluidas,
+      totalValorPrevisto,
+      totalValorPrevistoBR: formatBRL(totalValorPrevisto),
+      ordensPorMes,
+    });
+  } catch (err) {
+    console.error("Erro no dashboard:", err);
+    res.status(500).json({ message: "Erro ao carregar dashboard" });
+  }
+});
+
+/* =========================
+   USUÁRIOS (ADMIN) + ME (USER)
+========================= */
+
+// CPF validation (backend)
+function isValidCPF(cpf) {
+  const s = onlyDigits(cpf);
+  if (s.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(s)) return false;
+
+  const calc = (base, factor) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += Number(base[i]) * (factor - i);
+    const mod = sum % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const d1 = calc(s.slice(0, 9), 10);
+  const d2 = calc(s.slice(0, 10), 11);
+  return d1 === Number(s[9]) && d2 === Number(s[10]);
+}
+
+function normalizeEmail(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function normalizeTelefone(v) {
+  const d = onlyDigits(v);
+  if (!d) return null;
+  // BR: 10 (fixo) ou 11 (celular)
+  if (d.length !== 10 && d.length !== 11) return null;
+  return d;
+}
+
+// ADMIN: list
 app.get("/api/usuarios", requireAuth, requireAdmin, async (_req, res) => {
   try {
-    const users = await prisma.usuario.findMany({
-      orderBy: { nome: "asc" },
-      select: { id: true, nome: true, email: true, role: true, ativo: true, createdAt: true, updatedAt: true },
-    });
-    return res.json(users);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao listar usuários." });
+    const usuarios = await prisma.usuario.findMany({
+  orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+  select: {
+    id: true,
+    nome: true,
+    email: true,
+    role: true,
+    tipoUsuario: true,
+    cpf: true,
+    telefone: true,
+    advogadoId: true,
+    ativo: true,
+    createdAt: true,
+    updatedAt: true,
+    advogado: {
+      select: {
+        cpf: true,
+        telefone: true,
+        email: true,
+        nome: true,
+      },
+    },
+  },
+});
+
+
+    res.json(
+  usuarios.map((u) => ({
+    ...u,
+    cpf: u.cpf ?? u.advogado?.cpf ?? null,
+    telefone: u.telefone ?? u.advogado?.telefone ?? null,
+    email: u.email ?? u.advogado?.email ?? null,
+    createdAtBR: formatDateBR(u.createdAt),
+    updatedAtBR: formatDateBR(u.updatedAt),
+  }))
+);
+  } catch (err) {
+    console.error("Erro ao listar usuarios:", err);
+    res.status(500).json({ message: "Erro ao listar usuários." });
   }
 });
 
+// ADMIN: create
 app.post("/api/usuarios", requireAuth, requireAdmin, async (req, res) => {
   try {
+    const { bcrypt } = await getAuthLibs();
+
     const nome = String(req.body?.nome || "").trim();
-    const email = String(req.body?.email || "").trim().toLowerCase();
-    const role = String(req.body?.role || "user");
-    const ativo = req.body?.ativo === undefined ? true : Boolean(req.body.ativo);
+    const email = normalizeEmail(req.body?.email);
+    const role = String(req.body?.role || "USER").toUpperCase();
+    const tipoUsuario = String(req.body?.tipoUsuario || "USUARIO").toUpperCase();
+
+    const cpf = req.body?.cpf ? onlyDigits(req.body.cpf) : null;
+    const telefone = req.body?.telefone ? normalizeTelefone(req.body.telefone) : null;
+
+    const advogadoId = req.body?.advogadoId ? Number(req.body.advogadoId) : null;
+
     const senha = String(req.body?.senha || "");
+    const senhaConfirmacao = String(req.body?.senhaConfirmacao || "");
 
-    if (!nome) return res.status(400).json({ message: "Nome é obrigatório." });
-    if (!email) return res.status(400).json({ message: "E-mail é obrigatório." });
-    if (!senha) return res.status(400).json({ message: "Senha é obrigatória." });
+    if (!nome) return res.status(400).json({ message: "Informe o nome." });
+    if (!email) return res.status(400).json({ message: "Informe o e-mail." });
+    if (!["ADMIN", "USER"].includes(role)) return res.status(400).json({ message: "Role inválido." });
+    if (!["ADVOGADO", "USUARIO", "ESTAGIARIO"].includes(tipoUsuario))
+      return res.status(400).json({ message: "Tipo de usuário inválido." });
 
-    const hash = await bcrypt.hash(senha, 10);
-    const created = await prisma.usuario.create({
-      data: { nome, email, role, ativo, senha_hash: hash },
-      select: { id: true, nome: true, email: true, role: true, ativo: true },
+    // CPF obrigatório para usuário comum/estagiário
+    if (tipoUsuario === "USUARIO" || tipoUsuario === "ESTAGIARIO") {
+      if (!cpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    } else if (cpf && !isValidCPF(cpf)) {
+      return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    if (req.body?.telefone && !telefone) {
+      return res.status(400).json({ message: "Telefone inválido." });
+    }
+
+    // ADVOGADO precisa estar vinculado
+    if (tipoUsuario === "ADVOGADO") {
+      if (!advogadoId || !Number.isFinite(advogadoId)) {
+        return res.status(400).json({ message: "Para tipo Advogado, informe advogadoId." });
+      }
+      const adv = await prisma.advogado.findUnique({ where: { id: advogadoId } });
+      if (!adv) return res.status(400).json({ message: "Advogado não encontrado para vinculação." });
+    }
+
+    if (!senha || senha.length < 8) {
+      return res.status(400).json({ message: "Senha obrigatória (mínimo 8 caracteres)." });
+    }
+    if (senha !== senhaConfirmacao) {
+      return res.status(400).json({ message: "As senhas não conferem." });
+    }
+
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+
+    const novo = await prisma.usuario.create({
+      data: {
+        nome,
+        email,
+        role,
+        tipoUsuario,
+        cpf,
+        telefone,
+        advogadoId,
+        senhaHash,
+        ativo: true,
+      },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        advogadoId: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-    return res.json(created);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao criar usuário." });
+
+    res.status(201).json({
+      ...novo,
+      createdAtBR: formatDateBR(novo.createdAt),
+      updatedAtBR: formatDateBR(novo.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao criar usuario:", err);
+    res.status(500).json({ message: "Erro ao criar usuário." });
   }
 });
 
+// ADMIN: update
 app.put("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const nome = req.body?.nome !== undefined ? String(req.body.nome).trim() : undefined;
-    const email = req.body?.email !== undefined ? String(req.body.email).trim().toLowerCase() : undefined;
-    const role = req.body?.role !== undefined ? String(req.body.role) : undefined;
-    const ativo = req.body?.ativo !== undefined ? Boolean(req.body.ativo) : undefined;
-    const senha = req.body?.senha !== undefined ? String(req.body.senha) : undefined;
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
 
-    const data = {};
-    if (nome) data.nome = nome;
-    if (email) data.email = email;
-    if (role) data.role = role;
-    if (ativo !== undefined) data.ativo = ativo;
-    if (senha) data.senha_hash = await bcrypt.hash(senha, 10);
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = req.body?.nome !== undefined ? String(req.body.nome || "").trim() : undefined;
+    const email = req.body?.email !== undefined ? normalizeEmail(req.body.email) : undefined;
+    const role = req.body?.role !== undefined ? String(req.body.role || "").toUpperCase() : undefined;
+    const tipoUsuario =
+      req.body?.tipoUsuario !== undefined ? String(req.body.tipoUsuario || "").toUpperCase() : undefined;
+
+    const cpf = req.body?.cpf !== undefined ? (req.body.cpf ? onlyDigits(req.body.cpf) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normalizeTelefone(req.body.telefone) : null) : undefined;
+
+    const advogadoId =
+      req.body?.advogadoId !== undefined ? (req.body.advogadoId ? Number(req.body.advogadoId) : null) : undefined;
+
+    const senha = req.body?.senha ? String(req.body.senha) : "";
+    const senhaConfirmacao = req.body?.senhaConfirmacao ? String(req.body.senhaConfirmacao) : "";
+
+    if (role !== undefined && !["ADMIN", "USER"].includes(role)) {
+      return res.status(400).json({ message: "Role inválido." });
+    }
+    if (tipoUsuario !== undefined && !["ADVOGADO", "USUARIO", "ESTAGIARIO"].includes(tipoUsuario)) {
+      return res.status(400).json({ message: "Tipo de usuário inválido." });
+    }
+    if (cpf !== undefined && cpf && !isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    if (req.body?.telefone !== undefined && req.body.telefone && !telefone)
+      return res.status(400).json({ message: "Telefone inválido." });
+
+    const current = await prisma.usuario.findUnique({ where: { id }, select: { tipoUsuario: true, cpf: true, advogadoId: true } });
+    if (!current) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    const finalTipo = tipoUsuario ?? current.tipoUsuario;
+    const finalCpf = cpf === undefined ? current.cpf : cpf;
+
+    if (finalTipo === "USUARIO" || finalTipo === "ESTAGIARIO") {
+      if (!finalCpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(finalCpf)) return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    if (finalTipo === "ADVOGADO") {
+      const advIdEffective = advogadoId === undefined ? current.advogadoId : advogadoId;
+      if (!advIdEffective) return res.status(400).json({ message: "Para tipo Advogado, informe advogadoId." });
+      const adv = await prisma.advogado.findUnique({ where: { id: advIdEffective } });
+      if (!adv) return res.status(400).json({ message: "Advogado não encontrado para vinculação." });
+    }
+
+    const data = {
+      ...(nome !== undefined ? { nome } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(tipoUsuario !== undefined ? { tipoUsuario } : {}),
+      ...(cpf !== undefined ? { cpf } : {}),
+      ...(telefone !== undefined ? { telefone } : {}),
+      ...(advogadoId !== undefined ? { advogadoId } : {}),
+    };
+
+    if (senha || senhaConfirmacao) {
+      if (!senha || senha.length < 8) return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+      if (senha !== senhaConfirmacao) return res.status(400).json({ message: "As senhas não conferem." });
+      data.senhaHash = await bcrypt.hash(String(senha), 10);
+    }
 
     const updated = await prisma.usuario.update({
       where: { id },
       data,
-      select: { id: true, nome: true, email: true, role: true, ativo: true },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        advogadoId: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-    return res.json(updated);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao atualizar usuário." });
+
+    res.json({
+      ...updated,
+      createdAtBR: formatDateBR(updated.createdAt),
+      updatedAtBR: formatDateBR(updated.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao atualizar usuario:", err);
+    res.status(500).json({ message: "Erro ao atualizar usuário." });
   }
 });
 
-/* ===========================
-   Advogados (placeholder JSON para não quebrar front)
-   ⚠️ Sem mexer no schema: devolve [] e endpoints estáveis.
-   =========================== */
-app.get("/api/advogados", requireAuth, requireAdmin, async (_req, res) => {
-  return res.json([]);
+// ADMIN: ativar/inativar
+app.patch("/api/usuarios/:id/ativo", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const ativo = Boolean(req.body?.ativo);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const u = await prisma.usuario.update({
+      where: { id },
+      data: { ativo },
+      select: { id: true, ativo: true },
+    });
+
+    res.json(u);
+  } catch (err) {
+    console.error("Erro ao mudar ativo usuario:", err);
+    res.status(500).json({ message: "Erro ao alterar status." });
+  }
 });
 
-/* ===========================
-   Modelo de Distribuição (placeholder JSON para não quebrar front)
-   ⚠️ Sem mexer no schema: devolve [] e endpoints estáveis.
-   =========================== */
-app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (_req, res) => {
-  return res.json([]);
+// USER: me (somente para usuário NÃO vinculado a advogado)
+app.get("/api/usuarios/me", requireAuth, async (req, res) => {
+  try {
+    if (req.user?.advogadoId) {
+      return res.status(400).json({ message: "Perfil de advogado deve ser acessado em /api/advogados/me." });
+    }
+    const u = await prisma.usuario.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!u || !u.ativo) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    res.json({
+      ...u,
+      createdAtBR: formatDateBR(u.createdAt),
+      updatedAtBR: formatDateBR(u.updatedAt),
+    });
+  } catch (err) {
+    console.error("Erro ao ler usuario/me:", err);
+    res.status(500).json({ message: "Erro ao carregar perfil." });
+  }
 });
 
-/* ===========================
-   Contratos (LISTA)
-   ✅ includes pai/filho (derivados/renegociadosDele/contratoOrigem/renegociadoPara)
-   =========================== */
+app.put("/api/usuarios/me", requireAuth, async (req, res) => {
+  try {
+    if (req.user?.advogadoId) {
+      return res.status(400).json({ message: "Perfil de advogado deve ser atualizado em /api/advogados/me." });
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const nome = req.body?.nome !== undefined ? String(req.body.nome || "").trim() : undefined;
+    const email = req.body?.email !== undefined ? normalizeEmail(req.body.email) : undefined;
+    const cpf = req.body?.cpf !== undefined ? (req.body.cpf ? onlyDigits(req.body.cpf) : null) : undefined;
+    const telefone =
+      req.body?.telefone !== undefined ? (req.body.telefone ? normalizeTelefone(req.body.telefone) : null) : undefined;
+
+    const senha = req.body?.senha ? String(req.body.senha) : "";
+    const senhaConfirmacao = req.body?.senhaConfirmacao ? String(req.body.senhaConfirmacao) : "";
+
+    if (cpf !== undefined && cpf && !isValidCPF(cpf)) return res.status(400).json({ message: "CPF inválido." });
+    if (req.body?.telefone !== undefined && req.body.telefone && !telefone)
+      return res.status(400).json({ message: "Telefone inválido." });
+
+    const current = await prisma.usuario.findUnique({
+      where: { id: req.user.id },
+      select: { tipoUsuario: true, cpf: true, ativo: true },
+    });
+    if (!current || !current.ativo) return res.status(404).json({ message: "Usuário não encontrado." });
+
+    const finalTipo = current.tipoUsuario;
+    const finalCpf = cpf === undefined ? current.cpf : cpf;
+
+    if (finalTipo === "USUARIO" || finalTipo === "ESTAGIARIO") {
+      if (!finalCpf) return res.status(400).json({ message: "CPF é obrigatório para Usuário/Estagiário." });
+      if (!isValidCPF(finalCpf)) return res.status(400).json({ message: "CPF inválido." });
+    }
+
+    const data = {
+      ...(nome !== undefined ? { nome } : {}),
+      ...(email !== undefined ? { email } : {}),
+      ...(cpf !== undefined ? { cpf } : {}),
+      ...(telefone !== undefined ? { telefone } : {}),
+    };
+
+    if (senha || senhaConfirmacao) {
+      if (!senha || senha.length < 8) return res.status(400).json({ message: "Nova senha deve ter no mínimo 8 caracteres." });
+      if (senha !== senhaConfirmacao) return res.status(400).json({ message: "As senhas não conferem." });
+      data.senhaHash = await bcrypt.hash(String(senha), 10);
+    }
+
+    const updated = await prisma.usuario.update({
+      where: { id: req.user.id },
+      data,
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        tipoUsuario: true,
+        cpf: true,
+        telefone: true,
+        ativo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({
+      ...updated,
+      createdAtBR: formatDateBR(updated.createdAt),
+      updatedAtBR: formatDateBR(updated.updatedAt),
+    });
+  } catch (err) {
+    if (err?.code === "P2002") {
+      const target = Array.isArray(err?.meta?.target) ? err.meta.target.join(", ") : "campo";
+      return res.status(409).json({ message: `Já existe usuário com este ${target}.` });
+    }
+    console.error("Erro ao atualizar usuario/me:", err);
+    res.status(500).json({ message: "Erro ao atualizar perfil." });
+  }
+});
+
+/* =========================
+   404 + Error handler (sempre JSON)
+========================= */
+// =========================
+// PAGAMENTOS (CONTRATOS + PARCELAS) — Admin only (por enquanto)
+// =========================
+
+// Listar contratos (com cliente + parcelas)
 app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const q = String(req.query?.q || "").trim();
+    const q = (req.query.q || "").toString().trim();
+
     const where = q
       ? {
           OR: [
@@ -352,49 +1547,8 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
       where,
       include: {
         cliente: true,
-
-        // ✅ Pai / Filho direto
         contratoOrigem: { select: { id: true, numeroContrato: true } },
         renegociadoPara: { select: { id: true, numeroContrato: true } },
-
-        // ✅ Listas (histórico)
-        derivados: { select: { id: true, numeroContrato: true } },
-        renegociadosDele: { select: { id: true, numeroContrato: true } },
-
-        parcelas: { orderBy: { numero: "asc" } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 300,
-    });
-
-    return res.json(contratos);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao listar contratos." });
-  }
-});
-
-/* ===========================
-   Contrato (DETALHE)
-   ✅ includes pai/filho/listas + cancel info
-   =========================== */
-app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ message: "ID inválido." });
-
-    const contrato = await prisma.contratoPagamento.findUnique({
-      where: { id },
-      include: {
-        cliente: true,
-
-        // ✅ Pai / Filho direto
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-
-        // ✅ Listas (histórico)
-        derivados: { select: { id: true, numeroContrato: true } },
-        renegociadosDele: { select: { id: true, numeroContrato: true } },
-
         parcelas: {
           orderBy: { numero: "asc" },
           include: {
@@ -402,166 +1556,314 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
           },
         },
       },
+      orderBy: [{ createdAt: "desc" }],
+      take: 200,
     });
 
-    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
-    return res.json(contrato);
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao carregar contrato." });
+    const out = contratos.map((c) => {
+      const parcelas = c.parcelas || [];
+      const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
+      const totalRecebido = recebidas.reduce(
+        (acc, p) => acc + Number(p.valorRecebido || 0),
+        0
+      );
+
+      return {
+        id: c.id,
+        numeroContrato: c.numeroContrato,
+        renegociadoParaId: c.renegociadoParaId,
+        contratoOrigemId: c.contratoOrigemId,
+        contratoOrigem: c.contratoOrigem ? { id: c.contratoOrigem.id, numeroContrato: c.contratoOrigem.numeroContrato } : null,
+        renegociadoPara: c.renegociadoPara ? { id: c.renegociadoPara.id, numeroContrato: c.renegociadoPara.numeroContrato } : null,
+        clienteId: c.clienteId,
+        cliente: serializeCliente({ ...c.cliente, ordens: [] }),
+        valorTotal: c.valorTotal,
+        formaPagamento: c.formaPagamento,
+        ativo: c.ativo,
+        observacoes: c.observacoes,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        parcelas,
+        resumo: {
+          qtdParcelas: parcelas.length,
+          qtdRecebidas: recebidas.length,
+          totalRecebido,
+        },
+      };
+    });
+
+    res.json(out);
+  } catch (err) {
+    console.error("Erro ao listar contratos:", err);
+    res.status(500).json({ message: "Erro ao listar pagamentos (contratos)." });
   }
 });
 
-/* ===========================
-   Criar contrato (pagamento)
-   =========================== */
+// Criar contrato + gerar parcelas
+// Body esperado (flexível):
+// {
+//   clienteId, numeroContrato, valorTotal, formaPagamento,
+//   avista?: { vencimento },
+//   entrada?: { valor, vencimento },
+//   parcelas?: { quantidade, primeiroVencimento, valorParcela? },
+//   observacoes?
+// }
 app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const clienteId = Number(req.body?.clienteId);
-    const numeroContrato = String(req.body?.numeroContrato || "").trim();
-    const formaPagamento = String(req.body?.formaPagamento || "").trim();
-    const valorTotalCents = moneyToCents(req.body?.valorTotal);
-    const observacoes = req.body?.observacoes ? String(req.body.observacoes) : null;
+    const {
+      clienteId,
+      numeroContrato,
+      valorTotal,
+      formaPagamento,
+      avista,
+      entrada,
+      parcelas,
+      observacoes,
+    } = req.body || {};
 
-    if (!clienteId) return res.status(400).json({ message: "Cliente inválido." });
-    if (!numeroContrato) return res.status(400).json({ message: "Número do contrato é obrigatório." });
-    if (!formaPagamento) return res.status(400).json({ message: "Forma de pagamento é obrigatória." });
-    if (valorTotalCents === null || valorTotalCents <= 0n)
-      return res.status(400).json({ message: "Valor total inválido." });
+    if (!clienteId) return res.status(400).json({ message: "Informe o cliente." });
+    if (!numeroContrato) return res.status(400).json({ message: "Informe o número do contrato." });
 
-    const parcelas = Array.isArray(req.body?.parcelas) ? req.body.parcelas : [];
-    if (!parcelas.length) return res.status(400).json({ message: "Informe as parcelas." });
+    const cliente = await prisma.cliente.findUnique({ where: { id: Number(clienteId) } });
+    if (!cliente) return res.status(404).json({ message: "Cliente não encontrado." });
+
+    const totalCents = moneyToCents(valorTotal);
+    if (totalCents === null) return res.status(400).json({ message: "Informe o valor total do contrato." });
+    if (totalCents <= 0n) return res.status(400).json({ message: "O valor total precisa ser maior que zero." });
+
+    const fp = (formaPagamento || "").toString().trim().toUpperCase();
+    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+      return res.status(400).json({
+        message: "Forma de pagamento inválida. Use AVISTA, ENTRADA_PARCELAS ou PARCELADO.",
+      });
+    }
+
+    const parseDate = (v, field) => {
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDate(avista?.vencimento, "avista.vencimento");
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: totalCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+
+      const primeiroVenc = parseDate(parcelas?.primeiroVencimento, "parcelas.primeiroVencimento");
+
+      let valoresCents;
+      if (parcelas?.valorParcela !== undefined && parcelas?.valorParcela !== null && parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== totalCents) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do valor total. Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(totalCents, qtd);
+      }
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = new Date(primeiroVenc);
+        venc.setMonth(venc.getMonth() + i);
+        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(entrada?.valor);
+      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= totalCents) return res.status(400).json({ message: "A entrada deve ser menor que o valor total." });
+
+      const eVenc = parseDate(entrada?.vencimento, "entrada.vencimento");
+
+      const qtd = Number(parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
+
+      const primeiroVenc = parseDate(parcelas?.primeiroVencimento, "parcelas.primeiroVencimento");
+
+      const restante = totalCents - eValorCents;
+
+      let valoresCents;
+      if (parcelas?.valorParcela !== undefined && parcelas?.valorParcela !== null && parcelas?.valorParcela !== "") {
+        const vParc = moneyToCents(parcelas.valorParcela);
+        if (vParc === null || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== restante) {
+          return res.status(400).json({
+            message:
+              "Soma das parcelas diferente do restante (total - entrada). Ajuste o valor da parcela ou remova para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(restante, qtd);
+      }
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = new Date(primeiroVenc);
+        venc.setMonth(venc.getMonth() + i);
+        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       const contrato = await tx.contratoPagamento.create({
         data: {
-          clienteId,
-          numeroContrato,
-          formaPagamento,
-          valorTotal: centsToDecimalString(valorTotalCents),
-          observacoes,
-          ativo: true,
+          clienteId: Number(clienteId),
+          numeroContrato: String(numeroContrato).trim(),
+          valorTotal: centsToDecimalString(totalCents),
+          formaPagamento: fp,
+          observacoes: observacoes ? String(observacoes) : null,
         },
       });
 
-      for (const p of parcelas) {
-        const venc = parseDateDDMMYYYY(p?.vencimento);
-        const valCents = moneyToCents(p?.valorPrevisto);
-        if (!venc) throw new Error("Vencimento inválido em parcela.");
-        if (valCents === null || valCents <= 0n) throw new Error("Valor inválido em parcela.");
+      const parcelasData = parcelasPlan.map((p) => ({
+        contratoId: contrato.id,
+        numero: p.numero,
+        vencimento: p.vencimento,
+        valorPrevisto: centsToDecimalString(p.valorCents),
+      }));
 
-        await tx.parcelaContrato.create({
-          data: {
-            contratoId: contrato.id,
-            numero: Number(p?.numero || 1),
-            vencimento: venc,
-            valorPrevisto: centsToDecimalString(valCents),
-            status: "PREVISTA",
-          },
-        });
+      await tx.parcelaContrato.createMany({ data: parcelasData });
+
+      return tx.contratoPagamento.findUnique({
+        where: { id: contrato.id },
+        include: {
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
       }
-
-      return contrato;
+    }
+  }
+}
+,
+      });
     });
 
-    return res.json({ message: "Contrato criado.", contrato: created });
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao criar contrato." });
+    res.status(201).json(created);
+  } catch (err) {
+    if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
+    console.error("Erro ao criar contrato:", err);
+    res.status(500).json({ message: err?.message || "Erro ao criar contrato." });
   }
 });
 
-/* ===========================
-   Renegociar contrato
-   ✅ grava pai/filho nos dois lados
-   =========================== */
-app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
+// Atualizar contrato (não mexe automaticamente nas parcelas — por segurança)
+app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const contratoId = Number(req.params.id);
-    if (!contratoId) return res.status(400).json({ message: "ID inválido." });
+    const id = Number(req.params.id);
+    const { numeroContrato, valorTotal, formaPagamento, observacoes } = req.body || {};
 
-    const { adminPassword, motivo, numeroContratoNovo, formaPagamento, valorTotal, parcelas } = req.body || {};
+    const data = {};
+
+    if (numeroContrato !== undefined) data.numeroContrato = String(numeroContrato).trim();
+
+    if (valorTotal !== undefined) {
+      const cents = moneyToCents(valorTotal);
+      if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor total inválido." });
+      data.valorTotal = centsToDecimalString(cents);
+    }
+
+    if (formaPagamento !== undefined) {
+      const fp = String(formaPagamento).trim().toUpperCase();
+      if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+        return res.status(400).json({ message: "Forma de pagamento inválida." });
+      }
+      data.formaPagamento = fp;
+    }
+
+    if (observacoes !== undefined) data.observacoes = observacoes ? String(observacoes) : null;
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data,
+      include: {
+  cliente: true,
+  parcelas: {
+    orderBy: { numero: "asc" },
+    include: {
+      canceladaPor: {
+        select: { id: true, nome: true }
+      }
+    }
+  }
+}
+,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
+    if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
+    console.error("Erro ao atualizar contrato:", err);
+    res.status(500).json({ message: "Erro ao atualizar contrato." });
+  }
+});
+
+
+
+// =====================
+// ADMIN-ONLY: EDIÇÃO (restrita) e RETIFICAÇÃO (auditável)
+// Decisão do projeto:
+// - "Editar" = somente observações (texto) + confirmação de senha
+// - "Retificar" = correção de vencimento/valor (e, no verde, reestruturação) com LOG
+// =====================
+
+// Editar contrato (somente observações)
+app.put("/api/contratos/:id/admin-edit", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { adminPassword, observacoes } = req.body || {};
     const ok = await requireAdminPassword(req, res, adminPassword);
     if (!ok) return;
 
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da renegociação." });
-
-    const base = await prisma.contratoPagamento.findUnique({
-      where: { id: contratoId },
-      include: { parcelas: true },
-    });
-    if (!base) return res.status(404).json({ message: "Contrato não encontrado." });
-
-    const novoNumero = String(numeroContratoNovo || "").trim();
-    if (!novoNumero) return res.status(400).json({ message: "Informe o número do novo contrato." });
-
-    const fp = String(formaPagamento || base.formaPagamento || "").trim();
-    if (!fp) return res.status(400).json({ message: "Forma de pagamento inválida." });
-
-    const totalCents = moneyToCents(valorTotal);
-    if (totalCents === null || totalCents <= 0n) return res.status(400).json({ message: "Valor total inválido." });
-
-    const arrParcelas = Array.isArray(parcelas) ? parcelas : [];
-    if (!arrParcelas.length) return res.status(400).json({ message: "Informe as parcelas do novo contrato." });
-
-    const created = await prisma.$transaction(async (tx) => {
-      const filho = await tx.contratoPagamento.create({
-        data: {
-          clienteId: base.clienteId,
-          numeroContrato: novoNumero,
-          formaPagamento: fp,
-          valorTotal: centsToDecimalString(totalCents),
-          observacoes: base.observacoes,
-          ativo: true,
-
-          // ✅ vínculo filho → pai
-          contratoOrigemId: base.id,
-        },
-      });
-
-      for (const p of arrParcelas) {
-        const venc = parseDateDDMMYYYY(p?.vencimento);
-        const valCents = moneyToCents(p?.valorPrevisto);
-        if (!venc) throw new Error("Vencimento inválido em parcela.");
-        if (valCents === null || valCents <= 0n) throw new Error("Valor inválido em parcela.");
-
-        await tx.parcelaContrato.create({
-          data: {
-            contratoId: filho.id,
-            numero: Number(p?.numero || 1),
-            vencimento: venc,
-            valorPrevisto: centsToDecimalString(valCents),
-            status: "PREVISTA",
-          },
-        });
-      }
-
-      // ✅ vínculo pai → filho (direto)
-      await tx.contratoPagamento.update({
-        where: { id: base.id },
-        data: { renegociadoParaId: filho.id },
-      });
-
-      await tx.historicoContrato.create({
-        data: {
-          contratoId: base.id,
-          tipo: "RENEGOCIACAO",
-          descricao: `Renegociado para ${filho.numeroContrato}. Motivo: ${motivoTxt}`,
-          criadoPorId: req.user?.id ?? null,
-        },
-      });
-
-      return filho;
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data: {
+        observacoes: observacoes === undefined ? undefined : String(observacoes),
+      },
+      include: {
+        cliente: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
+      },
     });
 
-    return res.json({ message: "Renegociação criada.", contrato: created });
-  } catch (e) {
-    return res.status(500).json({ message: e?.message || "Falha ao renegociar contrato." });
+    return res.json(updated);
+  } catch (err) {
+    if (err?.code === "P2025") return res.status(404).json({ message: "Contrato não encontrado." });
+    console.error("Erro ao editar observações do contrato:", err);
+    return res.status(500).json({ message: "Erro ao editar observações do contrato." });
   }
 });
 
-/* ===========================
-   Retificar parcela (preserva total via compensação)
-   =========================== */
+// Editar parcela (desativado; use retificação)
+app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (_req, res) => {
+  return res.status(400).json({
+    message: "Edição direta de parcela foi desativada. Use Retificar (admin) para correção com log.",
+  });
+});
+
+// Retificar parcela (auditável)
 app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
   try {
     const parcelaId = Number(req.params.id);
@@ -583,36 +1885,37 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
     const contrato = parcela.contrato;
     if (!contrato) return res.status(400).json({ message: "Contrato da parcela não encontrado." });
 
-    const previstas = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
-    if (previstas.length < 2) {
+    // Semáforo: bloqueios (Vermelho)
+    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
+    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
+    if (inCadeiaReneg || temRecebida) {
       return res.status(400).json({
         message:
-          "Retificação bloqueada: é necessário existir 2 ou mais parcelas PREVISTAS no contrato/renegociação.",
+          "Retificação bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida. Faça correção via estorno/contralançamento, preservando integridade.",
       });
     }
 
+    // Parcela precisa ser PREVISTA
     if (parcela.status !== "PREVISTA") {
       return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
     }
 
-    const patchIn = patch || {};
-    const dataToUpdate = {};
+    const p = patch || {};
+    const data = {};
 
-    if (patchIn.vencimento !== undefined) {
-      const d = parseDateDDMMYYYY(patchIn.vencimento);
+    if (p.vencimento !== undefined) {
+      const d = parseDateInput(p.vencimento);
       if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
-      dataToUpdate.vencimento = d;
+      data.vencimento = d;
     }
 
-    let novoValorCents = null;
-    if (patchIn.valorPrevisto !== undefined) {
-      const cents = moneyToCents(patchIn.valorPrevisto);
+    if (p.valorPrevisto !== undefined) {
+      const cents = moneyToCents(p.valorPrevisto);
       if (cents === null || cents <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
-      novoValorCents = cents;
-      dataToUpdate.valorPrevisto = centsToDecimalString(cents);
+      data.valorPrevisto = centsToDecimalString(cents);
     }
 
-    if (!Object.keys(dataToUpdate).length) {
+    if (!Object.keys(data).length) {
       return res.status(400).json({ message: "Nada para retificar." });
     }
 
@@ -625,65 +1928,15 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
       status: parcela.status,
     };
 
-    const parcelaAtualizada = await prisma.$transaction(async (tx) => {
-      let outraAntes = null;
-      let outraDepois = null;
-
-      if (novoValorCents !== null) {
-        const atualCents = moneyToCents(parcela.valorPrevisto) || 0n;
-        const delta = novoValorCents - atualCents;
-
-        if (delta !== 0n) {
-          const candidata = previstas
-            .filter((x) => x.id !== parcela.id)
-            .sort((a, b) => (a.numero || 0) - (b.numero || 0))
-            .slice(-1)[0];
-
-          if (!candidata) {
-            const err = new Error("Retificação bloqueada: não há outra parcela PREVISTA para compensação.");
-            err.status = 400;
-            throw err;
-          }
-
-          outraAntes = await tx.parcelaContrato.findUnique({ where: { id: candidata.id } });
-
-          const candAtualCents = moneyToCents(candidata.valorPrevisto) || 0n;
-          const candNovoCents = candAtualCents - delta;
-
-          if (candNovoCents <= 0n) {
-            const err = new Error(
-              "Retificação bloqueada: a compensação tornaria outra parcela PREVISTA menor/igual a zero. Use renegociação (Rx)."
-            );
-            err.status = 400;
-            throw err;
-          }
-
-          outraDepois = await tx.parcelaContrato.update({
-            where: { id: candidata.id },
-            data: { valorPrevisto: centsToDecimalString(candNovoCents) },
-          });
-        }
-      }
-
+    const updated = await prisma.$transaction(async (tx) => {
       const afterParcela = await tx.parcelaContrato.update({
         where: { id: parcelaId },
-        data: dataToUpdate,
+        data,
       });
 
       const alteracoes = {};
-      if (dataToUpdate.vencimento)
-        alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
-      if (dataToUpdate.valorPrevisto)
-        alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
-
-      if (outraAntes && outraDepois) {
-        alteracoes.compensacao = {
-          parcelaId: outraDepois.id,
-          numero: outraDepois.numero,
-          before: outraAntes.valorPrevisto,
-          after: outraDepois.valorPrevisto,
-        };
-      }
+      if (data.vencimento) alteracoes.vencimento = { before: before.vencimento, after: afterParcela.vencimento };
+      if (data.valorPrevisto) alteracoes.valorPrevisto = { before: before.valorPrevisto, after: afterParcela.valorPrevisto };
 
       await tx.retificacaoParcela.create({
         data: {
@@ -706,32 +1959,579 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
       return afterParcela;
     });
 
-    return res.json({ message: "Parcela retificada com sucesso.", parcela: parcelaAtualizada });
+    return res.json({ message: "Parcela retificada com sucesso.", parcela: updated });
   } catch (err) {
-    const status = err?.status || 500;
     console.error("Erro ao retificar parcela:", err);
-    return res.status(status).json({ message: err?.message || "Erro ao retificar parcela." });
+    return res.status(500).json({ message: err?.message || "Erro ao retificar parcela." });
   }
 });
 
-/* ===========================
-   Aliases sem /api (se o front chamar direto)
-   =========================== */
-app.get("/clientes", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/clientes"));
-app.get("/usuarios", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/usuarios"));
-app.get("/advogados", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/advogados"));
-app.get("/modelo-distribuicao", requireAuth, requireAdmin, (req, res) => res.redirect(307, "/api/modelo-distribuicao"));
+// Retificar contrato (verde): reestrutura parcelas PREVISTAS conforme payload (com log)
+app.post("/api/contratos/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const contratoId = Number(req.params.id);
+    if (!Number.isFinite(contratoId)) return res.status(400).json({ message: "ID inválido." });
 
-/* ===========================
-   404 em JSON (nunca HTML)
-   =========================== */
+    const { adminPassword, motivo, payload } = req.body || {};
+    const ok = await requireAdminPassword(req, res, adminPassword);
+    if (!ok) return;
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id: contratoId },
+      include: { parcelas: true },
+    });
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const inCadeiaReneg = Boolean(contrato.renegociadoParaId || contrato.contratoOrigemId);
+    const temRecebida = (contrato.parcelas || []).some((p) => p.status === "RECEBIDA");
+    if (inCadeiaReneg || temRecebida) {
+      return res.status(400).json({
+        message:
+          "Retificação estrutural bloqueada: contrato está renegociado (pai/filho) e/ou possui parcela recebida.",
+      });
+    }
+
+    const allPrevistas = (contrato.parcelas || []).every((p) => p.status === "PREVISTA");
+    if (!allPrevistas) {
+      return res.status(400).json({ message: "Retificação estrutural permitida somente quando todas as parcelas são PREVISTAS." });
+    }
+
+    const totalCents = moneyToCents(contrato.valorTotal);
+    if (totalCents === null || totalCents <= 0n) return res.status(400).json({ message: "Valor total inválido no contrato." });
+
+    // reutiliza a mesma lógica de plano de parcelas do endpoint de renegociação:
+    const b = payload || {};
+    const fp = String(b.formaPagamento || contrato.formaPagamento || "AVISTA").trim().toUpperCase();
+    if (!["AVISTA", "ENTRADA_PARCELAS", "PARCELADO"].includes(fp)) {
+      return res.status(400).json({ message: "Forma de pagamento inválida." });
+    }
+
+    // default: usa o vencimento da primeira parcela atual (normalizado) como base
+    const firstV = (contrato.parcelas || []).map((p) => p.vencimento).filter(Boolean).sort((a,b)=>new Date(a)-new Date(b))[0];
+    const base0 = firstV ? new Date(firstV) : new Date();
+    const dataBase = new Date(base0.getFullYear(), base0.getMonth(), base0.getDate(), 12, 0, 0, 0);
+
+    const parseDateOrDefault = (v, field, fallbackDate) => {
+      if (v === undefined || v === null || String(v).trim() === "") return fallbackDate;
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    const addMonthsLocalNoon = (date, months) => {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + months);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+    };
+
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDateOrDefault(b?.avista?.vencimento, "avista.vencimento", dataBase);
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: totalCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(b?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
+      const valoresCents = splitCents(totalCents, qtd);
+      for (let i = 0; i < qtd; i++) {
+        parcelasPlan.push({ numero: i + 1, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(b?.entrada?.valor);
+      if (eValorCents === null || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= totalCents) return res.status(400).json({ message: "A entrada deve ser menor que o total." });
+
+      const eVenc = parseDateOrDefault(b?.entrada?.vencimento, "entrada.vencimento", dataBase);
+
+      const qtd = Number(b?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após a entrada)." });
+
+      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
+      const primeiroVenc = parseDateOrDefault(b?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
+
+      const restante = totalCents - eValorCents;
+      const valoresCents = splitCents(restante, qtd);
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+      for (let i = 0; i < qtd; i++) {
+        parcelasPlan.push({ numero: i + 2, vencimento: addMonthsLocalNoon(primeiroVenc, i), valorCents: valoresCents[i] });
+      }
+    }
+
+    const snapshotAntes = {
+      id: contrato.id,
+      numeroContrato: contrato.numeroContrato,
+      formaPagamento: contrato.formaPagamento,
+      valorTotal: contrato.valorTotal,
+      parcelas: contrato.parcelas,
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      // apaga e recria parcelas (todas eram PREVISTAS)
+      await tx.parcelaContrato.deleteMany({ where: { contratoId } });
+
+      await tx.parcelaContrato.createMany({
+        data: parcelasPlan.map((p) => ({
+          contratoId,
+          numero: p.numero,
+          vencimento: p.vencimento,
+          valorPrevisto: centsToDecimalString(p.valorCents),
+          status: "PREVISTA",
+        })),
+      });
+
+      const contratoDepois = await tx.contratoPagamento.update({
+        where: { id: contratoId },
+        data: { formaPagamento: fp },
+        include: { parcelas: { orderBy: { numero: "asc" } } },
+      });
+
+      await tx.retificacaoContrato.create({
+        data: {
+          contratoId,
+          motivo: motivoTxt,
+          alteracoes: { formaPagamento: { before: contrato.formaPagamento, after: fp } },
+          snapshotAntes,
+          snapshotDepois: {
+            id: contratoDepois.id,
+            numeroContrato: contratoDepois.numeroContrato,
+            formaPagamento: contratoDepois.formaPagamento,
+            valorTotal: contratoDepois.valorTotal,
+            parcelas: contratoDepois.parcelas,
+          },
+          criadoPorId: req.user?.id ?? null,
+        },
+      });
+
+      return contratoDepois;
+    });
+
+    return res.json({ message: "Contrato retificado com sucesso.", contrato: result });
+  } catch (err) {
+    console.error("Erro ao retificar contrato:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao retificar contrato." });
+  }
+});
+
+
+// Ativar/Inativar contrato (soft)
+app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const current = await prisma.contratoPagamento.findUnique({ where: { id } });
+    if (!current) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const updated = await prisma.contratoPagamento.update({
+      where: { id },
+      data: { ativo: !current.ativo },
+    });
+
+    res.json({ message: updated.ativo ? "Contrato reativado." : "Contrato inativado.", contrato: updated });
+  } catch (err) {
+    console.error("Erro ao ativar/inativar contrato:", err);
+    res.status(500).json({ message: "Erro ao ativar/inativar contrato." });
+  }
+});
+
+// Confirmar recebimento de uma parcela
+app.patch(
+  "/api/parcelas/:id/confirmar",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { dataRecebimento, valorRecebido, meioRecebimento, observacoes } = req.body || {};
+
+      const parcela = await prisma.parcelaContrato.findUnique({
+        where: { id },
+      });
+
+      if (!parcela) {
+        return res.status(404).json({ message: "Parcela não encontrada." });
+      }
+
+      if (parcela.status === "RECEBIDA") {
+        return res.status(400).json({ message: "Esta parcela já foi recebida." });
+      }
+
+      const dt = dataRecebimento
+        ? parseDateInput(dataRecebimento)
+        : new Date();
+
+      if (!dt) {
+        return res
+          .status(400)
+          .json({ message: "Data de recebimento inválida (DD/MM/AAAA)." });
+      }
+
+      // Se não vier valorRecebido, assume o valor previsto
+      const cents = valorRecebido
+       ? moneyToCents(valorRecebido)
+       : moneyToCents(parcela.valorPrevisto); // passa o Decimal “cru”, não string
+
+      if (!cents || cents <= 0n) {
+        return res.status(400).json({ message: "Valor recebido inválido." });
+      }
+
+      const meio = meioRecebimento
+        ? String(meioRecebimento).trim().toUpperCase()
+        : null;
+
+      if (
+        meio &&
+        !["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio)
+      ) {
+        return res.status(400).json({ message: "Meio de recebimento inválido." });
+      }
+
+      const updated = await prisma.parcelaContrato.update({
+        where: { id },
+        data: {
+          status: "RECEBIDA", // ⚠️ confirme ENUM
+          dataRecebimento: dt,
+          valorRecebido: Number(cents) / 100, // ✅ Decimal correto
+          meioRecebimento: meio,
+          observacoes: observacoes ? String(observacoes).trim() : null,
+        },
+      });
+
+      return res.json({
+        message: "Parcela recebida com sucesso.",
+        parcela: updated,
+      });
+    } catch (err) {
+      console.error("Erro ao confirmar parcela:", err);
+      return res.status(500).json({
+        message: "Erro interno ao confirmar o recebimento da parcela.",
+      });
+    }
+  }
+);
+
+// Cancelar uma parcela (somente não recebidas)
+app.patch(
+  "/api/parcelas/:id/cancelar",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const motivo = String(req.body?.motivo || "").trim();
+
+      if (!id) return res.status(400).json({ message: "ID da parcela inválido." });
+      if (!motivo) {
+        return res.status(400).json({ message: "Informe o motivo do cancelamento." });
+      }
+      if (motivo.length < 3) {
+        return res.status(400).json({ message: "Motivo muito curto. Explique um pouco mais." });
+      }
+
+      const parcela = await prisma.parcelaContrato.findUnique({ where: { id } });
+      if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+
+      if (parcela.status === "RECEBIDA") {
+        return res.status(409).json({ message: "Parcela recebida não pode ser cancelada." });
+      }
+      if (parcela.status === "CANCELADA") {
+        return res.status(409).json({ message: "Esta parcela já está cancelada." });
+      }
+
+      const updated = await prisma.parcelaContrato.update({
+        where: { id },
+        data: {
+          status: "CANCELADA",
+          canceladaEm: new Date(),
+          canceladaPorId: req.user?.id ?? null,
+          cancelamentoMotivo: motivo,
+        },
+      });
+
+      return res.json({
+        message: "Parcela cancelada com sucesso.",
+        parcela: updated,
+      });
+    } catch (err) {
+      console.error("Erro ao cancelar parcela:", err);
+      return res.status(500).json({
+        message: "Erro interno ao cancelar a parcela.",
+      });
+    }
+  }
+);
+
+app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID do contrato inválido." });
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id },
+      include: {
+        cliente: true,
+        contratoOrigem: { select: { id: true, numeroContrato: true } },
+        renegociadoPara: { select: { id: true, numeroContrato: true } },
+        parcelas: {
+          orderBy: { numero: "asc" },
+          include: {
+            canceladaPor: { select: { id: true, nome: true } },
+          },
+        },
+      },
+    });
+
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+    return res.json(contrato);
+  } catch (err) {
+    console.error("Erro ao buscar contrato:", err);
+    return res.status(500).json({ message: "Erro ao buscar contrato." });
+  }
+});
+
+
+
+// POST /api/contratos/:id/renegociar
+app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const contratoId = Number(req.params.id);
+    const usuarioId = req.user?.id ?? null;
+
+    if (!Number.isFinite(contratoId)) {
+      return res.status(400).json({ message: "ID do contrato inválido." });
+    }
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id: contratoId },
+      include: {
+        cliente: true,
+        parcelas: true,
+      },
+    });
+
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const pendentes = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
+    if (pendentes.length === 0) {
+      return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
+    }
+
+    // dataBase (default inteligente): menor vencimento dentre pendentes (normalizado para 12:00)
+    const dataBaseRaw = pendentes
+      .map((p) => p.vencimento)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+
+    const db0 = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
+    const dataBase = new Date(db0.getFullYear(), db0.getMonth(), db0.getDate(), 12, 0, 0, 0);
+
+    // saldo pendente em centavos
+    const saldoCents = pendentes.reduce((acc, p) => acc + (moneyToCents(p.valorPrevisto) || 0n), 0n);
+    if (saldoCents <= 0n) {
+      return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
+    }
+
+    // raiz do número (remove -R{n} repetidamente no final)
+    function getNumeroRaiz(numeroContrato) {
+      let base = String(numeroContrato || "").trim();
+      while (/-R\d+$/.test(base)) base = base.replace(/-R\d+$/, "");
+      return base;
+    }
+
+    const raiz = getNumeroRaiz(contrato.numeroContrato);
+
+    // próximo sufixo R{n} baseado na raiz
+    const existing = await prisma.contratoPagamento.findMany({
+      where: { numeroContrato: { startsWith: `${raiz}-R` } },
+      select: { numeroContrato: true },
+    });
+
+    const used = new Set(existing.map((x) => x.numeroContrato));
+    let seq = 1;
+    let novoNumero = `${raiz}-R${seq}`;
+    while (used.has(novoNumero)) {
+      seq += 1;
+      novoNumero = `${raiz}-R${seq}`;
+    }
+
+    const motivo = `Renegociação do saldo pendente do contrato ${contrato.numeroContrato} -> ${novoNumero}`;
+
+    const body = req.body || {};
+    const fp = String(body.formaPagamento || "AVISTA").trim().toUpperCase();
+    if (!["AVISTA", "PARCELADO", "ENTRADA_PARCELAS"].includes(fp)) {
+      return res.status(400).json({ message: "Forma de pagamento inválida." });
+    }
+
+    const parseDateOrDefault = (v, field, fallback) => {
+      if (v === undefined || v === null || String(v).trim() === "") return fallback;
+      const d = parseDateInput(v);
+      if (!d) throw new Error(`Data inválida em ${field}. Use DD/MM/AAAA.`);
+      return d;
+    };
+
+    const addMonthsLocalNoon = (date, months) => {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + months);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+    };
+
+    // monta plano de parcelas (sempre total = saldoCents)
+    let parcelasPlan = [];
+
+    if (fp === "AVISTA") {
+      const venc = parseDateOrDefault(body?.avista?.vencimento, "avista.vencimento", dataBase);
+      parcelasPlan = [{ numero: 1, vencimento: venc, valorCents: saldoCents }];
+    }
+
+    if (fp === "PARCELADO") {
+      const qtd = Number(body?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas." });
+
+      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", dataBase);
+
+      // se vier valorParcela, valida soma; senão divide automaticamente
+      let valoresCents;
+      const valorParcelaRaw = body?.parcelas?.valorParcela;
+      if (valorParcelaRaw !== undefined && valorParcelaRaw !== null && String(valorParcelaRaw).trim() !== "") {
+        const vParc = moneyToCents(valorParcelaRaw);
+        if (!vParc || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== saldoCents) {
+          return res.status(400).json({
+            message: "Soma das parcelas diferente do saldo pendente. Ajuste o valor da parcela ou deixe em branco para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(saldoCents, qtd);
+      }
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = addMonthsLocalNoon(primeiroVenc, i);
+        parcelasPlan.push({ numero: i + 1, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    if (fp === "ENTRADA_PARCELAS") {
+      const eValorCents = moneyToCents(body?.entrada?.valor);
+      if (!eValorCents || eValorCents <= 0n) return res.status(400).json({ message: "Informe o valor da entrada." });
+      if (eValorCents >= saldoCents) return res.status(400).json({ message: "A entrada deve ser menor que o saldo pendente." });
+
+      const eVenc = parseDateOrDefault(body?.entrada?.vencimento, "entrada.vencimento", dataBase);
+
+      const qtd = Number(body?.parcelas?.quantidade || 0);
+      if (!qtd || qtd < 1) return res.status(400).json({ message: "Informe a quantidade de parcelas (após entrada)." });
+
+      // default: 1ª parcela = dataBase + 1 mês (editável no front)
+      const primeiroDefault = addMonthsLocalNoon(dataBase, 1);
+      const primeiroVenc = parseDateOrDefault(body?.parcelas?.primeiroVencimento, "parcelas.primeiroVencimento", primeiroDefault);
+
+      const restante = saldoCents - eValorCents;
+
+      let valoresCents;
+      const valorParcelaRaw = body?.parcelas?.valorParcela;
+      if (valorParcelaRaw !== undefined && valorParcelaRaw !== null && String(valorParcelaRaw).trim() !== "") {
+        const vParc = moneyToCents(valorParcelaRaw);
+        if (!vParc || vParc <= 0n) return res.status(400).json({ message: "Valor da parcela inválido." });
+        valoresCents = Array.from({ length: qtd }, () => vParc);
+        const soma = valoresCents.reduce((a, b) => a + b, 0n);
+        if (soma !== restante) {
+          return res.status(400).json({
+            message: "Soma das parcelas diferente do restante (saldo - entrada). Ajuste o valor da parcela ou deixe em branco para dividir automaticamente.",
+          });
+        }
+      } else {
+        valoresCents = splitCents(restante, qtd);
+      }
+
+      parcelasPlan.push({ numero: 1, vencimento: eVenc, valorCents: eValorCents });
+
+      for (let i = 0; i < qtd; i++) {
+        const venc = addMonthsLocalNoon(primeiroVenc, i);
+        parcelasPlan.push({ numero: i + 2, vencimento: venc, valorCents: valoresCents[i] });
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // cancela pendentes do contrato que está sendo renegociado
+      await tx.parcelaContrato.updateMany({
+        where: { contratoId, status: { in: ["PREVISTA"] } },
+        data: {
+          status: "CANCELADA",
+          canceladaEm: new Date(),
+          canceladaPorId: usuarioId,
+          cancelamentoMotivo: motivo,
+        },
+      });
+
+      const filho = await tx.contratoPagamento.create({
+        data: {
+          numeroContrato: novoNumero,
+          clienteId: contrato.clienteId,
+          valorTotal: centsToDecimalString(saldoCents),
+          formaPagamento: fp,
+          observacoes: `Originado da renegociação do contrato ${contrato.numeroContrato}.`,
+          contratoOrigemId: contrato.id,
+          parcelas: {
+            create: parcelasPlan.map((p) => ({
+              numero: p.numero,
+              vencimento: p.vencimento,
+              valorPrevisto: centsToDecimalString(p.valorCents),
+              status: "PREVISTA",
+            })),
+          },
+        },
+        include: {
+          cliente: true,
+          contratoOrigem: { select: { id: true, numeroContrato: true } },
+          parcelas: { orderBy: { numero: "asc" } },
+        },
+      });
+
+      const originalAtualizado = await tx.contratoPagamento.update({
+        where: { id: contratoId },
+        data: {
+          renegociadoEm: new Date(),
+          renegociadoPorId: usuarioId,
+          renegociadoParaId: filho.id,
+        },
+        include: {
+          cliente: true,
+          renegociadoPara: { select: { id: true, numeroContrato: true } },
+          parcelas: { orderBy: { numero: "asc" }, include: { canceladaPor: { select: { id: true, nome: true } } } },
+        },
+      });
+
+      return { filho, originalAtualizado };
+    });
+
+    return res.json({
+      message: `Renegociação criada com sucesso: ${result.filho.numeroContrato}.`,
+      contratoNovo: result.filho,
+      contratoOriginal: result.originalAtualizado,
+    });
+  } catch (err) {
+    console.error("Erro ao renegociar saldo:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao renegociar saldo." });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).json({ message: "Rota não encontrada.", path: req.originalUrl });
 });
 
-/* ===========================
-   Start
-   =========================== */
+app.use((err, _req, res, _next) => {
+  console.error("Erro não tratado:", err);
+  res.status(500).json({ message: "Erro interno do servidor." });
+});
+
 app.listen(PORT, () => {
   console.log(`Controles-AMR backend rodando na porta ${PORT}`);
 });
