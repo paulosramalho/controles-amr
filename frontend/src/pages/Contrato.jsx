@@ -11,32 +11,6 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function onlyDigits(s) {
-  return String(s || "").replace(/\D+/g, "");
-}
-
-/**
- * Máscara moeda aprovada (digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; 12345→123,45; 123456→1.234,56)
- * Retorna string sem "R$ " (só número formatado pt-BR).
- */
-function maskBRLFromDigits(digits) {
-  const d = onlyDigits(digits);
-  const n = d ? Number(d) : 0;
-  const val = n / 100;
-  return val.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function digitsToNumber(digits) {
-  const d = onlyDigits(digits);
-  const n = d ? Number(d) : 0;
-  return n / 100;
-}
-
-function sumMovimentos(parcela) {
-  const movs = Array.isArray(parcela?.movimentos) ? parcela.movimentos : [];
-  return movs.reduce((s, m) => s + Number(m?.valor || 0), 0);
-}
-
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
   const d = new Date(dateLike);
@@ -62,43 +36,165 @@ function normalizeForma(fp) {
   return fp || "—";
 }
 
-/**
- * Padrão aprovado:
- * computeStatusContrato(c) → "EM_DIA" | "ATRASADO" | "QUITADO" | "CANCELADO" | "RENEGOCIADO"
- */
-function computeStatusContrato(contrato) {
-  const parcelas = contrato?.parcelas || [];
-  if (!parcelas.length) return "EM_DIA";
 
-  // Se houver vínculo de renegociação
-  if (contrato?.renegociadoParaId) return "RENEGOCIADO";
+function onlyDigits(s) {
+  return String(s || "").replace(/\D+/g, "");
+}
+
+// Máscara padrão adotada (digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; ...)
+function maskBRLFromDigits(digits) {
+  const d = onlyDigits(digits);
+  if (!d) return "0,00";
+  const i = d.length > 2 ? d.slice(0, -2) : "0";
+  const c = d.slice(-2).padStart(2, "0");
+  const iNum = Number(i || 0);
+  const iFmt = iNum.toLocaleString("pt-BR");
+  return `${iFmt},${c}`;
+}
+
+
+function computeStatusContrato(contrato) {
+  if (!contrato?.ativo) return { label: "Inativo", tone: "red" };
+
+  const parcelas = contrato?.parcelas || [];
+  if (!parcelas.length) return { label: "Sem parcelas", tone: "amber" };
+
+  const now = new Date();
+  const isOverdue = (p) => {
+    if (!p) return false;
+    if (p.status !== "PREVISTA") return false;
+    const v = new Date(p.vencimento);
+    if (!Number.isFinite(v.getTime())) return false;
+    // compara por dia
+    const v0 = new Date(v.getFullYear(), v.getMonth(), v.getDate());
+    const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return v0 < n0;
+  };
+
+
+function openRetificar(parcela) {
+  setRetError("");
+  setRetParcela(parcela);
+
+  // preenche com o valor previsto atual
+  const v = Number(parcela?.valorPrevisto || 0);
+  const digits = String(Math.round(v * 100)); // 1234.56 -> "123456"
+  setRetValorDigits(digits);
+
+  // default: ratear entre as demais parcelas
+  setRetRatear(true);
+
+  // prepara campos das demais parcelas PREVISTAS (para modo manual)
+  const outrasPrev = (contrato?.parcelas || [])
+    .filter((x) => x.status === "PREVISTA" && x.id !== parcela?.id)
+    .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+
+  const map = {};
+  for (const o of outrasPrev) {
+    const ov = Number(o?.valorPrevisto || 0);
+    map[o.id] = String(Math.round(ov * 100));
+  }
+  setRetOutrosDigits(map);
+
+  setRetMotivo("");
+  setRetAdminPassword("");
+  setRetOpen(true);
+}
+
+async function salvarRetificacao() {
+  if (!retParcela?.id) return;
+  setRetError("");
+
+  const motivo = String(retMotivo || "").trim();
+  if (!motivo) return setRetError("Informe o motivo da retificação.");
+
+  const valorPrevisto = Number(retValorDigits || 0) / 100;
+  if (!valorPrevisto || valorPrevisto <= 0) return setRetError("Valor previsto inválido.");
+
+  if (!retAdminPassword) return setRetError("Confirme a senha do admin.");
+
+  // Se NÃO estiver rateando, exige que os valores das demais parcelas fechem exatamente o total das PREVISTAS
+  if (!retRatear) {
+    const previstas = (contrato?.parcelas || []).filter((x) => x.status === "PREVISTA");
+    if (previstas.length < 2) {
+      return setRetError("Retificação bloqueada: é necessário ter pelo menos 2 parcelas PREVISTAS.");
+    }
+
+    const totalAntes = previstas.reduce((acc, it) => acc + BigInt(Math.round(Number(it?.valorPrevisto || 0) * 100)), 0n);
+
+    const outrasIds = previstas
+      .filter((x) => x.id !== retParcela?.id)
+      .map((x) => x.id);
+
+    for (const oid of outrasIds) {
+      const dig = retOutrosDigits?.[oid];
+      const cents = BigInt(Number(dig || 0));
+      if (cents <= 0n) {
+        return setRetError("No modo manual, informe valores válidos para todas as demais parcelas PREVISTAS.");
+      }
+    }
+
+    const totalDepois =
+      BigInt(Number(retValorDigits || 0)) +
+      outrasIds.reduce((acc, oid) => acc + BigInt(Number(retOutrosDigits?.[oid] || 0)), 0n);
+
+    if (totalDepois !== totalAntes) {
+      return setRetError("Os valores informados alteram o total do contrato. Ajuste para fechar o total ou use Renegociar (Rx).");
+    }
+  }
+
+  setRetSaving(true);
+  try {
+    await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+      method: "POST",
+      body: {
+        adminPassword: retAdminPassword,
+        motivo,
+        ratear: retRatear,
+        ajustes: retRatear
+          ? undefined
+          : Object.entries(retOutrosDigits).map(([id, digits]) => ({
+              id: Number(id),
+              valorPrevisto: Number(digits || 0) / 100,
+            })),
+        patch: { valorPrevisto }, // ✅ number em REAIS
+      },
+    });
+
+    // recarrega contrato
+    await loadContrato();
+    setRetOpen(false);
+  } catch (e) {
+    setRetError(e?.message || "Falha ao retificar.");
+  } finally {
+    setRetSaving(false);
+  }
+}
+
 
   const todasCanceladas = parcelas.every((p) => p.status === "CANCELADA");
-  if (todasCanceladas) return "CANCELADO";
+  if (todasCanceladas) return { label: "Cancelado", tone: "slate" };
 
-  const todasEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
-  if (todasEncerradas) return "QUITADO";
+  const todasQuitadas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
+  if (todasQuitadas) return { label: "Quitado", tone: "green" };
 
-  const hasOverdue = parcelas.some((p) => p?.status === "PREVISTA" && isDateBeforeToday(p.vencimento));
-  if (hasOverdue) return "ATRASADO";
-
-  return "EM_DIA";
+  const hasOverdue = parcelas.some((p) => isOverdue(p));
+  return hasOverdue ? { label: "Atrasado", tone: "red" } : { label: "Em dia", tone: "blue" };
 }
 
-function statusLabel(st) {
-  if (st === "ATRASADO") return "Atrasado";
-  if (st === "QUITADO") return "Quitado";
-  if (st === "CANCELADO") return "Cancelado";
-  if (st === "RENEGOCIADO") return "Renegociado";
-  return "Em dia";
-}
-
-function statusTone(st) {
-  if (st === "ATRASADO") return "red";
-  if (st === "QUITADO") return "green";
-  if (st === "CANCELADO") return "slate";
-  if (st === "RENEGOCIADO") return "amber";
-  return "blue";
+function Badge({ children, tone = "slate" }) {
+  const map = {
+    slate: "bg-slate-100 text-slate-800 border-slate-200",
+    green: "bg-green-50 text-green-700 border-green-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
 
 function Card({ title, right, children }) {
@@ -113,46 +209,6 @@ function Card({ title, right, children }) {
   );
 }
 
-function Badge({ children, tone = "slate" }) {
-  const map = {
-    slate: "bg-slate-600 text-white",
-    green: "bg-green-600 text-white",
-    red: "bg-red-600 text-white",
-    blue: "bg-blue-600 text-white",
-    amber: "bg-amber-500 text-white",
-  };
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-function Modal({ open, title, onClose, children, footer }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl rounded-2xl bg-white shadow-xl border border-slate-200">
-        <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200">
-          <div className="text-lg font-semibold text-slate-900">{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-            aria-label="Fechar"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
-        {footer ? <div className="p-5 border-t border-slate-200 flex justify-end gap-2">{footer}</div> : null}
-      </div>
-    </div>
-  );
-}
-
 export default function ContratoPage({ user }) {
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
   const { id } = useParams();
@@ -162,67 +218,30 @@ export default function ContratoPage({ user }) {
   const [contrato, setContrato] = useState(null);
   const [error, setError] = useState("");
 
-  // 6.3.B — movimentos/ajustes em parcelas (contralançamento)
-  const [movOpen, setMovOpen] = useState(false);
-  const [movSaving, setMovSaving] = useState(false);
-  const [movError, setMovError] = useState("");
-  const [movParcela, setMovParcela] = useState(null);
-  const [movTipo, setMovTipo] = useState("AJUSTE");
-  const [movSign, setMovSign] = useState("-");
-  const [movValorDigits, setMovValorDigits] = useState("");
-  const [movData, setMovData] = useState("");
-  const [movMeio, setMovMeio] = useState("PIX");
-  const [movMotivo, setMovMotivo] = useState("");
+// Retificar parcela (admin-only)
+const [retOpen, setRetOpen] = useState(false);
+const [retSaving, setRetSaving] = useState(false);
+const [retError, setRetError] = useState("");
+const [retParcela, setRetParcela] = useState(null);
 
-  const [transfOpen, setTransfOpen] = useState(false);
-  const [transfSaving, setTransfSaving] = useState(false);
-  const [transfError, setTransfError] = useState("");
-  const [transfParcela, setTransfParcela] = useState(null);
-  const [transfDestinoId, setTransfDestinoId] = useState("");
-  const [transfValorDigits, setTransfValorDigits] = useState("");
-  const [transfData, setTransfData] = useState("");
-  const [transfMeio, setTransfMeio] = useState("PIX");
-  const [transfMotivo, setTransfMotivo] = useState("");
+const [retValorDigits, setRetValorDigits] = useState(""); // máscara moeda padrão
+const [retRatear, setRetRatear] = useState(true);
+const [retOutrosDigits, setRetOutrosDigits] = useState({}); // { parcelaId: "digits" }
 
-  const [retOpen, setRetOpen] = useState(false);
-  const [retSaving, setRetSaving] = useState(false);
-  const [retError, setRetError] = useState("");
-  const [retParcela, setRetParcela] = useState(null);
+const [retMotivo, setRetMotivo] = useState("");
+const [retAdminPassword, setRetAdminPassword] = useState("");
 
-  const [retValorDigits, setRetValorDigits] = useState(""); // máscara moeda padrão
-  const [retMotivo, setRetMotivo] = useState("");
-  const [retAdminPassword, setRetAdminPassword] = useState("");
-
-  function openMovimento(parcela) {
-    setMovError("");
-    setMovParcela(parcela);
-    setMovTipo("AJUSTE");
-    setMovSign("-");
-    setMovValorDigits("");
-    setMovData("");
-    setMovMeio("PIX");
-    setMovMotivo("");
-    setMovOpen(true);
-  }
-
-  function openTransferencia(parcela) {
-    setTransfError("");
-    setTransfParcela(parcela);
-    setTransfDestinoId("");
-    setTransfValorDigits("");
-    setTransfData("");
-    setTransfMeio("PIX");
-    setTransfMotivo("");
-    setTransfOpen(true);
-  }
 
   async function loadContrato() {
     setError("");
     setLoading(true);
     try {
+      // Preferência: endpoint dedicado
       const c = await apiFetch(`/contratos/${id}`);
       setContrato(c || null);
     } catch (e1) {
+      // Fallback: se não existir rota GET /contratos/:id ainda,
+      // busca lista e localiza.
       try {
         const all = await apiFetch(`/contratos`);
         const found = (Array.isArray(all) ? all : []).find((x) => String(x.id) === String(id));
@@ -236,55 +255,6 @@ export default function ContratoPage({ user }) {
     }
   }
 
-function openRetificar(parcela) {
-  setRetError("");
-  setRetParcela(parcela);
-
-  // pré-preenche com o valor previsto atual
-  const v = Number(parcela?.valorPrevisto || 0);
-  const digits = String(Math.round(v * 100)); // transforma 1234.56 -> "123456"
-  setRetValorDigits(digits);
-
-  setRetMotivo("");
-  setRetAdminPassword("");
-  setRetOpen(true);
-}
-
-async function salvarRetificacao() {
-  if (!retParcela?.id) return;
-
-  setRetError("");
-
-  const motivo = String(retMotivo || "").trim();
-  if (!motivo) return setRetError("Informe o motivo.");
-
-  // ✅ valor como number (não manda '1.234,56' pra API)
-  const valorPrevisto = digitsToNumber(retValorDigits);
-  if (!valorPrevisto || valorPrevisto <= 0) return setRetError("Informe um valor previsto válido.");
-
-  if (!retAdminPassword) return setRetError("Confirme a senha do admin.");
-
-  setRetSaving(true);
-  try {
-    await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
-      method: "POST",
-      body: {
-        adminPassword: retAdminPassword,
-        motivo,
-        patch: { valorPrevisto },  // ✅ number
-      },
-    });
-
-    setRetOpen(false);
-    await loadContrato();
-  } catch (e) {
-    // ✅ aqui entra a mensagem de bloqueio no modal
-    setRetError(e?.message || "Falha ao retificar.");
-  } finally {
-    setRetSaving(false);
-  }
-}
-
   useEffect(() => {
     if (!isAdmin) return;
     loadContrato();
@@ -292,17 +262,13 @@ async function salvarRetificacao() {
   }, [isAdmin, id]);
 
   const parcelas = contrato?.parcelas || [];
-
-  const qtdPrevistas = (parcelas || []).filter((x) => x?.status === "PREVISTA").length;
+  const qtdPrevistas = parcelas.filter((x) => x.status === "PREVISTA").length;
 
   const totals = useMemo(() => {
+    // CANCELADAS não entram no previsto/pendente
     const ativas = parcelas.filter((p) => p?.status !== "CANCELADA");
     const totalPrevisto = ativas.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-    const totalRecebido = ativas.reduce((sum, p) => {
-      if (p?.status !== "RECEBIDA") return sum;
-      const efetivo = Number(p?.valorRecebido || 0) + sumMovimentos(p);
-      return sum + efetivo;
-    }, 0);
+    const totalRecebido = ativas.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
     const diferenca = totalRecebido - totalPrevisto;
     return { totalPrevisto, totalRecebido, diferenca };
   }, [parcelas]);
@@ -318,80 +284,7 @@ async function salvarRetificacao() {
     );
   }
 
-  const st = contrato ? computeStatusContrato(contrato) : "EM_DIA";
-  const stLabel = statusLabel(st);
-  const stTone = statusTone(st);
-
-  const renegociarHref = contrato ? `/pagamentos?renegociar=${encodeURIComponent(String(contrato.id))}` : "/pagamentos";
-
-  async function salvarMovimento() {
-    if (!movParcela?.id) return;
-    setMovError("");
-
-    const motivo = String(movMotivo || "").trim();
-    if (!motivo) return setMovError("Informe o motivo.");
-    if (!movData) return setMovError("Informe a data do movimento (DD/MM/AAAA).");
-
-    // valor
-    const base = digitsToNumber(movValorDigits);
-    if (!base || base <= 0) return setMovError("Informe um valor válido.");
-    const valor = movSign === "-" ? -base : base;
-
-    setMovSaving(true);
-    try {
-      await apiFetch(`/parcelas/${movParcela.id}/movimentos`, {
-        method: "POST",
-        body: {
-          tipo: movTipo,
-          valor,
-          dataMovimento: movData,
-          meio: movMeio,
-          motivo,
-        },
-      });
-      setMovOpen(false);
-      await loadContrato();
-    } catch (e) {
-      // ✅ a mensagem fica DENTRO do modal
-      setMovError(e?.message || "Falha ao salvar movimento.");
-    } finally {
-      setMovSaving(false);
-    }
-  }
-
-  async function salvarTransferencia() {
-    if (!transfParcela?.id) return;
-    setTransfError("");
-
-    const motivo = String(transfMotivo || "").trim();
-    if (!motivo) return setTransfError("Informe o motivo.");
-    if (!transfData) return setTransfError("Informe a data do movimento (DD/MM/AAAA).");
-    if (!transfDestinoId) return setTransfError("Informe o ID da parcela destino.");
-
-    const base = digitsToNumber(transfValorDigits);
-    if (!base || base <= 0) return setTransfError("Informe um valor válido.");
-
-    setTransfSaving(true);
-    try {
-      await apiFetch(`/parcelas/${transfParcela.id}/transferir-recebimento`, {
-        method: "POST",
-        body: {
-          parcelaDestinoId: Number(transfDestinoId),
-          valor: base,
-          dataMovimento: transfData,
-          meio: transfMeio,
-          motivo,
-        },
-      });
-      setTransfOpen(false);
-      await loadContrato();
-    } catch (e) {
-      // ✅ a mensagem fica DENTRO do modal
-      setTransfError(e?.message || "Falha ao transferir recebimento.");
-    } finally {
-      setTransfSaving(false);
-    }
-  }
+  const status = contrato ? computeStatusContrato(contrato) : { label: "—", tone: "slate" };
 
   return (
     <div className="p-6">
@@ -406,14 +299,6 @@ async function salvarRetificacao() {
             >
               ← Voltar
             </button>
-
-            <Link
-              to={renegociarHref}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              title="Abrir Pagamentos para renegociar o saldo do contrato"
-            >
-              Renegociar Saldo
-            </Link>
 
             <Link
               to="/pagamentos"
@@ -442,10 +327,12 @@ async function salvarRetificacao() {
                 <div className="text-slate-500">Forma</div>
                 <div className="font-semibold text-slate-900">{normalizeForma(contrato.formaPagamento)}</div>
               </div>
-              <div>
-                <div className="text-slate-500">Status</div>
-                <div className="mt-1">
-                  <Badge tone={stTone}>{stLabel}</Badge>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-slate-500">Status</div>
+                  <div className="mt-1">
+                    <Badge tone={status.tone}>{status.label}</Badge>
+                  </div>
                 </div>
               </div>
 
@@ -462,56 +349,6 @@ async function salvarRetificacao() {
                 <div className="font-semibold text-slate-900">{contrato.ativo ? "Sim" : "Não"}</div>
               </div>
 
-
-              {/* Links pai ⇄ filho (contrato original ⇄ renegociações) */}
-              {contrato?.contratoOrigem?.id || contrato?.renegociadoPara?.id || (contrato?.renegociacoesDerivadas || []).length ? (
-                <div className="md:col-span-3">
-                  <div className="text-slate-500">Vínculos</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {contrato?.contratoOrigem?.id ? (
-                      <span className="text-slate-800">
-                        Originado da renegociação do contrato{" "}
-                        <Link
-                          to={`/contratos/${contrato.contratoOrigem.id}`}
-                          className="font-semibold text-slate-900 underline hover:text-slate-700"
-                        >
-                          {contrato.contratoOrigem.numeroContrato}
-                        </Link>
-                      </span>
-                    ) : null}
-
-                    {contrato?.renegociadoPara?.id ? (
-                      <span className="text-slate-800">
-                        Renegociado para{" "}
-                        <Link
-                          to={`/contratos/${contrato.renegociadoPara.id}`}
-                          className="font-semibold text-slate-900 underline hover:text-slate-700"
-                        >
-                          {contrato.renegociadoPara.numeroContrato}
-                        </Link>
-                      </span>
-                    ) : null}
-
-                    {(contrato?.renegociacoesDerivadas || []).length ? (
-                      <span className="text-slate-800">
-                        Derivados:{" "}
-                        {(contrato.renegociacoesDerivadas || []).map((c, idx) => (
-                          <React.Fragment key={c.id}>
-                            {idx > 0 ? ", " : ""}
-                            <Link
-                              to={`/contratos/${c.id}`}
-                              className="font-semibold text-slate-900 underline hover:text-slate-700"
-                            >
-                              {c.numeroContrato}
-                            </Link>
-                          </React.Fragment>
-                        ))}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
               {contrato.observacoes ? (
                 <div className="md:col-span-3">
                   <div className="text-slate-500">Observações</div>
@@ -520,9 +357,9 @@ async function salvarRetificacao() {
               ) : null}
             </div>
 
-            {/* Parcelas */}
+            {/* Parcelas (read-only) */}
             <div className="overflow-auto rounded-2xl border border-slate-200">
-              <table className="min-w-[1000px] w-full text-sm">
+              <table className="min-w-[900px] w-full text-sm">
                 <thead className="bg-white text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-4 py-3 font-semibold">#</th>
@@ -535,76 +372,57 @@ async function salvarRetificacao() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
-                  {parcelas.map((p) => {
-                    const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
-                    const badge =
-                      p.status === "CANCELADA"
-                        ? { label: "Cancelada", tone: "slate" }
-                        : p.status === "RECEBIDA"
-                        ? { label: "Recebida", tone: "green" }
-                        : isOverdue
-                        ? { label: "Atrasada", tone: "red" }
-                        : { label: "Prevista", tone: "blue" };
+                  {parcelas.map((p) => (
+                    <tr key={p.id}>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
+                      <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
+                      <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const isOverdue = p.status === "PREVISTA" && isDateBeforeToday(p.vencimento);
+                          const label = p.status === "RECEBIDA" ? "Recebida" : p.status === "CANCELADA" ? "Cancelada" : isOverdue ? "Atrasada" : "Prevista";
+                          const tone = p.status === "RECEBIDA" ? "green" : p.status === "CANCELADA" ? "slate" : isOverdue ? "red" : "blue";
 
-                    const motivo =
-                      p.cancelamentoMotivo || p.motivoCancelamento || p.cancelMotivo || p.motivo || "";
+                          const motivo =
+                            p.cancelMotivo ||
+                            p.motivoCancelamento ||
+                            p.motivo ||
+                            "";
 
-                    return (
-                      <tr key={p.id}>
-                        <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
-                        <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
-                        <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {p.status === "CANCELADA" ? (
-                            <div className="space-y-1">
-                              <Badge tone={badge.tone}>{badge.label}</Badge>
-                              <div className="text-xs text-slate-500">
-                                {p.canceladaEm ? `Cancelada em ${toDDMMYYYY(p.canceladaEm)}` : "Cancelada"}
-                                {p.canceladaPor?.nome ? ` por ${p.canceladaPor.nome}` : ""}
-                              </div>
-                              {motivo ? (
-                                <div className="text-xs text-slate-500 truncate max-w-[260px]" title={motivo}>
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <span title={p.status === "CANCELADA" && motivo ? `Motivo: ${motivo}` : undefined}>
+                                <Badge tone={tone}>{label}</Badge>
+                              </span>
+                              {p.status === "CANCELADA" && motivo ? (
+                                <div className="text-xs text-slate-500 line-clamp-1" title={motivo}>
                                   Motivo: {motivo}
                                 </div>
                               ) : null}
                             </div>
-                          ) : (
-                            <Badge tone={badge.tone}>{badge.label}</Badge>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-800">
-                          {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
-                          {p.dataRecebimento ? (
-                            <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
-                          ) : null}
-
-                          {p.status === "RECEBIDA" && (p.movimentos?.length || 0) > 0 ? (
-                            <div className="mt-2 text-xs text-slate-600">
-                              <div className="font-semibold text-slate-700">
-                                Recebido efetivo: R${" "}
-                                {formatBRLFromDecimal(Number(p.valorRecebido || 0) + sumMovimentos(p))}
-                              </div>
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="inline-flex gap-2">
-                            {p.status === "PREVISTA" && qtdPrevistas >= 2 ? (
-                              <button
-                                type="button"
-                                onClick={() => openRetificar(p)}
-                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                              >
-                                Retificar
-                              </button>
-                            ) : null}
-
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-slate-800">
+                        {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
+                        {p.dataRecebimento ? (
+                          <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+<td className="px-4 py-3 text-right">
+  {p.status === "PREVISTA" && qtdPrevistas >= 2 ? (
+    <button
+      type="button"
+      onClick={() => openRetificar(p)}
+      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+    >
+      Retificar
+    </button>
+  ) : null}
+</td>
+                    </tr>
+                  ))}
 
                   {!parcelas.length ? (
                     <tr>
@@ -617,7 +435,7 @@ async function salvarRetificacao() {
               </table>
             </div>
 
-            {/* Totais */}
+            {/* Totais (read-only) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Total previsto</div>
@@ -631,11 +449,7 @@ async function salvarRetificacao() {
                 <div className="text-slate-500">Diferença</div>
                 <div
                   className={`font-semibold ${
-                    totals.diferenca < 0
-                      ? "text-red-600"
-                      : totals.diferenca > 0
-                      ? "text-blue-600"
-                      : "text-slate-900"
+                    totals.diferenca < 0 ? "text-red-600" : totals.diferenca > 0 ? "text-blue-600" : "text-slate-900"
                   }`}
                 >
                   R$ {formatBRLFromDecimal(totals.diferenca)}
@@ -645,241 +459,23 @@ async function salvarRetificacao() {
           </div>
         )}
       </Card>
-
-      {/* =========================
-          MODAL: Movimento (contralançamento)
-          - ✅ Erros DENTRO do modal
-          - ✅ Valor com máscara BRL aprovada
-         ========================= */}
-      <Modal
-        open={movOpen}
-        title={`Movimento na Parcela #${movParcela?.numero ?? "—"}`}
-        onClose={() => setMovOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setMovOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={movSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarMovimento}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={movSaving}
-            >
-              {movSaving ? "Salvando..." : "Salvar"}
-            </button>
-          </>
-        }
-      >
-        {movError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {movError}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Tipo</label>
-            <select
-              value={movTipo}
-              onChange={(e) => setMovTipo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="AJUSTE">AJUSTE</option>
-              <option value="ESTORNO">ESTORNO</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Sinal</label>
-            <select
-              value={movSign}
-              onChange={(e) => setMovSign(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="-">- (diminuir)</option>
-              <option value="+">+ (aumentar)</option>
-            </select>
-          </div>
-
-          <div>
-            {/* ✅ Máscara no padrão */}
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
-            <input
-              value={maskBRLFromDigits(movValorDigits)}
-              onChange={(e) => setMovValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="0,00"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
-            <input
-              value={movData}
-              onChange={(e) => setMovData(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="24/12/2025"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
-            <select
-              value={movMeio}
-              onChange={(e) => setMovMeio(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="PIX">PIX</option>
-              <option value="TED">TED</option>
-              <option value="BOLETO">BOLETO</option>
-              <option value="CARTAO">CARTÃO</option>
-              <option value="DINHEIRO">DINHEIRO</option>
-              <option value="OUTRO">OUTRO</option>
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
-            <input
-              value={movMotivo}
-              onChange={(e) => setMovMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: Valor recebido a maior"
-            />
-          </div>
+    {retOpen ? (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="text-lg font-extrabold text-slate-900">
+          Retificar Parcela #{retParcela?.numero ?? "—"}
         </div>
-      </Modal>
+        <button
+          type="button"
+          onClick={() => setRetOpen(false)}
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+        >
+          Fechar
+        </button>
+      </div>
 
-      {/* =========================
-          MODAL: Transferência (erro de contrato)
-          - ✅ Erros DENTRO do modal
-          - ✅ Valor com máscara BRL aprovada
-         ========================= */}
-      <Modal
-        open={transfOpen}
-        title={`Transferir recebimento da Parcela #${transfParcela?.numero ?? "—"}`}
-        onClose={() => setTransfOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setTransfOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={transfSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarTransferencia}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={transfSaving}
-            >
-              {transfSaving ? "Transferindo..." : "Transferir"}
-            </button>
-          </>
-        }
-      >
-        {transfError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {transfError}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Parcela destino (ID)</label>
-            <input
-              value={transfDestinoId}
-              onChange={(e) => setTransfDestinoId(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: 999"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
-            <input
-              value={transfData}
-              onChange={(e) => setTransfData(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="24/12/2025"
-            />
-          </div>
-
-          <div>
-            {/* ✅ Máscara no padrão */}
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
-            <input
-              value={maskBRLFromDigits(transfValorDigits)}
-              onChange={(e) => setTransfValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="0,00"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
-            <select
-              value={transfMeio}
-              onChange={(e) => setTransfMeio(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="PIX">PIX</option>
-              <option value="TED">TED</option>
-              <option value="BOLETO">BOLETO</option>
-              <option value="CARTAO">CARTÃO</option>
-              <option value="DINHEIRO">DINHEIRO</option>
-              <option value="OUTRO">OUTRO</option>
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
-            <input
-              value={transfMotivo}
-              onChange={(e) => setTransfMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: Recebimento lançado no contrato errado"
-            />
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={retOpen}
-        title={`Retificar Parcela #${retParcela?.numero ?? "—"}`}
-        onClose={() => setRetOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setRetOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={retSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarRetificacao}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={retSaving}
-            >
-              {retSaving ? "Salvando..." : "Retificar"}
-            </button>
-          </>
-        }
-      >
+      <div className="px-5 py-4">
         {retError ? (
           <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
             {retError}
@@ -889,12 +485,10 @@ async function salvarRetificacao() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-semibold text-slate-800 mb-1">Valor previsto (R$)</label>
-    
-            {/* ✅ máscara padrão adotada */}
             <input
               value={maskBRLFromDigits(retValorDigits)}
               onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="0,00"
               inputMode="numeric"
             />
@@ -905,7 +499,7 @@ async function salvarRetificacao() {
             <input
               value={retAdminPassword}
               onChange={(e) => setRetAdminPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="••••••••"
               type="password"
             />
@@ -916,12 +510,78 @@ async function salvarRetificacao() {
             <input
               value={retMotivo}
               onChange={(e) => setRetMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="Ex.: Valor previsto lançado errado"
             />
           </div>
+
+          <div className="md:col-span-2 flex items-center gap-2 pt-1">
+            <input
+              id="ret-ratear"
+              type="checkbox"
+              checked={retRatear}
+              onChange={(e) => setRetRatear(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            <label htmlFor="ret-ratear" className="text-sm text-slate-800">
+              Ratear entre as demais parcelas
+            </label>
+          </div>
+
+          {!retRatear ? (
+            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-800 mb-2">
+                Defina os valores das demais parcelas PREVISTAS (o total deve permanecer igual)
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(contrato?.parcelas || [])
+                  .filter((x) => x.status === "PREVISTA" && x.id !== retParcela?.id)
+                  .sort((a, b) => (a.numero || 0) - (b.numero || 0))
+                  .map((p) => (
+                    <div key={p.id}>
+                      <label className="block text-sm font-semibold text-slate-800 mb-1">Parcela #{p.numero}</label>
+                      <input
+                        value={maskBRLFromDigits(retOutrosDigits?.[p.id] ?? "")}
+                        onChange={(e) =>
+                          setRetOutrosDigits((cur) => ({
+                            ...(cur || {}),
+                            [p.id]: onlyDigits(e.target.value),
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                        placeholder="0,00"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : null}
         </div>
-      </Modal>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+        <button
+          type="button"
+          onClick={() => setRetOpen(false)}
+          className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+          disabled={retSaving}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={salvarRetificacao}
+          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:bg-black disabled:opacity-60"
+          disabled={retSaving}
+        >
+          {retSaving ? "Salvando..." : "Salvar"}
+        </button>
+      </div>
     </div>
+  </div>
+) : null}
+</div>
   );
 }
