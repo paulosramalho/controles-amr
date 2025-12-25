@@ -21,11 +21,11 @@ model Usuario {
   solicitacoesCriadas SolicitacaoUsuario[] @relation("SolicitacaoCriadaPor")
   retificacoesParcela RetificacaoParcela[]
   historicosContrato  HistoricoContrato[]
-  parcelasCanceladas  ParcelaContrato[]    @relation("ParcelaCanceladaPor")
+  parcelasCanceladas  ParcelaContrato[] @relation("ParcelaCanceladaPor")
 }
 
 model Cliente {
-  id              Int      @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   nomeRazaoSocial String
   cpfCnpj         String   @unique
   ativo           Boolean  @default(true)
@@ -36,18 +36,18 @@ model Cliente {
 }
 
 model ContratoPagamento {
-  id             Int     @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   numeroContrato String  @unique
-  clienteId      Int
-  cliente        Cliente @relation(fields: [clienteId], references: [id])
+  clienteId     Int
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
 
   formaPagamento String
   valorTotal     Decimal @db.Decimal(14, 2)
   observacoes    String?
   ativo          Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // ===== Renegociação (pai/filho) =====
   contratoOrigemId Int?
@@ -57,81 +57,81 @@ model ContratoPagamento {
   renegociadoPara   ContratoPagamento? @relation("RenegociadoPara", fields: [renegociadoParaId], references: [id])
 
   // filhos do contrato (R1, R2...)
-  derivados ContratoPagamento[] @relation("ContratoOrigem")
+  derivados         ContratoPagamento[] @relation("ContratoOrigem")
 
   // contratos que apontam para este como "renegociadoPara"
-  renegociadosDele ContratoPagamento[] @relation("RenegociadoPara")
+  renegociadosDele  ContratoPagamento[] @relation("RenegociadoPara")
 
-  parcelas  ParcelaContrato[]
-  historico HistoricoContrato[]
+  parcelas          ParcelaContrato[]
+  historico         HistoricoContrato[]
 }
 
 model ParcelaContrato {
-  id         Int               @id @default(autoincrement())
-  contratoId Int
-  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id])
+  id            Int      @id @default(autoincrement())
+  contratoId    Int
+  contrato      ContratoPagamento @relation(fields: [contratoId], references: [id])
 
   numero        Int
   vencimento    DateTime
   valorPrevisto Decimal  @db.Decimal(14, 2)
   status        String   @default("PREVISTA")
 
-  valorRecebido   Decimal?  @db.Decimal(14, 2)
+  valorRecebido Decimal? @db.Decimal(14, 2)
   dataRecebimento DateTime?
   meioRecebimento String?
 
-  canceladaEm        DateTime?
-  canceladaPorId     Int?
-  canceladaPor       Usuario?  @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  canceladaEm   DateTime?
+  canceladaPorId Int?
+  canceladaPor  Usuario? @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
   cancelamentoMotivo String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  retificacoes RetificacaoParcela[]
+  retificacoes  RetificacaoParcela[]
 }
 
 model RetificacaoParcela {
-  id        Int             @id @default(autoincrement())
-  parcelaId Int
-  parcela   ParcelaContrato @relation(fields: [parcelaId], references: [id])
+  id            Int      @id @default(autoincrement())
+  parcelaId     Int
+  parcela       ParcelaContrato @relation(fields: [parcelaId], references: [id])
 
-  motivo         String
-  alteracoes     Json
-  snapshotAntes  Json
+  motivo        String
+  alteracoes    Json
+  snapshotAntes Json
   snapshotDepois Json
 
-  criadoPorId Int?
-  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+  criadoPorId   Int?
+  criadoPor     Usuario? @relation(fields: [criadoPorId], references: [id])
 
-  createdAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 }
 
 model HistoricoContrato {
-  id         Int               @id @default(autoincrement())
-  contratoId Int
-  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id])
+  id          Int      @id @default(autoincrement())
+  contratoId  Int
+  contrato    ContratoPagamento @relation(fields: [contratoId], references: [id])
 
-  tipo      String
-  descricao String
+  tipo        String
+  descricao   String
 
   criadoPorId Int?
   criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model SolicitacaoUsuario {
-  id           Int    @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   nomeCompleto String
   email        String
   telefone     String
   cpf          String
-  status       String @default("PENDENTE")
+  status       String   @default("PENDENTE")
 
-  criadoPorId Int?
-  criadoPor   Usuario? @relation("SolicitacaoCriadaPor", fields: [criadoPorId], references: [id])
+  criadoPorId  Int?
+  criadoPor    Usuario? @relation("SolicitacaoCriadaPor", fields: [criadoPorId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
