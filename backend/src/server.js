@@ -125,9 +125,10 @@ async function requireAdmin(req, res, next) {
   if (!req.user?.id) return res.status(401).json({ message: "Não autenticado." });
   const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
   if (!u) return res.status(401).json({ message: "Usuário inválido." });
-  if (u.tipoUsuario !== "ADMIN") {
-    return res.status(403).json({ message: "Acesso negado." });
-  }
+  const isAdmin = u.tipoUsuario === "ADMIN" || u.role === "ADMIN";
+if (!isAdmin) {
+  return res.status(403).json({ message: "Acesso negado." });
+}
   req.adminUser = u;
   return next();
 }
@@ -149,16 +150,30 @@ app.post("/auth/login", async (req, res) => {
 
   const token = jwt.sign({ id: u.id, tipoUsuario: u.tipoUsuario }, JWT_SECRET, { expiresIn: "7d" });
   return res.json({
-    token,
-    user: { id: u.id, nome: u.nome, email: u.email, tipoUsuario: u.tipoUsuario, ativo: u.ativo },
-  });
+  token,
+  user: {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    tipoUsuario: u.tipoUsuario,
+    role: u.role,
+    ativo: u.ativo,
+  },
+});
 });
 
 app.get("/auth/me", requireAuth, async (req, res) => {
   const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
   if (!u) return res.status(401).json({ message: "Usuário inválido." });
-  return res.json({ id: u.id, nome: u.nome, email: u.email, tipoUsuario: u.tipoUsuario, ativo: u.ativo });
+  return res.json({
+  id: u.id,
+  nome: u.nome,
+  email: u.email,
+  tipoUsuario: u.tipoUsuario,
+  role: u.role,
+  ativo: u.ativo,
 });
+
 
 // =========================
 // Contratos / Parcelas
