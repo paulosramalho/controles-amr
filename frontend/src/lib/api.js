@@ -1,42 +1,38 @@
-const BASE_URL =
+// frontend/src/lib/api.js
+
+const RAW_BASE =
   import.meta.env.VITE_API_URL ||
   "http://localhost:4000";
 
 const TOKEN_KEY = "amr_token";
 const USER_KEY = "amr_user";
 
+function normalizeBase(url) {
+  const u = String(url || "").trim().replace(/\/+$/, "");
+  // Se vier ".../api", guardamos o base "raiz" e deixamos a função montar os paths
+  return u.endsWith("/api") ? u.slice(0, -4) : u;
+}
+
+const BASE = normalizeBase(RAW_BASE);
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
 export function getUser() {
   const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
   try {
-    return raw ? JSON.parse(raw) : null;
+    return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-export function setUser(user) {
+// compatível com seu App.jsx: setAuth(token, user)
+export function setAuth(token, user) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
   if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-  else localStorage.removeItem(USER_KEY);
-}
-
-export function setAuth(a, b) {
-  // aceita setAuth(token, user) OU setAuth({token, user})
-  if (a && typeof a === "object" && ("token" in a || "user" in a)) {
-    setToken(a.token);
-    setUser(a.user);
-    return;
-  }
-  setToken(a);
-  setUser(b);
 }
 
 export function clearAuth() {
@@ -44,60 +40,70 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY);
 }
 
-// path deve começar com "/".
-// Convenção:
-// - Rotas de auth ficam em /auth/...
-// - Demais rotas da API ficam em /api/...
-// Para evitar 404 por falta de prefixo, se você passar "/clientes",
-// a função automaticamente vira "/api/clientes" (exceto se já vier com "/api" ou "/auth").
+function buildUrl(path) {
+  let p = String(path || "").trim();
+  if (!p.startsWith("/")) p = "/" + p;
+
+  // Auth NÃO usa /api
+  if (p.startsWith("/auth/")) return `${BASE}${p}`;
+
+  // Se já veio /api/..., mantém
+  if (p.startsWith("/api/")) return `${BASE}${p}`;
+
+  // Qualquer outra rota do app → /api + rota
+  return `${BASE}/api${p}`;
+}
+
 export async function apiFetch(path, options = {}) {
   const token = getToken();
 
-  // Normaliza prefixo
-  // - "/auth/..." fica como está
-  // - "/api/..." fica como está
-  // - Qualquer outra rota vira "/api" + path
-  let finalPath = String(path || "");
-  if (!finalPath.startsWith("/")) finalPath = "/" + finalPath;
-  const isAuth = finalPath.startsWith("/auth/");
-  const isApi = finalPath.startsWith("/api/");
-  if (!isAuth && !isApi) finalPath = "/api" + finalPath;
-
   const headers = {
-    "Content-Type": "application/json",
     ...(options.headers || {}),
   };
 
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // Só seta Content-Type automaticamente se houver body
+  if (options.body !== undefined && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
-  const res = await fetch(`${BASE_URL}${finalPath}`, {
-    ...options,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(buildUrl(path), {
+      ...options,
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    // Aqui é o "Failed to fetch" real (rede / CORS / DNS / backend fora)
+    throw new Error("Failed to fetch");
+  }
 
-  // login pode retornar 401/403 com JSON
-  const isLogin = finalPath === "/auth/login";
+  const text = await res.text();
+
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  // 401: desloga automático (exceto login)
+  if (res.status === 401) {
+    const isLogin = String(path || "") === "/auth/login";
+    if (!isLogin) {
+      clearAuth();
+      if (window.location.pathname !== "/") window.location.href = "/";
+    }
+  }
 
   if (!res.ok) {
-    let errMsg = `Erro ${res.status}`;
-    try {
-      const data = await res.json();
-      if (data?.message) errMsg = data.message;
-      else if (isLogin) errMsg = "Falha ao autenticar.";
-    } catch {
-      // às vezes vem HTML (502/404). Mantém mensagem padrão.
-    }
-    throw new Error(errMsg);
+    // Se veio HTML (404/502), data vai ser null → ainda assim damos erro útil
+    const msg = data?.message || `Erro HTTP ${res.status}`;
+    throw new Error(msg);
   }
 
-  // 204 no-content
-  if (res.status === 204) return null;
-
-  // parse JSON
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
+  return data;
 }
