@@ -474,38 +474,6 @@ app.post("/api/parcelas/:id/cancelar", requireAuth, requireAdmin, async (req, re
   }
 });
 
-// =========================
-// Renegociação
-// =========================
-    // Senha com confirmação
-    if (senha !== undefined && String(senha).trim()) {
-      // BLOCO REMOVIDO — estava fora de rota/função e causava Illegal return
-// if (!senhaConfirmacao) return res.status(400).json({ message: "Confirme a senha." });
-// if (String(senha) !== String(senhaConfirmacao)) {
-//   return res.status(400).json({ message: "Senha e confirmação não conferem." });
-// }
-// senha_hash = await bcrypt.hash(String(senha), 10);
-    }
-
-    const updated = await prisma.usuario.update({
-      where: { id },
-      data: {
-        ...(nomeNorm !== undefined ? { nome: nomeNorm } : {}),
-        ...(emailNorm !== undefined ? { email: emailNorm } : {}),
-        ...(tipoNorm !== undefined ? { tipo: tipoNorm } : {}),
-        ...(ativo !== undefined ? { ativo: Boolean(ativo) } : {}),
-        ...(senha_hash ? { senha_hash } : {}),
-      },
-      select: { id: true, nome: true, email: true, tipo: true, ativo: true, createdAt: true },
-    });
-
-    res.json(updated);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: "Erro ao atualizar usuário." });
-  }
-});
-
 app.delete("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
