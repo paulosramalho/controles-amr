@@ -1,42 +1,13 @@
 const BASE_URL =
   import.meta.env.VITE_API_URL ||
-  "http://localhost:4000";
+  "http://localhost:4000/api";
 
 const TOKEN_KEY = "amr_token";
 const USER_KEY = "amr_user";
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token) {
+export function setAuth(token, user) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
-export function getUser() {
-  const raw = localStorage.getItem(USER_KEY);
-  try {
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setUser(user) {
   if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-  else localStorage.removeItem(USER_KEY);
-}
-
-export function setAuth(a, b) {
-  // aceita setAuth(token, user) OU setAuth({token, user})
-  if (a && typeof a === "object" && ("token" in a || "user" in a)) {
-    setToken(a.token);
-    setUser(a.user);
-    return;
-  }
-  setToken(a);
-  setUser(b);
 }
 
 export function clearAuth() {
@@ -44,60 +15,58 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY);
 }
 
-// path deve começar com "/".
-// Convenção:
-// - Rotas de auth ficam em /auth/...
-// - Demais rotas da API ficam em /api/...
-// Para evitar 404 por falta de prefixo, se você passar "/clientes",
-// a função automaticamente vira "/api/clientes" (exceto se já vier com "/api" ou "/auth").
-export async function apiFetch(path, options = {}) {
-  const token = getToken();
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-  // Normaliza prefixo
-  // - "/auth/..." fica como está
-  // - "/api/..." fica como está
-  // - Qualquer outra rota vira "/api" + path
-  let finalPath = String(path || "");
-  if (!finalPath.startsWith("/")) finalPath = "/" + finalPath;
-  const isAuth = finalPath.startsWith("/auth/");
-  const isApi = finalPath.startsWith("/api/");
-  if (!isAuth && !isApi) finalPath = "/api" + finalPath;
-
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
-  };
-
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${BASE_URL}${finalPath}`, {
-    ...options,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-
-  // login pode retornar 401/403 com JSON
-  const isLogin = finalPath === "/auth/login";
-
-  if (!res.ok) {
-    let errMsg = `Erro ${res.status}`;
-    try {
-      const data = await res.json();
-      if (data?.message) errMsg = data.message;
-      else if (isLogin) errMsg = "Falha ao autenticar.";
-    } catch {
-      // às vezes vem HTML (502/404). Mantém mensagem padrão.
-    }
-    throw new Error(errMsg);
-  }
-
-  // 204 no-content
-  if (res.status === 204) return null;
-
-  // parse JSON
+export function getUser() {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
   try {
-    return await res.json();
+    return JSON.parse(raw);
   } catch {
     return null;
   }
+}
+
+// path deve começar com "/".
+// Ex.: apiFetch("/auth/login") -> BASE_URL + "/auth/login"
+export async function apiFetch(path, options = {}) {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+
+  const text = await res.text();
+
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(
+      `Resposta inválida do servidor (${res.status}). Esperado JSON, recebido: ${text.slice(0, 80)}`
+    );
+  }
+
+  // 401 => desloga automático EXCETO no login
+  if (res.status === 401) {
+    const isLogin = path === "/auth/login";
+    if (!isLogin) {
+      clearAuth();
+      if (window.location.pathname !== "/") window.location.href = "/";
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.message || `Erro HTTP ${res.status}`);
+  }
+
+  return data;
 }
