@@ -142,7 +142,7 @@ app.post("/auth/login", async (req, res) => {
   const u = await prisma.usuario.findUnique({ where: { email: String(email).toLowerCase() } });
   if (!u) return res.status(401).json({ message: "Credenciais inválidas." });
 
-  const ok = await bcrypt.compare(String(senha), u.senha_hash);
+  const ok = await bcrypt.compare(String(senha), u.senhaHash);
   if (!ok) return res.status(401).json({ message: "Credenciais inválidas." });
 
   if (u.ativo === false) return res.status(403).json({ message: "Usuário inativo." });
@@ -393,7 +393,7 @@ app.patch("/api/parcelas/:id/confirmar", requireAuth, requireAdmin, async (req, 
 
     // valida senha admin
     if (!adminPassword) return res.status(400).json({ message: "Confirme a senha do admin." });
-    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senha_hash);
+    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senhaHash);
     if (!ok) return res.status(403).json({ message: "Senha do admin incorreta." });
 
     const parcela = await prisma.parcelaContrato.findUnique({
@@ -447,7 +447,7 @@ app.post("/api/parcelas/:id/cancelar", requireAuth, requireAdmin, async (req, re
     const { motivo, adminPassword } = req.body || {};
 
     if (!adminPassword) return res.status(400).json({ message: "Confirme a senha do admin." });
-    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senha_hash);
+    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senhaHash);
     if (!ok) return res.status(403).json({ message: "Senha do admin incorreta." });
 
     const parcela = await prisma.parcelaContrato.findUnique({ where: { id } });
@@ -855,7 +855,7 @@ app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, r
       return res.status(400).json({ message: "Confirme a senha do admin." });
     }
 
-    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senha_hash);
+    const ok = await bcrypt.compare(String(adminPassword), req.adminUser.senhaHash);
     if (!ok) return res.status(403).json({ message: "Senha do admin incorreta." });
 
     const parcela = await prisma.parcelaContrato.findUnique({
