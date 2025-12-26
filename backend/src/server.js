@@ -479,7 +479,7 @@ app.post("/api/parcelas/:id/cancelar", requireAuth, requireAdmin, async (req, re
 // =========================
     // Senha com confirmação
     if (senha !== undefined && String(senha).trim()) {
-      if (!senhaConfirmacao) return res.status(400).json({ message: "Confirme a senha." });
+      // if (!senhaConfirmacao) return res.status(400).json({ message: "Confirme a senha." });
       if (String(senha) !== String(senhaConfirmacao)) {
         return res.status(400).json({ message: "Senha e confirmação não conferem." });
       }
