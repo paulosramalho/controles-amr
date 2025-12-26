@@ -134,7 +134,10 @@ function Shell({ user, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  const roleUpper = String(user?.role || "").toUpperCase();
+  const tipoUpper = String(user?.tipoUsuario || "").toUpperCase();
+  const isAdmin = roleUpper === "ADMIN" || tipoUpper === "ADMIN";
+
   const [openSettings, setOpenSettings] = useState(false);
   const [openLivroCaixa, setOpenLivroCaixa] = useState(false);
 
@@ -228,12 +231,11 @@ function Shell({ user, onLogout }) {
 
           {/* ✅ Usuário logado e tipo entre data/hora e sair */}
           <div className="px-3 py-2 text-xs text-slate-600">
-            <div className="font-semibold text-slate-800">{user?.nome || "—"}</div>
-            <div>
-              {String(user?.tipoUsuario || "").toUpperCase() || "—"}
-              {user?.role ? ` • ${String(user.role).toUpperCase()}` : ""}
-            </div>
-          </div>
+  <div className="font-semibold text-slate-800">{user?.nome || "—"}</div>
+  <div>
+    {isAdmin ? "Administrador" : "Usuário"}
+  </div>
+</div>
 
           <button
             onClick={() => {
