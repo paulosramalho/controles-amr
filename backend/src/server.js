@@ -173,7 +173,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
   role: u.role,
   ativo: u.ativo,
 });
-
+});
 
 // =========================
 // Contratos / Parcelas
