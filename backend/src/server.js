@@ -611,6 +611,110 @@ app.get("/api/advogados/:id", requireAuth, async (req, res) => {
   }
 });
 
+// =========================
+// Modelo de Distribuição (Configurações) — rotas compatíveis com o front
+// OBS: Mantém a rota legada /api/config/distribution-models intacta.
+// O front chama /modelo-distribuicao (sem /api). O apiFetch normaliza para /api/modelo-distribuicao.
+// =========================
+function serializeModeloDistribuicao(m) {
+  // O schema atual tem campos legados (codigo/origem/tipo/percentual/destinatario) e o novo "cod" opcional.
+  // O front espera: { id, cod, descricao, ativo }
+  return {
+    id: m.id,
+    cod: m.cod ?? m.codigo ?? "",
+    descricao: m.tipo ?? m.origem ?? m.destinatario ?? "",
+    // Se o schema não tiver coluna "ativo", mantemos true (não quebra UI).
+    // Caso você já tenha "ativo" no DB e no schema, pode substituir por m.ativo.
+    ativo: true,
+
+    // devolve também os campos originais (não atrapalha)
+    codigo: m.codigo ?? null,
+    origem: m.origem ?? null,
+    tipo: m.tipo ?? null,
+    percentual: m.percentual ?? null,
+    destinatario: m.destinatario ?? null,
+  };
+}
+
+app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const modelos = await prisma.modeloDistribuicao.findMany({
+      orderBy: [{ cod: "asc" }, { id: "asc" }],
+    });
+    return res.json(modelos.map(serializeModeloDistribuicao));
+  } catch (err) {
+    console.error("Erro ao listar modelo-distribuicao:", err);
+    return res.status(500).json({ message: "Erro ao listar Modelo de Distribuição." });
+  }
+});
+
+app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { cod, descricao } = req.body || {};
+    const codTxt = String(cod || "").trim();
+    const descTxt = String(descricao || "").trim();
+
+    if (!codTxt) return res.status(400).json({ message: "Informe o código (cod)." });
+
+    const created = await prisma.modeloDistribuicao.create({
+      data: {
+        cod: codTxt,
+        // Como o schema atual não tem "descricao", armazenamos em "tipo" (legado) para não perder informação.
+        tipo: descTxt || null,
+      },
+    });
+
+    return res.status(201).json(serializeModeloDistribuicao(created));
+  } catch (err) {
+    console.error("Erro ao criar modelo-distribuicao:", err);
+    return res.status(500).json({ message: "Erro ao criar Modelo de Distribuição." });
+  }
+});
+
+app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { cod, descricao } = req.body || {};
+    const data = {};
+
+    if (cod !== undefined) {
+      const codTxt = String(cod || "").trim();
+      if (!codTxt) return res.status(400).json({ message: "Código (cod) inválido." });
+      data.cod = codTxt;
+    }
+    if (descricao !== undefined) {
+      const descTxt = String(descricao || "").trim();
+      data.tipo = descTxt || null;
+    }
+
+    // "ativo" pode vir do front, mas se o schema não tiver, ignoramos.
+    const updated = await prisma.modeloDistribuicao.update({
+      where: { id },
+      data,
+    });
+
+    return res.json(serializeModeloDistribuicao(updated));
+  } catch (err) {
+    console.error("Erro ao atualizar modelo-distribuicao:", err);
+    return res.status(500).json({ message: "Erro ao atualizar Modelo de Distribuição." });
+  }
+});
+
+app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    await prisma.modeloDistribuicao.delete({ where: { id } });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao excluir modelo-distribuicao:", err);
+    return res.status(500).json({ message: "Erro ao excluir Modelo de Distribuição." });
+  }
+});
+
 app.post("/api/advogados", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { nome, cpf, email, telefone, tipoRepasse, percentualRepasse, ativo } = req.body || {};
