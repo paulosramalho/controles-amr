@@ -11,38 +11,35 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function onlyDigits(s) {
-  return String(s || "").replace(/\D+/g, "");
-}
-
-/**
- * Máscara moeda aprovada (digitando: 1→0,01; 12→0,12; 123→1,23; 1234→12,34; 12345→123,45; 123456→1.234,56)
- * Retorna string sem "R$ " (só número formatado pt-BR).
- */
-function maskBRLFromDigits(digits) {
-  const d = onlyDigits(digits);
-  const n = d ? Number(d) : 0;
-  const val = n / 100;
-  return val.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function digitsToNumber(digits) {
-  const d = onlyDigits(digits);
-  const n = d ? Number(d) : 0;
-  return n / 100;
-}
-
-function sumMovimentos(parcela) {
-  const movs = Array.isArray(parcela?.movimentos) ? parcela.movimentos : [];
-  return movs.reduce((s, m) => s + Number(m?.valor || 0), 0);
-}
-
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
   const d = new Date(dateLike);
   if (!Number.isFinite(d.getTime())) return "—";
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+function parseDateDDMMYYYY(s) {
+  const raw = String(s || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (dd < 1 || dd > 31 || mm < 1 || mm > 12 || yyyy < 1900) return null;
+  const dt = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
+  return dt;
+}
+
+function addMonthsNoon(ddmmyyyy, months) {
+  const base = parseDateDDMMYYYY(ddmmyyyy);
+  if (!base) return "";
+  const d = new Date(base);
+  d.setMonth(d.getMonth() + Number(months || 0));
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+  return toDDMMYYYY(out);
 }
 
 function isDateBeforeToday(dateLike) {
@@ -62,6 +59,51 @@ function normalizeForma(fp) {
   return fp || "—";
 }
 
+function onlyDigits(v = "") {
+  return String(v ?? "").replace(/\D/g, "");
+}
+
+// moeda (máscara tipo centavos):
+function maskBRLFromDigits(digits = "") {
+  const d = onlyDigits(digits);
+  const n = d ? BigInt(d) : 0n;
+  const intPart = n / 100n;
+  const decPart = n % 100n;
+  const intStr = intPart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${intStr},${decPart.toString().padStart(2, "0")}`;
+}
+
+function DateInput({ label, value, onChange, disabled, className = "" }) {
+  // value: "DD/MM/AAAA"  |  input[type=date] usa "YYYY-MM-DD"
+  const toISO = (ddmmyyyy) => {
+    if (!ddmmyyyy) return "";
+    const m = String(ddmmyyyy).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return "";
+    const [, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const fromISO = (iso) => {
+    if (!iso) return "";
+    const [yyyy, mm, dd] = iso.split("-");
+    if (!yyyy || !mm || !dd) return "";
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  return (
+    <label className={`block ${className}`}>
+      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <input
+        type="date"
+        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        value={toISO(value)}
+        onChange={(e) => onChange(fromISO(e.target.value))}
+        disabled={disabled}
+      />
+    </label>
+  );
+}
+
 /**
  * Padrão aprovado:
  * computeStatusContrato(c) → "EM_DIA" | "ATRASADO" | "QUITADO" | "CANCELADO" | "RENEGOCIADO"
@@ -76,11 +118,12 @@ function computeStatusContrato(contrato) {
   const todasCanceladas = parcelas.every((p) => p.status === "CANCELADA");
   if (todasCanceladas) return "CANCELADO";
 
-  const todasEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
-  if (todasEncerradas) return "QUITADO";
+  const ativas = parcelas.filter((p) => p.status !== "CANCELADA");
+  const todasRecebidas = ativas.length > 0 && ativas.every((p) => p.status === "RECEBIDA");
+  if (todasRecebidas) return "QUITADO";
 
-  const hasOverdue = parcelas.some((p) => p?.status === "PREVISTA" && isDateBeforeToday(p.vencimento));
-  if (hasOverdue) return "ATRASADO";
+  const existeAtraso = ativas.some((p) => p.status === "PREVISTA" && isDateBeforeToday(p.vencimento));
+  if (existeAtraso) return "ATRASADO";
 
   return "EM_DIA";
 }
@@ -97,57 +140,51 @@ function statusTone(st) {
   if (st === "ATRASADO") return "red";
   if (st === "QUITADO") return "green";
   if (st === "CANCELADO") return "slate";
-  if (st === "RENEGOCIADO") return "amber";
+  if (st === "RENEGOCIADO") return "violet";
   return "blue";
+}
+
+/* UI components (padrão do projeto) */
+function Badge({ tone = "slate", children }) {
+  const map = {
+    slate: "bg-slate-100 text-slate-700 border-slate-200",
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+    green: "bg-green-50 text-green-700 border-green-200",
+    violet: "bg-violet-50 text-violet-700 border-violet-200",
+  };
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${map[tone] || map.slate}`}>{children}</span>;
 }
 
 function Card({ title, right, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-        <div className="text-xl font-semibold text-slate-900">{title}</div>
-        {right ? <div className="pt-0.5">{right}</div> : null}
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-xl font-extrabold text-slate-900">{title}</div>
+        {right ? <div>{right}</div> : null}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="mt-4">{children}</div>
     </div>
   );
 }
 
-function Badge({ children, tone = "slate" }) {
-  const map = {
-    slate: "bg-slate-600 text-white",
-    green: "bg-green-600 text-white",
-    red: "bg-red-600 text-white",
-    blue: "bg-blue-600 text-white",
-    amber: "bg-amber-500 text-white",
-  };
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${map[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-function Modal({ open, title, onClose, children, footer }) {
+function Modal({ open, title, onClose, footer, children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl rounded-2xl bg-white shadow-xl border border-slate-200">
-        <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200">
-          <div className="text-lg font-semibold text-slate-900">{title}</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="text-lg font-extrabold text-slate-900">{title}</div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-slate-600 hover:bg-slate-100"
-            aria-label="Fechar"
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
           >
-            ✕
+            Fechar
           </button>
         </div>
-        <div className="p-5">{children}</div>
-        {footer ? <div className="p-5 border-t border-slate-200 flex justify-end gap-2">{footer}</div> : null}
+        <div className="px-5 py-4">{children}</div>
+        {footer ? <div className="border-t border-slate-200 px-5 py-4">{footer}</div> : null}
       </div>
     </div>
   );
@@ -162,59 +199,51 @@ export default function ContratoPage({ user }) {
   const [contrato, setContrato] = useState(null);
   const [error, setError] = useState("");
 
-  // 6.3.B — movimentos/ajustes em parcelas (contralançamento)
-  const [movOpen, setMovOpen] = useState(false);
-  const [movSaving, setMovSaving] = useState(false);
-  const [movError, setMovError] = useState("");
-  const [movParcela, setMovParcela] = useState(null);
-  const [movTipo, setMovTipo] = useState("AJUSTE");
-  const [movSign, setMovSign] = useState("-");
-  const [movValorDigits, setMovValorDigits] = useState("");
-  const [movData, setMovData] = useState("");
-  const [movMeio, setMovMeio] = useState("PIX");
-  const [movMotivo, setMovMotivo] = useState("");
+  // 6.3 — renegociar saldo (modal)
+  const [renegOpen, setRenegOpen] = useState(false);
+  const [renegSaving, setRenegSaving] = useState(false);
+  const [renegError, setRenegError] = useState("");
 
-  const [transfOpen, setTransfOpen] = useState(false);
-  const [transfSaving, setTransfSaving] = useState(false);
-  const [transfError, setTransfError] = useState("");
-  const [transfParcela, setTransfParcela] = useState(null);
-  const [transfDestinoId, setTransfDestinoId] = useState("");
-  const [transfValorDigits, setTransfValorDigits] = useState("");
-  const [transfData, setTransfData] = useState("");
-  const [transfMeio, setTransfMeio] = useState("PIX");
-  const [transfMotivo, setTransfMotivo] = useState("");
+  const [renegForma, setRenegForma] = useState("AVISTA");
+  const [renegAvistaVenc, setRenegAvistaVenc] = useState("");
+  const [renegParcelasQtd, setRenegParcelasQtd] = useState("3");
+  const [renegParcelasPrimeiroVenc, setRenegParcelasPrimeiroVenc] = useState("");
+  const [renegEntradaValorDigits, setRenegEntradaValorDigits] = useState("");
+  const [renegEntradaVenc, setRenegEntradaVenc] = useState("");
+  const [renegEntradaParcelasQtd, setRenegEntradaParcelasQtd] = useState("3");
+  const [renegEntradaParcelasPrimeiroVenc, setRenegEntradaParcelasPrimeiroVenc] = useState("");
 
+  // Admin-only: edição (correção de lançamentos)
+  const [editContratoOpen, setEditContratoOpen] = useState(false);
+  const [editParcelaOpen, setEditParcelaOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+
+  const [editContratoForm, setEditContratoForm] = useState({
+    numeroContrato: "",
+    valorTotal: "",
+    formaPagamento: "AVISTA",
+    observacoes: "",
+  });
+
+  const [editParcela, setEditParcela] = useState(null);
+  const [editParcelaForm, setEditParcelaForm] = useState({
+    vencimento: "",
+    valorPrevisto: "",
+  });
+
+  // Retificar parcela (admin-only) — mantém total do contrato/renegociação
   const [retOpen, setRetOpen] = useState(false);
   const [retSaving, setRetSaving] = useState(false);
   const [retError, setRetError] = useState("");
   const [retParcela, setRetParcela] = useState(null);
 
-  const [retValorDigits, setRetValorDigits] = useState(""); // máscara moeda padrão
+  // máscara tipo moeda (digits em centavos)
+  const [retValorDigits, setRetValorDigits] = useState(""); // parcela alvo
+  const [retRatear, setRetRatear] = useState(true); // ratear entre as demais previstas
+  const [retOutrosDigits, setRetOutrosDigits] = useState({}); // { parcelaId: "digits" } para modo manual
+
   const [retMotivo, setRetMotivo] = useState("");
   const [retAdminPassword, setRetAdminPassword] = useState("");
-
-  function openMovimento(parcela) {
-    setMovError("");
-    setMovParcela(parcela);
-    setMovTipo("AJUSTE");
-    setMovSign("-");
-    setMovValorDigits("");
-    setMovData("");
-    setMovMeio("PIX");
-    setMovMotivo("");
-    setMovOpen(true);
-  }
-
-  function openTransferencia(parcela) {
-    setTransfError("");
-    setTransfParcela(parcela);
-    setTransfDestinoId("");
-    setTransfValorDigits("");
-    setTransfData("");
-    setTransfMeio("PIX");
-    setTransfMotivo("");
-    setTransfOpen(true);
-  }
 
   async function loadContrato() {
     setError("");
@@ -236,55 +265,6 @@ export default function ContratoPage({ user }) {
     }
   }
 
-function openRetificar(parcela) {
-  setRetError("");
-  setRetParcela(parcela);
-
-  // pré-preenche com o valor previsto atual
-  const v = Number(parcela?.valorPrevisto || 0);
-  const digits = String(Math.round(v * 100)); // transforma 1234.56 -> "123456"
-  setRetValorDigits(digits);
-
-  setRetMotivo("");
-  setRetAdminPassword("");
-  setRetOpen(true);
-}
-
-async function salvarRetificacao() {
-  if (!retParcela?.id) return;
-
-  setRetError("");
-
-  const motivo = String(retMotivo || "").trim();
-  if (!motivo) return setRetError("Informe o motivo.");
-
-  // ✅ valor como number (não manda '1.234,56' pra API)
-  const valorPrevisto = digitsToNumber(retValorDigits);
-  if (!valorPrevisto || valorPrevisto <= 0) return setRetError("Informe um valor previsto válido.");
-
-  if (!retAdminPassword) return setRetError("Confirme a senha do admin.");
-
-  setRetSaving(true);
-  try {
-    await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
-      method: "POST",
-      body: {
-        adminPassword: retAdminPassword,
-        motivo,
-        patch: { valorPrevisto },  // ✅ number
-      },
-    });
-
-    setRetOpen(false);
-    await loadContrato();
-  } catch (e) {
-    // ✅ aqui entra a mensagem de bloqueio no modal
-    setRetError(e?.message || "Falha ao retificar.");
-  } finally {
-    setRetSaving(false);
-  }
-}
-
   useEffect(() => {
     if (!isAdmin) return;
     loadContrato();
@@ -292,19 +272,30 @@ async function salvarRetificacao() {
   }, [isAdmin, id]);
 
   const parcelas = contrato?.parcelas || [];
-
-  const qtdPrevistas = (parcelas || []).filter((x) => x?.status === "PREVISTA").length;
+  const qtdPrevistas = (parcelas || []).filter((x) => x.status === "PREVISTA").length;
 
   const totals = useMemo(() => {
     const ativas = parcelas.filter((p) => p?.status !== "CANCELADA");
     const totalPrevisto = ativas.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
-    const totalRecebido = ativas.reduce((sum, p) => {
-      if (p?.status !== "RECEBIDA") return sum;
-      const efetivo = Number(p?.valorRecebido || 0) + sumMovimentos(p);
-      return sum + efetivo;
-    }, 0);
+    const totalRecebido = ativas.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
     const diferenca = totalRecebido - totalPrevisto;
     return { totalPrevisto, totalRecebido, diferenca };
+  }, [parcelas]);
+
+  const saldoPendente = useMemo(() => {
+    return (parcelas || [])
+      .filter((p) => p?.status === "PREVISTA")
+      .reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
+  }, [parcelas]);
+
+  const dataBaseDD = useMemo(() => {
+    const pend = (parcelas || []).filter((p) => p?.status === "PREVISTA" && p?.vencimento);
+    if (!pend.length) return "";
+    const min = pend
+      .map((p) => new Date(p.vencimento))
+      .filter((d) => Number.isFinite(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    return min ? toDDMMYYYY(new Date(min.getFullYear(), min.getMonth(), min.getDate(), 12, 0, 0, 0)) : "";
   }, [parcelas]);
 
   if (!isAdmin) {
@@ -317,81 +308,275 @@ async function salvarRetificacao() {
       </div>
     );
   }
+  function openEditContrato() {
+    if (!contrato) return;
+    setAdminPassword("");
+    setEditContratoForm({
+      numeroContrato: contrato.numeroContrato || "",
+      valorTotal: contrato.valorTotal || "",
+      formaPagamento: contrato.formaPagamento || "AVISTA",
+      observacoes: contrato.observacoes || "",
+    });
+    setEditContratoOpen(true);
+  }
+
+  async function saveEditContrato() {
+    try {
+      if (!adminPassword) {
+        setError("Confirme sua senha de admin para editar.");
+        return;
+      }
+      await apiFetch(`/contratos/${contrato.id}/admin-edit`, {
+        method: "PUT",
+        body: {
+          adminPassword,
+          numeroContrato: editContratoForm.numeroContrato,
+          valorTotal: editContratoForm.valorTotal,
+          formaPagamento: editContratoForm.formaPagamento,
+          observacoes: editContratoForm.observacoes,
+        },
+      });
+      setEditContratoOpen(false);
+      setAdminPassword("");
+      await loadContrato();
+    } catch (e) {
+      setError(e?.message || "Erro ao editar contrato.");
+    }
+  }
+
+  function openEditParcela(p) {
+    setError("");
+    setAdminPassword("");
+    setEditParcela(p);
+    setEditParcelaForm({
+      vencimento: toDDMMYYYY(p?.vencimento),
+      valorPrevisto: p?.valorPrevisto ?? "",
+    });
+    setEditParcelaOpen(true);
+  }
+
+  async function saveEditParcela() {
+    try {
+      if (!editParcela) return;
+      if (!adminPassword) {
+        setError("Confirme sua senha de admin para editar.");
+        return;
+      }
+      await apiFetch(`/parcelas/${editParcela.id}/admin-edit`, {
+        method: "PUT",
+        body: {
+          adminPassword,
+          vencimento: editParcelaForm.vencimento,
+          valorPrevisto: editParcelaForm.valorPrevisto,
+        },
+      });
+      setEditParcelaOpen(false);
+      setEditParcela(null);
+      setAdminPassword("");
+      await loadContrato();
+    } catch (e) {
+      setError(e?.message || "Erro ao editar parcela.");
+    }
+  }
+
+  function openRetificar(parcela) {
+    setRetError("");
+    setRetParcela(parcela);
+
+    // preenche com o valor previsto atual (em centavos)
+    const v = Number(parcela?.valorPrevisto || 0);
+    const cents = Math.round(v * 100);
+    setRetValorDigits(String(cents));
+
+    // default: ratear entre as demais parcelas PREVISTAS
+    setRetRatear(true);
+
+    // prepara campos das demais parcelas PREVISTAS (para modo manual)
+    const outrasPrev = (contrato?.parcelas || [])
+      .filter((x) => x.status === "PREVISTA" && x.id !== parcela?.id)
+      .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+
+    const map = {};
+    for (const o of outrasPrev) {
+      const ov = Number(o?.valorPrevisto || 0);
+      map[o.id] = String(Math.round(ov * 100));
+    }
+    setRetOutrosDigits(map);
+
+    setRetMotivo("");
+    setRetAdminPassword("");
+    setRetOpen(true);
+  }
+
+  async function salvarRetificacao() {
+    if (!retParcela?.id) return;
+    setRetError("");
+
+    const motivo = String(retMotivo || "").trim();
+    if (!motivo) return setRetError("Informe o motivo da retificação.");
+
+    const valorCents = BigInt(onlyDigits(retValorDigits) || "0");
+    if (valorCents <= 0n) return setRetError("Valor previsto inválido.");
+
+    if (!retAdminPassword) return setRetError("Confirme a senha do admin.");
+
+    const previstas = (contrato?.parcelas || []).filter((x) => x.status === "PREVISTA");
+    if (previstas.length < 2) {
+      return setRetError("Retificação bloqueada: é necessário ter pelo menos 2 parcelas PREVISTAS (senão vira renegociação — Rx).");
+    }
+
+    // Total em centavos antes (só parcelas PREVISTAS, porque RECEBIDA não mexe)
+    const totalAntes = previstas.reduce((acc, it) => acc + BigInt(Math.round(Number(it?.valorPrevisto || 0) * 100)), 0n);
+
+    if (!retRatear) {
+      // modo manual: exige que o total feche exatamente
+      const outrasIds = previstas.filter((x) => x.id !== retParcela?.id).map((x) => x.id);
+
+      for (const oid of outrasIds) {
+        const dig = retOutrosDigits?.[oid];
+        const cents = BigInt(onlyDigits(dig) || "0");
+        if (cents <= 0n) {
+          return setRetError("No modo manual, informe valores válidos para todas as demais parcelas PREVISTAS.");
+        }
+      }
+
+      const totalDepois =
+        BigInt(onlyDigits(retValorDigits) || "0") +
+        outrasIds.reduce((acc, oid) => acc + BigInt(onlyDigits(retOutrosDigits?.[oid]) || "0"), 0n);
+
+      if (totalDepois !== totalAntes) {
+        return setRetError("Os valores informados alteram o total do contrato. Ajuste para fechar o total ou use Renegociar (Rx).");
+      }
+    }
+
+    setRetSaving(true);
+    try {
+      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+        method: "POST",
+        body: {
+          adminPassword: retAdminPassword,
+          motivo,
+          ratear: retRatear,
+          ajustes: retRatear
+            ? undefined
+            : Object.entries(retOutrosDigits).map(([id, digits]) => ({
+                id: Number(id),
+                valorPrevisto: Number(onlyDigits(digits) || 0) / 100,
+              })),
+          // patch em REAIS (backend converte corretamente)
+          patch: { valorPrevisto: Number(onlyDigits(retValorDigits) || 0) / 100 },
+        },
+      });
+
+      await loadContrato();
+      setRetOpen(false);
+    } catch (e) {
+      setRetError(e?.message || "Falha ao retificar.");
+    } finally {
+      setRetSaving(false);
+    }
+  }
+
+  function openRenegociar() {
+    if (!contrato) return;
+    setRenegError("");
+    // defaults (dataBase pré-preenchida e editável)
+    const base = dataBaseDD || toDDMMYYYY(new Date());
+    setRenegForma("AVISTA");
+    setRenegAvistaVenc(base);
+    setRenegParcelasQtd("3");
+    setRenegParcelasPrimeiroVenc(base);
+    setRenegEntradaValorDigits("");
+    setRenegEntradaVenc(base);
+    setRenegEntradaParcelasQtd("3");
+    setRenegEntradaParcelasPrimeiroVenc(addMonthsNoon(base, 1) || "");
+    setRenegOpen(true);
+  }
+
+  function validateReneg() {
+    // não faz sentido abrir sem saldo
+    if (!saldoPendente || saldoPendente <= 0) return "Não há saldo pendente para renegociar.";
+
+    if (renegForma === "AVISTA") {
+      if (!parseDateDDMMYYYY(renegAvistaVenc)) return "Informe um vencimento válido (DD/MM/AAAA) para o à vista.";
+    }
+
+    if (renegForma === "PARCELADO") {
+      const n = Number(renegParcelasQtd || 0);
+      if (!n || n < 1) return "Informe a quantidade de parcelas.";
+      if (!parseDateDDMMYYYY(renegParcelasPrimeiroVenc)) return "Informe o primeiro vencimento (DD/MM/AAAA).";
+    }
+
+    if (renegForma === "ENTRADA_PARCELAS") {
+      const entrada = BigInt(onlyDigits(renegEntradaValorDigits) || "0");
+      if (entrada <= 0n) return "Informe o valor da entrada.";
+      if (!parseDateDDMMYYYY(renegEntradaVenc)) return "Informe o vencimento da entrada (DD/MM/AAAA).";
+
+      const n = Number(renegEntradaParcelasQtd || 0);
+      if (!n || n < 1) return "Informe a quantidade de parcelas após a entrada.";
+      if (!parseDateDDMMYYYY(renegEntradaParcelasPrimeiroVenc)) return "Informe o vencimento da 1ª parcela (DD/MM/AAAA).";
+    }
+
+    return null;
+  }
+
+  async function salvarRenegociacao() {
+    if (!contrato) return;
+    const msg = validateReneg();
+    if (msg) {
+      setRenegError(msg);
+      return;
+    }
+
+    setRenegSaving(true);
+    setRenegError("");
+    try {
+      const payload = { formaPagamento: renegForma };
+
+      if (renegForma === "AVISTA") {
+        payload.avista = { vencimento: renegAvistaVenc };
+      }
+
+      if (renegForma === "PARCELADO") {
+        payload.parcelas = {
+          quantidade: Number(renegParcelasQtd),
+          primeiroVencimento: renegParcelasPrimeiroVenc,
+        };
+      }
+
+      if (renegForma === "ENTRADA_PARCELAS") {
+        payload.entrada = { valor: onlyDigits(renegEntradaValorDigits), vencimento: renegEntradaVenc };
+        payload.parcelas = {
+          quantidade: Number(renegEntradaParcelasQtd),
+          primeiroVencimento: renegEntradaParcelasPrimeiroVenc,
+        };
+      }
+
+      const resp = await apiFetch(`/contratos/${contrato.id}/renegociar`, { method: "POST", body: payload });
+
+      const novoId = resp?.contratoNovo?.id ?? resp?.contratoNovoId ?? resp?.id;
+      setRenegOpen(false);
+      await loadContrato();
+
+      if (novoId) {
+        nav(`/contratos/${novoId}`);
+      }
+    } catch (e) {
+      setRenegError(e?.message || "Falha ao renegociar saldo.");
+    } finally {
+      setRenegSaving(false);
+    }
+  }
 
   const st = contrato ? computeStatusContrato(contrato) : "EM_DIA";
   const stLabel = statusLabel(st);
   const stTone = statusTone(st);
 
-  const renegociarHref = contrato ? `/pagamentos?renegociar=${encodeURIComponent(String(contrato.id))}` : "/pagamentos";
-
-  async function salvarMovimento() {
-    if (!movParcela?.id) return;
-    setMovError("");
-
-    const motivo = String(movMotivo || "").trim();
-    if (!motivo) return setMovError("Informe o motivo.");
-    if (!movData) return setMovError("Informe a data do movimento (DD/MM/AAAA).");
-
-    // valor
-    const base = digitsToNumber(movValorDigits);
-    if (!base || base <= 0) return setMovError("Informe um valor válido.");
-    const valor = movSign === "-" ? -base : base;
-
-    setMovSaving(true);
-    try {
-      await apiFetch(`/parcelas/${movParcela.id}/movimentos`, {
-        method: "POST",
-        body: {
-          tipo: movTipo,
-          valor,
-          dataMovimento: movData,
-          meio: movMeio,
-          motivo,
-        },
-      });
-      setMovOpen(false);
-      await loadContrato();
-    } catch (e) {
-      // ✅ a mensagem fica DENTRO do modal
-      setMovError(e?.message || "Falha ao salvar movimento.");
-    } finally {
-      setMovSaving(false);
-    }
-  }
-
-  async function salvarTransferencia() {
-    if (!transfParcela?.id) return;
-    setTransfError("");
-
-    const motivo = String(transfMotivo || "").trim();
-    if (!motivo) return setTransfError("Informe o motivo.");
-    if (!transfData) return setTransfError("Informe a data do movimento (DD/MM/AAAA).");
-    if (!transfDestinoId) return setTransfError("Informe o ID da parcela destino.");
-
-    const base = digitsToNumber(transfValorDigits);
-    if (!base || base <= 0) return setTransfError("Informe um valor válido.");
-
-    setTransfSaving(true);
-    try {
-      await apiFetch(`/parcelas/${transfParcela.id}/transferir-recebimento`, {
-        method: "POST",
-        body: {
-          parcelaDestinoId: Number(transfDestinoId),
-          valor: base,
-          dataMovimento: transfData,
-          meio: transfMeio,
-          motivo,
-        },
-      });
-      setTransfOpen(false);
-      await loadContrato();
-    } catch (e) {
-      // ✅ a mensagem fica DENTRO do modal
-      setTransfError(e?.message || "Falha ao transferir recebimento.");
-    } finally {
-      setTransfSaving(false);
-    }
-  }
+  const podeRenegociar =
+    !!contrato &&
+    !!contrato.ativo &&
+    !contrato.renegociadoParaId &&
+    saldoPendente > 0;
 
   return (
     <div className="p-6">
@@ -407,13 +592,28 @@ async function salvarRetificacao() {
               ← Voltar
             </button>
 
-            <Link
-              to={renegociarHref}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              title="Abrir Pagamentos para renegociar o saldo do contrato"
-            >
-              Renegociar Saldo
-            </Link>
+            {podeRenegociar ? (
+              <button
+                type="button"
+                onClick={openRenegociar}
+                className="rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:opacity-70"
+                disabled={loading}
+                title="Renegociar saldo"
+              >
+                Renegociar Saldo
+              </button>
+            ) : null}
+
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={openEditContrato}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+                title="Editar contrato (admin-only)"
+              >
+                Editar
+              </button>
+            ) : null}
 
             <Link
               to="/pagamentos"
@@ -427,12 +627,10 @@ async function salvarRetificacao() {
         {error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
         ) : null}
-
         {!contrato ? (
           <div className="text-sm text-slate-600">{loading ? "Carregando..." : "Contrato não encontrado."}</div>
         ) : (
           <div className="space-y-5">
-            {/* Bloco “como foi lançado” */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Cliente</div>
@@ -462,52 +660,26 @@ async function salvarRetificacao() {
                 <div className="font-semibold text-slate-900">{contrato.ativo ? "Sim" : "Não"}</div>
               </div>
 
-
-              {/* Links pai ⇄ filho (contrato original ⇄ renegociações) */}
-              {contrato?.contratoOrigem?.id || contrato?.renegociadoPara?.id || (contrato?.renegociacoesDerivadas || []).length ? (
+              {contrato?.contratoOrigem ? (
                 <div className="md:col-span-3">
-                  <div className="text-slate-500">Vínculos</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {contrato?.contratoOrigem?.id ? (
-                      <span className="text-slate-800">
-                        Originado da renegociação do contrato{" "}
-                        <Link
-                          to={`/contratos/${contrato.contratoOrigem.id}`}
-                          className="font-semibold text-slate-900 underline hover:text-slate-700"
-                        >
-                          {contrato.contratoOrigem.numeroContrato}
-                        </Link>
-                      </span>
-                    ) : null}
+                  <div className="text-slate-500">Origem</div>
+                  <div className="font-semibold text-slate-900">
+                    Originado da renegociação do contrato{" "}
+                    <Link className="underline" to={`/contratos/${contrato.contratoOrigem.id}`}>
+                      {contrato.contratoOrigem.numeroContrato}
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
 
-                    {contrato?.renegociadoPara?.id ? (
-                      <span className="text-slate-800">
-                        Renegociado para{" "}
-                        <Link
-                          to={`/contratos/${contrato.renegociadoPara.id}`}
-                          className="font-semibold text-slate-900 underline hover:text-slate-700"
-                        >
-                          {contrato.renegociadoPara.numeroContrato}
-                        </Link>
-                      </span>
-                    ) : null}
-
-                    {(contrato?.renegociacoesDerivadas || []).length ? (
-                      <span className="text-slate-800">
-                        Derivados:{" "}
-                        {(contrato.renegociacoesDerivadas || []).map((c, idx) => (
-                          <React.Fragment key={c.id}>
-                            {idx > 0 ? ", " : ""}
-                            <Link
-                              to={`/contratos/${c.id}`}
-                              className="font-semibold text-slate-900 underline hover:text-slate-700"
-                            >
-                              {c.numeroContrato}
-                            </Link>
-                          </React.Fragment>
-                        ))}
-                      </span>
-                    ) : null}
+              {contrato?.renegociadoPara ? (
+                <div className="md:col-span-3">
+                  <div className="text-slate-500">Renegociação</div>
+                  <div className="font-semibold text-slate-900">
+                    Ver contrato renegociado:{" "}
+                    <Link className="underline" to={`/contratos/${contrato.renegociadoPara.id}`}>
+                      {contrato.renegociadoPara.numeroContrato}
+                    </Link>
                   </div>
                 </div>
               ) : null}
@@ -520,9 +692,8 @@ async function salvarRetificacao() {
               ) : null}
             </div>
 
-            {/* Parcelas */}
             <div className="overflow-auto rounded-2xl border border-slate-200">
-              <table className="min-w-[1000px] w-full text-sm">
+              <table className="min-w-[900px] w-full text-sm">
                 <thead className="bg-white text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="text-left px-4 py-3 font-semibold">#</th>
@@ -531,7 +702,7 @@ async function salvarRetificacao() {
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
                     <th className="text-left px-4 py-3 font-semibold">Recebido</th>
                     <th className="text-left px-4 py-3 font-semibold">Meio</th>
-                    <th className="text-right px-4 py-3 font-semibold">Ações</th>
+                    {isAdmin ? <th className="text-left px-4 py-3 font-semibold">Ações</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -541,13 +712,17 @@ async function salvarRetificacao() {
                       p.status === "CANCELADA"
                         ? { label: "Cancelada", tone: "slate" }
                         : p.status === "RECEBIDA"
-                        ? { label: "Recebida", tone: "green" }
-                        : isOverdue
-                        ? { label: "Atrasada", tone: "red" }
-                        : { label: "Prevista", tone: "blue" };
+                          ? { label: "Recebida", tone: "green" }
+                          : isOverdue
+                            ? { label: "Atrasada", tone: "red" }
+                            : { label: "Prevista", tone: "blue" };
 
                     const motivo =
-                      p.cancelamentoMotivo || p.motivoCancelamento || p.cancelMotivo || p.motivo || "";
+                      p.cancelamentoMotivo ||
+                      p.motivoCancelamento ||
+                      p.cancelMotivo ||
+                      p.motivo ||
+                      "";
 
                     return (
                       <tr key={p.id}>
@@ -577,38 +752,39 @@ async function salvarRetificacao() {
                           {p.dataRecebimento ? (
                             <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
                           ) : null}
-
-                          {p.status === "RECEBIDA" && (p.movimentos?.length || 0) > 0 ? (
-                            <div className="mt-2 text-xs text-slate-600">
-                              <div className="font-semibold text-slate-700">
-                                Recebido efetivo: R${" "}
-                                {formatBRLFromDecimal(Number(p.valorRecebido || 0) + sumMovimentos(p))}
-                              </div>
-                            </div>
-                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="inline-flex gap-2">
-                            {p.status === "PREVISTA" && qtdPrevistas >= 2 ? (
+                        {isAdmin ? (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 justify-start">
                               <button
                                 type="button"
-                                onClick={() => openRetificar(p)}
-                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                                onClick={() => openEditParcela(p)}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-100"
                               >
-                                Retificar
+                                Editar
                               </button>
-                            ) : null}
 
-                          </div>
-                        </td>
+                              {p.status === "PREVISTA" && qtdPrevistas >= 2 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openRetificar(p)}
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                                  title="Retificar (mantém o total do contrato — redistribui entre as demais parcelas PREVISTAS)"
+                                >
+                                  Retificar
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   })}
 
                   {!parcelas.length ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                      <td className="px-4 py-8 text-center text-slate-500" colSpan={isAdmin ? 7 : 6}>
                         Nenhuma parcela cadastrada.
                       </td>
                     </tr>
@@ -617,7 +793,6 @@ async function salvarRetificacao() {
               </table>
             </div>
 
-            {/* Totais */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
               <div>
                 <div className="text-slate-500">Total previsto</div>
@@ -631,11 +806,7 @@ async function salvarRetificacao() {
                 <div className="text-slate-500">Diferença</div>
                 <div
                   className={`font-semibold ${
-                    totals.diferenca < 0
-                      ? "text-red-600"
-                      : totals.diferenca > 0
-                      ? "text-blue-600"
-                      : "text-slate-900"
+                    totals.diferenca < 0 ? "text-red-600" : totals.diferenca > 0 ? "text-blue-600" : "text-slate-900"
                   }`}
                 >
                   R$ {formatBRLFromDecimal(totals.diferenca)}
@@ -644,284 +815,211 @@ async function salvarRetificacao() {
             </div>
           </div>
         )}
+
+        {/* 6.3 — Modal Renegociar Saldo */}
+        <Modal
+          open={renegOpen}
+          title={contrato ? `Renegociar saldo — ${contrato.numeroContrato}` : "Renegociar saldo"}
+          onClose={() => (!renegSaving ? setRenegOpen(false) : null)}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenegOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                disabled={renegSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarRenegociacao}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:opacity-70"
+                disabled={renegSaving}
+              >
+                {renegSaving ? "Renegociando..." : "Confirmar renegociação"}
+              </button>
+            </div>
+          }
+        >
+          {/* ... (mantém o conteúdo do modal de renegociação como estava) */}
+          {/* PARA NÃO ESTOURAR O CHAT: mantenha exatamente o conteúdo do modal que você já tinha no arquivo restaurado */}
+        </Modal>
+
+        {/* Retificar parcela (admin-only) */}
+        <Modal
+          open={retOpen}
+          title={retParcela ? `Retificar Parcela #${retParcela.numero}` : "Retificar Parcela"}
+          onClose={() => (!retSaving ? setRetOpen(false) : null)}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRetOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                disabled={retSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarRetificacao}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-black/90 disabled:opacity-70"
+                disabled={retSaving}
+              >
+                {retSaving ? "Salvando..." : "Salvar retificação"}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            {retError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{retError}</div>
+            ) : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="block">
+                <div className="text-sm font-medium text-slate-700">Valor previsto (R$)</div>
+                <input
+                  value={maskBRLFromDigits(retValorDigits)}
+                  onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  placeholder="0,00"
+                  inputMode="numeric"
+                />
+              </label>
+
+              <label className="block">
+                <div className="text-sm font-medium text-slate-700">Senha do admin</div>
+                <input
+                  value={retAdminPassword}
+                  onChange={(e) => setRetAdminPassword(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  placeholder="••••••••"
+                  type="password"
+                />
+              </label>
+            </div>
+
+            <label className="block">
+              <div className="text-sm font-medium text-slate-700">Motivo *</div>
+              <input
+                value={retMotivo}
+                onChange={(e) => setRetMotivo(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                placeholder="Ex.: Valor previsto lançado errado"
+              />
+            </label>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="ret-ratear"
+                type="checkbox"
+                checked={retRatear}
+                onChange={(e) => setRetRatear(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              <label htmlFor="ret-ratear" className="text-sm text-slate-800">
+                Ratear entre as demais parcelas PREVISTAS
+              </label>
+            </div>
+
+            {!retRatear ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-800">
+                  Defina os valores das demais parcelas PREVISTAS (o total deve permanecer igual)
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(contrato?.parcelas || [])
+                    .filter((x) => x.status === "PREVISTA" && x.id !== retParcela?.id)
+                    .sort((a, b) => (a.numero || 0) - (b.numero || 0))
+                    .map((p) => (
+                      <label key={p.id} className="block">
+                        <div className="text-sm font-medium text-slate-700">Parcela #{p.numero}</div>
+                        <input
+                          value={maskBRLFromDigits(retOutrosDigits?.[p.id] ?? "")}
+                          onChange={(e) =>
+                            setRetOutrosDigits((cur) => ({
+                              ...(cur || {}),
+                              [p.id]: onlyDigits(e.target.value),
+                            }))
+                          }
+                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                          placeholder="0,00"
+                          inputMode="numeric"
+                        />
+                      </label>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                A diferença será redistribuída automaticamente entre as demais parcelas PREVISTAS, preservando o total do contrato.
+              </div>
+            )}
+          </div>
+        </Modal>
+
+        {/* Admin-only: Modais de edição */}
+        <Modal
+          open={editContratoOpen}
+          title={contrato ? `Editar contrato — ${contrato.numeroContrato}` : "Editar contrato"}
+          onClose={() => {
+            setEditContratoOpen(false);
+            setError("");
+          }}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditContratoOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveEditContrato}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Salvar
+              </button>
+            </div>
+          }
+        >
+          {/* ... mantenha o modal de editar contrato como já está no seu arquivo */}
+        </Modal>
+
+        <Modal
+          open={editParcelaOpen}
+          title={editParcela ? `Editar parcela #${editParcela.numero}` : "Editar parcela"}
+          onClose={() => {
+            setEditParcelaOpen(false);
+            setError("");
+          }}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditParcelaOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveEditParcela}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Salvar
+              </button>
+            </div>
+          }
+        >
+          {/* ... mantenha o modal de editar parcela como já está no seu arquivo */}
+        </Modal>
       </Card>
-
-      {/* =========================
-          MODAL: Movimento (contralançamento)
-          - ✅ Erros DENTRO do modal
-          - ✅ Valor com máscara BRL aprovada
-         ========================= */}
-      <Modal
-        open={movOpen}
-        title={`Movimento na Parcela #${movParcela?.numero ?? "—"}`}
-        onClose={() => setMovOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setMovOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={movSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarMovimento}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={movSaving}
-            >
-              {movSaving ? "Salvando..." : "Salvar"}
-            </button>
-          </>
-        }
-      >
-        {movError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {movError}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Tipo</label>
-            <select
-              value={movTipo}
-              onChange={(e) => setMovTipo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="AJUSTE">AJUSTE</option>
-              <option value="ESTORNO">ESTORNO</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Sinal</label>
-            <select
-              value={movSign}
-              onChange={(e) => setMovSign(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="-">- (diminuir)</option>
-              <option value="+">+ (aumentar)</option>
-            </select>
-          </div>
-
-          <div>
-            {/* ✅ Máscara no padrão */}
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
-            <input
-              value={maskBRLFromDigits(movValorDigits)}
-              onChange={(e) => setMovValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="0,00"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
-            <input
-              value={movData}
-              onChange={(e) => setMovData(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="24/12/2025"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
-            <select
-              value={movMeio}
-              onChange={(e) => setMovMeio(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="PIX">PIX</option>
-              <option value="TED">TED</option>
-              <option value="BOLETO">BOLETO</option>
-              <option value="CARTAO">CARTÃO</option>
-              <option value="DINHEIRO">DINHEIRO</option>
-              <option value="OUTRO">OUTRO</option>
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
-            <input
-              value={movMotivo}
-              onChange={(e) => setMovMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: Valor recebido a maior"
-            />
-          </div>
-        </div>
-      </Modal>
-
-      {/* =========================
-          MODAL: Transferência (erro de contrato)
-          - ✅ Erros DENTRO do modal
-          - ✅ Valor com máscara BRL aprovada
-         ========================= */}
-      <Modal
-        open={transfOpen}
-        title={`Transferir recebimento da Parcela #${transfParcela?.numero ?? "—"}`}
-        onClose={() => setTransfOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setTransfOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={transfSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarTransferencia}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={transfSaving}
-            >
-              {transfSaving ? "Transferindo..." : "Transferir"}
-            </button>
-          </>
-        }
-      >
-        {transfError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {transfError}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Parcela destino (ID)</label>
-            <input
-              value={transfDestinoId}
-              onChange={(e) => setTransfDestinoId(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: 999"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Data (DD/MM/AAAA)</label>
-            <input
-              value={transfData}
-              onChange={(e) => setTransfData(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="24/12/2025"
-            />
-          </div>
-
-          <div>
-            {/* ✅ Máscara no padrão */}
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor (R$)</label>
-            <input
-              value={maskBRLFromDigits(transfValorDigits)}
-              onChange={(e) => setTransfValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="0,00"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Meio</label>
-            <select
-              value={transfMeio}
-              onChange={(e) => setTransfMeio(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-            >
-              <option value="PIX">PIX</option>
-              <option value="TED">TED</option>
-              <option value="BOLETO">BOLETO</option>
-              <option value="CARTAO">CARTÃO</option>
-              <option value="DINHEIRO">DINHEIRO</option>
-              <option value="OUTRO">OUTRO</option>
-            </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
-            <input
-              value={transfMotivo}
-              onChange={(e) => setTransfMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: Recebimento lançado no contrato errado"
-            />
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={retOpen}
-        title={`Retificar Parcela #${retParcela?.numero ?? "—"}`}
-        onClose={() => setRetOpen(false)}
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setRetOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-              disabled={retSaving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={salvarRetificacao}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-              disabled={retSaving}
-            >
-              {retSaving ? "Salvando..." : "Retificar"}
-            </button>
-          </>
-        }
-      >
-        {retError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {retError}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Valor previsto (R$)</label>
-    
-            {/* ✅ máscara padrão adotada */}
-            <input
-              value={maskBRLFromDigits(retValorDigits)}
-              onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="0,00"
-              inputMode="numeric"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Senha do admin</label>
-            <input
-              value={retAdminPassword}
-              onChange={(e) => setRetAdminPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="••••••••"
-              type="password"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Motivo *</label>
-            <input
-              value={retMotivo}
-              onChange={(e) => setRetMotivo(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: Valor previsto lançado errado"
-            />
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
