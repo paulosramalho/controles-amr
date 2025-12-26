@@ -116,10 +116,9 @@ function formatBRL(v) {
 function moneyToCents(input) {
   if (input === null || input === undefined || input === "") return null;
 
-  // ✅ Number vindo do front = REAIS (ex.: 5000 => R$ 5.000,00)
-  if (typeof input === "number") {
-    if (!Number.isFinite(input)) return null;
-    return BigInt(String(Math.round(input * 100)));
+  // ✅ Se vier NUMBER, trate como REAIS (ex.: 5000 => R$ 5.000,00)
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return BigInt(Math.round(input * 100));
   }
 
   // ✅ Se vier um Decimal do Prisma / objeto, trate como VALOR (reais), não como centavos
@@ -229,6 +228,36 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+
+// Confirma senha do admin (para operações críticas)
+async function requireAdminPassword(req, adminPassword) {
+  const pass = String(adminPassword || "").trim();
+  if (!pass) {
+    const err = new Error("Confirme a senha do admin.");
+    err.status = 400;
+    throw err;
+  }
+  if (!req.user?.id) {
+    const err = new Error("Usuário não autenticado.");
+    err.status = 401;
+    throw err;
+  }
+  const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
+  if (!u || !u.ativo || u.role !== "ADMIN") {
+    const err = new Error("Acesso restrito a administradores.");
+    err.status = 403;
+    throw err;
+  }
+  const { bcrypt } = await getAuthLibs();
+  const ok = await bcrypt.compare(pass, u.senhaHash);
+  if (!ok) {
+    const err = new Error("Senha do admin inválida.");
+    err.status = 401;
+    throw err;
+  }
+  return true;
+}
+
 /* =========================
    AUTH (ADMIN / USER) — TEMP/REMOVÍVEL
 ========================= */
@@ -251,63 +280,6 @@ async function getAuthLibs() {
   }
   return { bcrypt: _bcrypt, jwt: _jwt };
 }
-
-/**
- * Confirma senha do admin logado (admin-only) para operações sensíveis.
- * Retorna true se ok; caso contrário já responde com status adequado e retorna false.
- */
-async function requireAdminPassword(req, res, adminPassword) {
-  try {
-    if (!req.user || req.user.role !== "ADMIN") {
-      res.status(403).json({ message: "Acesso restrito a administradores." });
-      return false;
-    }
-
-    const pass = String(adminPassword || "");
-    if (!pass) {
-      res.status(400).json({ message: "Confirme a senha do admin para continuar." });
-      return false;
-    }
-
-    if (!prisma.usuario) {
-      res.status(500).json({ message: "Tabela de usuários não disponível para validar senha." });
-      return false;
-    }
-
-    const { bcrypt } = await getAuthLibs();
-
-    const u = await prisma.usuario.findUnique({
-      where: { id: Number(req.user.id) },
-      select: { id: true, senhaHash: true, ativo: true, role: true },
-    });
-
-    if (!u || !u.senhaHash) {
-      res.status(401).json({ message: "Usuário admin não encontrado ou sem senha cadastrada." });
-      return false;
-    }
-    if (u.ativo === false) {
-      res.status(403).json({ message: "Usuário admin inativo." });
-      return false;
-    }
-    if (u.role !== "ADMIN") {
-      res.status(403).json({ message: "Acesso restrito a administradores." });
-      return false;
-    }
-
-    const ok = await bcrypt.compare(pass, u.senhaHash);
-    if (!ok) {
-      res.status(401).json({ message: "Senha do admin inválida." });
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    console.error("Erro ao validar senha do admin:", err);
-    res.status(500).json({ message: "Erro ao validar senha do admin." });
-    return false;
-  }
-}
-
 
 function publicUser(u) {
   if (!u) return null;
@@ -1947,6 +1919,161 @@ app.patch(
   }
 );
 
+// Retificar parcela (admin-only)
+// Regras:
+// - Parcela RECEBIDA não pode ser retificada
+// - Retificação só é permitida se houver pelo menos 2 parcelas PREVISTAS no contrato
+// - Retificação NÃO pode alterar o total (somatório) das parcelas PREVISTAS
+// - Pode ratear automaticamente (ratear=true) ou receber valores manuais (ratear=false)
+app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const parcelaId = Number(req.params.id);
+    const { adminPassword, motivo, ratear, patch, ajustes } = req.body || {};
+
+    await requireAdminPassword(req, adminPassword);
+
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) {
+      return res.status(400).json({ message: "Informe o motivo da retificação." });
+    }
+
+    // patch esperado: { valorPrevisto: number (reais) } ou string no formato pt-BR
+    const novoValorCents = moneyToCents(patch?.valorPrevisto);
+    if (!novoValorCents || novoValorCents <= 0n) {
+      return res.status(400).json({ message: "Valor previsto inválido." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const parcela = await tx.parcelaContrato.findUnique({
+        where: { id: parcelaId },
+        include: { contrato: { include: { parcelas: true } } },
+      });
+      if (!parcela) return { errStatus: 404, errMsg: "Parcela não encontrada." };
+
+      if (parcela.status !== "PREVISTA") {
+        return { errStatus: 400, errMsg: "Retificação bloqueada: apenas parcelas a receber (PREVISTA) podem ser retificadas." };
+      }
+
+      const contrato = parcela.contrato;
+      if (!contrato) return { errStatus: 400, errMsg: "Contrato não encontrado para esta parcela." };
+
+      const previstas = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
+      if (previstas.length < 2) {
+        return { errStatus: 400, errMsg: "Retificação bloqueada: é necessário ter pelo menos 2 parcelas PREVISTAS. Faça renegociação (Rx)." };
+      }
+
+      const toCents = (v) => moneyToCents(v) ?? 0n;
+
+      const totalAntes = previstas.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
+      const atualCents = toCents(parcela.valorPrevisto);
+      const delta = novoValorCents - atualCents;
+
+      // se delta==0, só registra o motivo? aqui a gente atualiza mesmo assim
+      // ratear default = true
+      const doRateio = ratear !== false;
+
+      // Atualiza parcela alvo
+      await tx.parcelaContrato.update({
+        where: { id: parcela.id },
+        data: { valorPrevisto: centsToDecimalString(novoValorCents) },
+      });
+
+      const outras = previstas
+        .filter((p) => p.id !== parcela.id)
+        .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+
+      if (doRateio) {
+        // Distribui delta igualmente entre as demais (preservando centavos)
+        // Se novo < atual => delta negativo => soma nos outros
+        // Se novo > atual => delta positivo => subtrai dos outros
+        const n = BigInt(outras.length);
+        if (n <= 0n) return { errStatus: 400, errMsg: "Não há outras parcelas PREVISTAS para ratear." };
+
+        // Queremos que somaDosAjustes = -delta (para manter total)
+        const target = -delta;
+
+        const base = target / n; // BigInt truncado
+        let rem = target % n;
+
+        // Aplica base + distribui rem (+1/-1) nos primeiros
+        for (let i = 0; i < outras.length; i++) {
+          const p = outras[i];
+          let add = base;
+          if (rem !== 0n) {
+            const step = rem > 0n ? 1n : -1n;
+            add += step;
+            rem -= step;
+          }
+          const novo = toCents(p.valorPrevisto) + add;
+          if (novo <= 0n) {
+            return { errStatus: 400, errMsg: "Retificação inválida: alguma parcela ficaria com valor <= 0. Use Renegociar (Rx)." };
+          }
+          await tx.parcelaContrato.update({
+            where: { id: p.id },
+            data: { valorPrevisto: centsToDecimalString(novo) },
+          });
+        }
+      } else {
+        // Modo manual: "ajustes" deve trazer valores absolutos para as demais parcelas PREVISTAS
+        const arr = Array.isArray(ajustes) ? ajustes : [];
+        // Monta mapa id->cents e valida que cobre todas as "outras"
+        const map = new Map();
+        for (const a of arr) {
+          const id = Number(a?.id);
+          const cents = moneyToCents(a?.valorPrevisto);
+          if (id && cents && cents > 0n) map.set(id, cents);
+        }
+
+        for (const p of outras) {
+          if (!map.has(p.id)) {
+            return { errStatus: 400, errMsg: "No modo manual, informe valores para todas as demais parcelas PREVISTAS." };
+          }
+        }
+
+        // Valida fechamento do total
+        const totalDepois =
+          novoValorCents +
+          outras.reduce((acc, p) => acc + (map.get(p.id) || 0n), 0n);
+
+        if (totalDepois !== totalAntes) {
+          return { errStatus: 400, errMsg: "Retificação bloqueada: os valores alteram o total do contrato. Ajuste para fechar o total ou use Renegociar (Rx)." };
+        }
+
+        // Atualiza outras parcelas
+        for (const p of outras) {
+          const nv = map.get(p.id);
+          await tx.parcelaContrato.update({
+            where: { id: p.id },
+            data: { valorPrevisto: centsToDecimalString(nv) },
+          });
+        }
+      }
+
+      // Recalcula total depois e garante igualdade (segurança extra)
+      const updated = await tx.parcelaContrato.findMany({ where: { contratoId: contrato.id, status: "PREVISTA" } });
+      const totalDepoisCheck = updated.reduce((acc, p) => acc + toCents(p.valorPrevisto), 0n);
+      if (totalDepoisCheck !== totalAntes) {
+        return { errStatus: 500, errMsg: "Falha interna: total do contrato foi alterado na retificação." };
+      }
+
+      // (Opcional) registrar histórico se existir modelo — não inventar aqui.
+
+      return { ok: true };
+    });
+
+    if (result?.errStatus) {
+      return res.status(result.errStatus).json({ message: result.errMsg });
+    }
+
+    return res.json({ message: "Retificação realizada com sucesso." });
+  } catch (err) {
+    const status = err?.status || 500;
+    console.error("Erro ao retificar parcela:", err);
+    return res.status(status).json({ message: err?.message || "Erro ao retificar parcela." });
+  }
+});
+
+
 // Cancelar uma parcela (somente não recebidas)
 app.patch(
   "/api/parcelas/:id/cancelar",
@@ -1997,232 +2124,6 @@ app.patch(
     }
   }
 );
-
-
-
-// Retificar parcela (somente PREVISTA) mantendo o total do contrato (admin-only)
-// Regras:
-// - Parcela RECEBIDA não se retifica
-// - Retificação só habilita se qtde PREVISTA >= 2 (no contrato)
-// - Não pode alterar o total do contrato: ajusta outras PREVISTAS (rateio automático) ou exige valores manuais que fechem o total
-app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
-
-    const { adminPassword, motivo, patch, ratear, ajustes } = req.body || {};
-    const ok = await requireAdminPassword(req, res, adminPassword);
-    if (!ok) return;
-
-    const motivoTxt = String(motivo || "").trim();
-    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
-
-    const parcela = await prisma.parcelaContrato.findUnique({
-      where: { id },
-      include: { contrato: { include: { parcelas: true } } },
-    });
-    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
-
-    if (parcela.status !== "PREVISTA") {
-      return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
-    }
-
-    const contrato = parcela.contrato;
-    if (!contrato) return res.status(400).json({ message: "Contrato da parcela não encontrado." });
-
-    const previstas = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
-    if (previstas.length < 2) {
-      return res.status(400).json({
-        message: "Retificação bloqueada: é necessário ter pelo menos 2 parcelas PREVISTAS no contrato/renegociação.",
-        suggestedAction: "RENEGOCIAR",
-      });
-    }
-
-    const p = patch || {};
-    const dataParcela = {};
-
-    // vencimento (opcional)
-    if (p.vencimento !== undefined) {
-      const d = parseDateInput(p.vencimento);
-      if (!d) return res.status(400).json({ message: "Vencimento inválido. Use DD/MM/AAAA." });
-      dataParcela.vencimento = d;
-    }
-
-    // valor (opcional)
-    const currCents = moneyToCents(parcela.valorPrevisto);
-    if (currCents === null) return res.status(400).json({ message: "Valor atual inválido." });
-
-    let newCents = currCents;
-    if (p.valorPrevisto !== undefined) {
-      const v = moneyToCents(p.valorPrevisto);
-      if (v === null || v <= 0n) return res.status(400).json({ message: "Valor previsto inválido." });
-      newCents = v;
-      dataParcela.valorPrevisto = centsToDecimalString(newCents);
-    }
-
-    // Se não alterou valor e só mexeu em vencimento, atualiza direto
-    const delta = newCents - currCents;
-
-    // Total das PREVISTAS antes
-    const totalPrevAntes = previstas.reduce((acc, it) => {
-      const c = moneyToCents(it.valorPrevisto);
-      return acc + (c ?? 0n);
-    }, 0n);
-
-    // Outras PREVISTAS (exclui a parcela alvo)
-    const outras = previstas.filter((x) => x.id !== parcela.id);
-
-    // Modo default: ratear = true
-    const ratearFlag = ratear === undefined ? true : Boolean(ratear);
-
-    // Monta plano de atualização das outras parcelas
-    const updatesOutras = new Map(); // id -> cents (novo)
-
-    if (delta !== 0n) {
-      if (ratearFlag) {
-        // Rateio automático: compensa delta nas demais PREVISTAS
-        const n = outras.length;
-        if (n < 1) {
-          return res.status(400).json({ message: "Retificação bloqueada: não há outras parcelas PREVISTAS para compensar." });
-        }
-        // precisamos aplicar -delta nas outras para manter o total
-        let restante = -delta;
-
-        const base = restante / BigInt(n); // pode ser negativo
-        let rem = restante % BigInt(n);    // pode ser negativo
-
-        for (let i = 0; i < n; i++) {
-          const o = outras[i];
-          const oCurr = moneyToCents(o.valorPrevisto);
-          if (oCurr === null) return res.status(400).json({ message: "Valor inválido em parcela prevista." });
-
-          // distribui o resto 1 centavo por vez respeitando sinal
-          let extra = 0n;
-          if (rem !== 0n) {
-            extra = rem > 0n ? 1n : -1n;
-            rem -= extra;
-          }
-
-          const oNew = oCurr + base + extra;
-          if (oNew <= 0n) {
-            return res.status(409).json({
-              message: "Retificação resultaria em parcela com valor <= 0. Use Renegociar (Rx).",
-              suggestedAction: "RENEGOCIAR",
-            });
-          }
-          updatesOutras.set(o.id, oNew);
-        }
-      } else {
-        // Manual: exige valores das demais parcelas para fechar o total
-        const arr = Array.isArray(ajustes) ? ajustes : [];
-        if (arr.length !== outras.length) {
-          return res.status(400).json({
-            message: "Informe os valores de TODAS as demais parcelas PREVISTAS para concluir a retificação.",
-          });
-        }
-
-        const byId = new Map(arr.map((x) => [Number(x?.id), x]));
-        for (const o of outras) {
-          const entry = byId.get(o.id);
-          if (!entry) {
-            return res.status(400).json({
-              message: "Valores manuais incompletos: faltou informar uma ou mais parcelas previstas.",
-            });
-          }
-          const v = moneyToCents(entry.valorPrevisto);
-          if (v === null || v <= 0n) return res.status(400).json({ message: "Valor previsto inválido nas parcelas." });
-          updatesOutras.set(o.id, v);
-        }
-
-        const totalDepois = newCents + Array.from(updatesOutras.values()).reduce((a, b) => a + b, 0n);
-        if (totalDepois !== totalPrevAntes) {
-          return res.status(409).json({
-            message: "Retificação bloqueada: os valores informados alteram o total do contrato. Ajuste para fechar o total ou use Renegociar (Rx).",
-            suggestedAction: "RENEGOCIAR",
-          });
-        }
-      }
-    } else {
-      // delta 0: se ratear false, ainda assim não precisa de ajustes
-    }
-
-    // Snapshot antes (mínimo, para auditoria se existir tabela)
-    const snapAntes = {
-      parcela: {
-        id: parcela.id,
-        numero: parcela.numero,
-        vencimento: parcela.vencimento,
-        valorPrevisto: parcela.valorPrevisto,
-        status: parcela.status,
-      },
-      outras: outras.map((o) => ({
-        id: o.id,
-        numero: o.numero,
-        vencimento: o.vencimento,
-        valorPrevisto: o.valorPrevisto,
-        status: o.status,
-      })),
-      totalPrevAntes: totalPrevAntes.toString(),
-    };
-
-    const result = await prisma.$transaction(async (tx) => {
-      const afterParcela = await tx.parcelaContrato.update({
-        where: { id: parcela.id },
-        data: dataParcela,
-      });
-
-      const afterOutras = [];
-      for (const [oid, cents] of updatesOutras.entries()) {
-        const up = await tx.parcelaContrato.update({
-          where: { id: oid },
-          data: { valorPrevisto: centsToDecimalString(cents) },
-        });
-        afterOutras.push(up);
-      }
-
-      // Log de retificação (se existir no schema atual)
-      if (tx.retificacaoParcela) {
-        await tx.retificacaoParcela.create({
-          data: {
-            parcelaId: parcela.id,
-            motivo: motivoTxt,
-            alteracoes: {
-              ratear: ratearFlag,
-              delta: delta.toString(),
-              updatesOutras: Array.from(updatesOutras.entries()).map(([pid, cents]) => ({ id: pid, cents: cents.toString() })),
-              patch: p,
-            },
-            snapshotAntes: snapAntes,
-            snapshotDepois: {
-              parcela: {
-                id: afterParcela.id,
-                numero: afterParcela.numero,
-                vencimento: afterParcela.vencimento,
-                valorPrevisto: afterParcela.valorPrevisto,
-                status: afterParcela.status,
-              },
-              outras: afterOutras.map((o) => ({
-                id: o.id,
-                numero: o.numero,
-                vencimento: o.vencimento,
-                valorPrevisto: o.valorPrevisto,
-                status: o.status,
-              })),
-            },
-            criadoPorId: req.user?.id ?? null,
-          },
-        });
-      }
-
-      return { parcela: afterParcela, outras: afterOutras };
-    });
-
-    return res.json({ message: "Parcela retificada com sucesso.", ...result });
-  } catch (err) {
-    console.error("Erro ao retificar parcela:", err);
-    return res.status(500).json({ message: err?.message || "Erro ao retificar parcela." });
-  }
-});
 
 app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
