@@ -28,6 +28,17 @@ export function setUser(user) {
   else localStorage.removeItem(USER_KEY);
 }
 
+export function setAuth(a, b) {
+  // aceita setAuth(token, user) OU setAuth({token, user})
+  if (a && typeof a === "object" && ("token" in a || "user" in a)) {
+    setToken(a.token);
+    setUser(a.user);
+    return;
+  }
+  setToken(a);
+  setUser(b);
+}
+
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
