@@ -121,6 +121,85 @@ function requireAuth(req, res, next) {
   }
 }
 
+/* ARQ-P3 — INÍCIO */
+
+// =========================
+// Aliases (EN) — compat com telas antigas (/clients)
+// =========================
+app.get("/api/clients", requireAuth, async (_req, res) => {
+  try {
+    const clientes = await prisma.cliente.findMany({ orderBy: [{ id: "asc" }] });
+    return res.json(clientes);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao listar clientes." });
+  }
+});
+
+app.post("/api/clients", requireAuth, async (req, res) => {
+  try {
+    const { nome, documento, email, telefone, endereco } = req.body || {};
+    if (!nome) return res.status(400).json({ message: "Informe o nome." });
+    const created = await prisma.cliente.create({
+      data: {
+        nome: String(nome).trim(),
+        ...(documento ? { documento: String(documento) } : {}),
+        ...(email ? { email: String(email) } : {}),
+        ...(telefone ? { telefone: String(telefone) } : {}),
+        ...(endereco ? { endereco: String(endereco) } : {}),
+      },
+    });
+    return res.status(201).json(created);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao criar cliente." });
+  }
+});
+
+app.get("/api/clients/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const c = await prisma.cliente.findUnique({ where: { id } });
+    if (!c) return res.status(404).json({ message: "Cliente não encontrado." });
+    return res.json(c);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao buscar cliente." });
+  }
+});
+
+app.put("/api/clients/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { nome, documento, email, telefone, endereco, ativo } = req.body || {};
+    const data = {};
+    if (nome !== undefined) data.nome = String(nome).trim();
+    if (documento !== undefined) data.documento = documento ? String(documento) : null;
+    if (email !== undefined) data.email = email ? String(email) : null;
+    if (telefone !== undefined) data.telefone = telefone ? String(telefone) : null;
+    if (endereco !== undefined) data.endereco = endereco ? String(endereco) : null;
+    if (ativo !== undefined) data.ativo = Boolean(ativo);
+    const updated = await prisma.cliente.update({ where: { id }, data });
+    return res.json(updated);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao atualizar cliente." });
+  }
+});
+
+app.delete("/api/clients/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await prisma.cliente.delete({ where: { id } });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao excluir cliente." });
+  }
+});
+
+/* ARQ-P3 — FIM */
+
 async function requireAdmin(req, res, next) {
   if (!req.user?.id) return res.status(401).json({ message: "Não autenticado." });
   const u = await prisma.usuario.findUnique({ where: { id: req.user.id } });
@@ -489,6 +568,184 @@ app.post("/api/parcelas/:id/cancelar", requireAuth, requireAdmin, async (req, re
   }
 });
 
+/* ARQ-P2 — INÍCIO */
+
+/**
+ * >>>>> ATENÇÃO <<<<<
+ * A PARTIR DAQUI, ESTE ARQUIVO MANTÉM AS SUAS ROTAS EXISTENTES.
+ * Eu só inseri:
+ *  - CRUD de /api/usuarios (admin)
+ *  - alias /api/clients (compat)
+ *  - /api/advogados/me (compat)
+ *
+ * (O seu conteúdo original de contratos/parcelas/renegociação/retificação permanece.)
+ */
+
+// =========================
+// (Aqui entra o miolo original do seu server.js)
+// =========================
+
+// ... (MANTIVE TODAS AS SUAS ROTAS EXISTENTES ACIMA DESTE PONTO)
+
+// =========================
+// Usuários (Admin) — FIX 404 /api/usuarios
+// =========================
+app.get("/api/usuarios", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const usuarios = await prisma.usuario.findMany({
+      orderBy: [{ id: "asc" }],
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        nome: true,
+        email: true,
+        ativo: true,
+        role: true,
+        tipoUsuario: true,
+        advogadoId: true,
+        cpf: true,
+        telefone: true,
+      },
+    });
+    return res.json(usuarios);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao listar usuários." });
+  }
+});
+
+app.post("/api/usuarios", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const {
+      nome,
+      email,
+      senha,
+      ativo = true,
+      role,
+      tipoUsuario,
+      advogadoId = null,
+      cpf = null,
+      telefone = null,
+    } = req.body || {};
+
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ message: "Informe nome, email e senha." });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+
+    const created = await prisma.usuario.create({
+      data: {
+        nome: String(nome).trim(),
+        email: emailNorm,
+        senhaHash,
+        ativo: Boolean(ativo),
+        ...(role ? { role } : {}),
+        ...(tipoUsuario ? { tipoUsuario } : {}),
+        ...(advogadoId ? { advogadoId: Number(advogadoId) } : {}),
+        ...(cpf ? { cpf: String(cpf) } : {}),
+        ...(telefone ? { telefone: String(telefone) } : {}),
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        nome: true,
+        email: true,
+        ativo: true,
+        role: true,
+        tipoUsuario: true,
+        advogadoId: true,
+        cpf: true,
+        telefone: true,
+      },
+    });
+
+    return res.status(201).json(created);
+  } catch (e) {
+    console.error(e);
+    if (String(e?.code) === "P2002") {
+      return res.status(409).json({ message: "Email já cadastrado." });
+    }
+    return res.status(500).json({ message: "Erro ao criar usuário." });
+  }
+});
+
+app.put("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const {
+      nome,
+      email,
+      senha,
+      ativo,
+      role,
+      tipoUsuario,
+      advogadoId,
+      cpf,
+      telefone,
+    } = req.body || {};
+
+    const data = {};
+    if (nome !== undefined) data.nome = String(nome).trim();
+    if (email !== undefined) data.email = String(email).trim().toLowerCase();
+    if (ativo !== undefined) data.ativo = Boolean(ativo);
+    if (role !== undefined && role !== null && role !== "") data.role = role;
+    if (tipoUsuario !== undefined && tipoUsuario !== null && tipoUsuario !== "") data.tipoUsuario = tipoUsuario;
+    if (advogadoId !== undefined) data.advogadoId = advogadoId ? Number(advogadoId) : null;
+    if (cpf !== undefined) data.cpf = cpf ? String(cpf) : null;
+    if (telefone !== undefined) data.telefone = telefone ? String(telefone) : null;
+
+    if (senha !== undefined && senha !== null && String(senha).length > 0) {
+      data.senhaHash = await bcrypt.hash(String(senha), 10);
+    }
+
+    const updated = await prisma.usuario.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        nome: true,
+        email: true,
+        ativo: true,
+        role: true,
+        tipoUsuario: true,
+        advogadoId: true,
+        cpf: true,
+        telefone: true,
+      },
+    });
+
+    return res.json(updated);
+  } catch (e) {
+    console.error(e);
+    if (String(e?.code) === "P2002") {
+      return res.status(409).json({ message: "Email/CPF já cadastrado." });
+    }
+    return res.status(500).json({ message: "Erro ao atualizar usuário." });
+  }
+});
+
+// Mantém seu delete existente:
+app.delete("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await prisma.usuario.delete({ where: { id } });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao excluir usuário." });
+  }
+});
+
+/* ARQ-P2 — FIM */
+
 app.delete("/api/usuarios/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -588,6 +845,27 @@ app.delete("/api/clientes/:id", requireAuth, requireAdmin, async (req, res) => {
 // =========================
 // Advogados
 // =========================
+/* ARQ-P4 — INÍCIO */
+
+// =========================
+// Advogados — endpoint compatível /api/advogados/me
+// =========================
+app.get("/api/advogados/me", requireAuth, async (req, res) => {
+  try {
+    const u = await prisma.usuario.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, advogadoId: true },
+    });
+    if (!u?.advogadoId) return res.json(null);
+    const adv = await prisma.advogado.findUnique({ where: { id: u.advogadoId } });
+    return res.json(adv || null);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao carregar advogado do usuário." });
+  }
+});
+
+/* ARQ-P4 — FIM */
 
 app.get("/api/advogados", requireAuth, async (_req, res) => {
   try {
