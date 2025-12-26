@@ -252,6 +252,63 @@ async function getAuthLibs() {
   return { bcrypt: _bcrypt, jwt: _jwt };
 }
 
+/**
+ * Confirma senha do admin logado (admin-only) para operações sensíveis.
+ * Retorna true se ok; caso contrário já responde com status adequado e retorna false.
+ */
+async function requireAdminPassword(req, res, adminPassword) {
+  try {
+    if (!req.user || req.user.role !== "ADMIN") {
+      res.status(403).json({ message: "Acesso restrito a administradores." });
+      return false;
+    }
+
+    const pass = String(adminPassword || "");
+    if (!pass) {
+      res.status(400).json({ message: "Confirme a senha do admin para continuar." });
+      return false;
+    }
+
+    if (!prisma.usuario) {
+      res.status(500).json({ message: "Tabela de usuários não disponível para validar senha." });
+      return false;
+    }
+
+    const { bcrypt } = await getAuthLibs();
+
+    const u = await prisma.usuario.findUnique({
+      where: { id: Number(req.user.id) },
+      select: { id: true, senhaHash: true, ativo: true, role: true },
+    });
+
+    if (!u || !u.senhaHash) {
+      res.status(401).json({ message: "Usuário admin não encontrado ou sem senha cadastrada." });
+      return false;
+    }
+    if (u.ativo === false) {
+      res.status(403).json({ message: "Usuário admin inativo." });
+      return false;
+    }
+    if (u.role !== "ADMIN") {
+      res.status(403).json({ message: "Acesso restrito a administradores." });
+      return false;
+    }
+
+    const ok = await bcrypt.compare(pass, u.senhaHash);
+    if (!ok) {
+      res.status(401).json({ message: "Senha do admin inválida." });
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("Erro ao validar senha do admin:", err);
+    res.status(500).json({ message: "Erro ao validar senha do admin." });
+    return false;
+  }
+}
+
+
 function publicUser(u) {
   if (!u) return null;
   return {
