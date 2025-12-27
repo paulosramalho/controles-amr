@@ -135,6 +135,7 @@ function Shell({ user, onLogout }) {
   const navigate = useNavigate();
 
   const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  const userLabel = isAdmin ? "Administrador" : "Usuário";
   const [openSettings, setOpenSettings] = useState(false);
   const [openLivroCaixa, setOpenLivroCaixa] = useState(false);
 
@@ -227,11 +228,15 @@ function Shell({ user, onLogout }) {
           </div>
 
           {/* ✅ Usuário logado e tipo entre data/hora e sair */}
-          <div className="px-3 py-2 text-xs text-slate-600">
-            <div className="font-semibold text-slate-800">{user?.nome || "—"}</div>
-            <div>
-              {String(user?.tipoUsuario || "").toUpperCase() || "—"}
-              {user?.role ? ` • ${String(user.role).toUpperCase()}` : ""}
+          <div className="mt-3">
+            {/* Nome do usuário — destaque total */}
+            <div className="w-full bg-blue-100 text-blue-950 px-3 py-2 rounded-lg">
+              <div className="text-sm font-semibold uppercase tracking-wide">
+                {userLabel}
+              </div>
+              <div className="text-base font-bold">
+                {user?.nome || "—"}
+              </div>
             </div>
           </div>
 
@@ -241,10 +246,11 @@ function Shell({ user, onLogout }) {
               onLogout?.();
               navigate("/");
             }}
-            className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold hover:bg-slate-100"
+            className="mt-4 w-full rounded-xl bg-red-600 text-white px-3 py-2 font-semibold hover:bg-red-700 transition"
           >
-            Sair
+            Sair do sistema
           </button>
+
         </div>
       </aside>
 
