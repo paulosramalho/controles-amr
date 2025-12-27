@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import Can from "../components/Can";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -336,9 +337,9 @@ export default function PagamentosPage({ user }) {
   }
 
   useEffect(() => {
-    if (!isAdmin) return;
-    load();
-  }, [isAdmin]); // eslint-disable-line
+  load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -610,17 +611,6 @@ async function cancelarParcela() {
     </div>
   );
 
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xl font-semibold text-slate-900">Pagamentos</div>
-          <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-6">
       <Card
@@ -764,11 +754,6 @@ async function cancelarParcela() {
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               disabled={loading}
             >
-        {modalError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {modalError}
-          </div>
-        )}
               Cancelar
             </button>
             <button
@@ -782,6 +767,11 @@ async function cancelarParcela() {
           </div>
         }
       >
+        {modalError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {modalError}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Select label="Cliente" value={clienteId} onChange={setClienteId} disabled={loading}>
             <option value="">Selecione…</option>
