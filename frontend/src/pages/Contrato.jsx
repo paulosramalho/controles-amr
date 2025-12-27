@@ -1,9 +1,7 @@
-// src/pages/Contrato.jsx    26/12 - 23:58h
+// src/pages/Contrato.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
-import AdminOnly from "../components/AdminOnly";
-import Can from "../components/Can";
 
 /* =========================
    Helpers (padrão do projeto)
@@ -51,34 +49,62 @@ function todayAtNoonLocal() {
   return d;
 }
 
-function formatFormaPagamento(fp) {
-  const raw = String(fp ?? "").trim();
-  if (!raw) return "—";
-  const s = raw.normalize("NFD").replace(/\p{Diacritic}/gu, "").toUpperCase();
+// Normaliza datas para evitar efeito D-1 quando o backend manda DateTime em UTC (ex.: 2025-12-27T00:00:00.000Z)
+// - Se vier "DD/MM/AAAA" -> parse local
+// - Se vier "YYYY-MM-DD" (ou começar assim) -> trata como data-only local
+// - Caso geral -> Date() e normaliza para 12:00 local
+function toDateOnlyNoonLocal(v) {
+  if (!v) return null;
 
-  // tenta mapear para as 3 opções oficiais do app
-  if (s.includes("A_VISTA") || s.includes("AVISTA") || s.includes("A VISTA") || s.includes("VISTA")) return "À vista";
-  if (s.includes("ENTRADA")) return "Entrada + Parcelado";
-  if (s.includes("PARCEL")) return "Parcelado";
+  // DD/MM/AAAA
+  const s = String(v).trim();
+  const mBR = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mBR) {
+    const dd = Number(mBR[1]);
+    const mm = Number(mBR[2]);
+    const yyyy = Number(mBR[3]);
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d;
+  }
 
-  // fallback: mostra como veio
-  return raw;
+  // YYYY-MM-DD (ou prefixo)
+  const mISO = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (mISO) {
+    const yyyy = Number(mISO[1]);
+    const mm = Number(mISO[2]);
+    const dd = Number(mISO[3]);
+    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+    if (!Number.isFinite(d.getTime())) return null;
+    return d;
+  }
+
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
 }
 
 function computeStatusContrato(c) {
   if (!c) return "EM_DIA";
-  if (c.status === "CANCELADO") return "CANCELADO";
-  if (c.status === "RENEGOCIADO") return "RENEGOCIADO";
-  if (c.status === "QUITADO") return "QUITADO";
+
+  // PRIORIDADE (regra de negócio):
+  // 1) Renegociado prevalece sobre Cancelado (quando todas as parcelas foram canceladas por renegociação)
+  if (c.renegociadoParaId || c?.renegociadoPara?.id) return "RENEGOCIADO";
 
   const parcelas = c.parcelas || [];
-  const pendentes = parcelas.filter((p) => p.status === "PREVISTA");
-  if (!pendentes.length) return "QUITADO";
+  if (!parcelas.length) return "EM_DIA";
 
+  const allCanceladas = parcelas.every((p) => p.status === "CANCELADA");
+  if (allCanceladas) return "CANCELADO";
+
+  const allEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
+  if (allEncerradas) return "QUITADO";
+
+  const pendentes = parcelas.filter((p) => p.status === "PREVISTA");
   const ref = todayAtNoonLocal().getTime();
   const atrasada = pendentes.some((p) => {
-    const v = p.vencimento ? new Date(p.vencimento) : null;
-    if (!v || Number.isNaN(v.getTime())) return false;
+    const v = toDateOnlyNoonLocal(p.vencimento);
+    if (!v) return false;
     return v.getTime() < ref;
   });
 
@@ -130,9 +156,6 @@ export default function ContratoPage({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
-
-
   const [contrato, setContrato] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
@@ -159,7 +182,7 @@ export default function ContratoPage({ user }) {
     try {
       setLoading(true);
       setErrMsg("");
-      const data = await apiFetch(`/contratos/${id}`);
+      const data = await apiFetch(`/api/contratos/${id}`);
       setContrato(data);
     } catch (e) {
       setErrMsg(e?.message || "Erro ao carregar contrato.");
@@ -167,26 +190,6 @@ export default function ContratoPage({ user }) {
       setLoading(false);
     }
   }
-
-if (!isAdmin) {
-  return (
-    <div className="p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="text-xl font-semibold text-slate-900">Contrato</div>
-        <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
-
-        <div className="mt-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-          >
-            Voltar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
   useEffect(() => {
     load();
@@ -199,48 +202,7 @@ if (!isAdmin) {
 
   const stContrato = useMemo(() => computeStatusContrato(contrato), [contrato]);
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
-
-  const numeroContrato =
-    contrato?.numeroContrato ??
-    contrato?.numero ??
-    contrato?.numero_contrato ??
-    contrato?.numeroDoContrato ??
-    "";
-
-  const nomeCliente = (() => {
-  const c = contrato?.cliente;
-
-  if (typeof c === "string") return c.trim() || "—";
-
-  const nome =
-    c?.nomeRazaoSocial ??
-    c?.nome_razao_social ??
-    c?.razaoSocial ??
-    c?.razao_social ??
-    c?.nomeFantasia ??
-    c?.nome_fantasia ??
-    c?.nomeCompleto ??
-    c?.nome_completo ??
-    c?.nome ??
-    contrato?.clienteNome ??
-    contrato?.nomeCliente ??
-    contrato?.cliente_nome ??
-    contrato?.nome_cliente ??
-    "—";
-
-  return String(nome || "—");
-})();
-
-  const formaPagamentoLabel = useMemo(() => {
-    const fp =
-      contrato?.formaPagamento ??
-      contrato?.forma_pagamento ??
-      contrato?.forma ??
-      contrato?.tipoPagamento ??
-      "";
-    return formatFormaPagamento(fp);
-  }, [contrato]);
-
+  const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
 
   function openReceber(p) {
     setReceberParcela(p);
@@ -284,7 +246,7 @@ if (!isAdmin) {
         }
       }
 
-      await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
+      await apiFetch(`/api/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
           valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
@@ -343,7 +305,7 @@ if (!isAdmin) {
         }
       }
 
-      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+      await apiFetch(`/api/parcelas/${retParcela.id}/retificar`, {
         method: "POST",
         body: {
           adminPassword: retSenha,
@@ -375,65 +337,48 @@ if (!isAdmin) {
 
   if (errMsg && !contrato) {
     return (
-      <div className="p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-          >
-            Voltar
-          </button>
-          <Link
-            to="/pagamentos"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-          >
-            Pagamentos
-          </Link>
-        </div>
-
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {errMsg}
-        </div>
-       </div>
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errMsg}</div>
+        <button onClick={() => navigate(-1)} className="mt-4 rounded-xl border px-4 py-2 text-sm">
+          Voltar
+        </button>
+      </div>
     );
   }
-     return (
-      <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm"
-            title="Voltar"
-          >
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
             Voltar
           </button>
-          <Link
-            to="/pagamentos"
-            className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm"
-            title="Ir para Pagamentos"
-          >
+          <Link to="/pagamentos" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
             Pagamentos
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
-          <AdminOnly user={user}>
+        <div className="flex items-center gap-3">
+          {!contratoTravado && (
             <button
               onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover transition"
+              className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
               title="Renegociar contrato"
             >
               Renegociar Contrato
             </button>
-          </AdminOnly>
+          )}
 
           <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
         </div>
       </div>
 
+      {errMsg && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{errMsg}</div>
+      )}
+
       <Card
-        title={`Contrato #${numeroContrato || "—"}`}
+        title={`Contrato #${contrato?.numero || ""}`}
         right={
           <div className="text-xs text-slate-500">
             Criado em: <span className="font-medium text-slate-700">{toDDMMYYYY(contrato?.createdAt)}</span>
@@ -443,7 +388,15 @@ if (!isAdmin) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Cliente</div>
-            <div className="text-sm font-semibold text-slate-900">{nomeCliente}</div>
+            <div className="text-sm font-semibold text-slate-900">
+              {contrato?.cliente?.nome ||
+                contrato?.cliente?.nomeRazaoSocial ||
+                contrato?.cliente?.nomeCompleto ||
+                contrato?.cliente?.razaoSocial ||
+                contrato?.clienteNome ||
+                contrato?.nomeCliente ||
+                "—"}
+            </div>
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
@@ -453,7 +406,7 @@ if (!isAdmin) {
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
-            <div className="text-sm font-semibold text-slate-900">{formaPagamentoLabel}</div>
+            <div className="text-sm font-semibold text-slate-900">{contrato?.formaPagamento || "—"}</div>
           </div>
         </div>
       </Card>
@@ -498,23 +451,23 @@ if (!isAdmin) {
                     </td>
                     <td className="py-3 pr-3">
                       <div className="flex flex-wrap gap-2">
-                        <Can when={isAdmin && st === "PREVISTA"}>
+                        {!contratoTravado && st === "PREVISTA" && (
                           <button
                             onClick={() => openReceber(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
                           >
                             Receber Parcela
                           </button>
-                        </Can>
+                        )}
 
-                        <Can when={isAdmin && podeRetificar}>
+                        {!contratoTravado && podeRetificar && (
                           <button
                             onClick={() => openRetificar(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
                           >
                             Retificar
                           </button>
-                        </Can>
+                        )}
                       </div>
                     </td>
                   </tr>

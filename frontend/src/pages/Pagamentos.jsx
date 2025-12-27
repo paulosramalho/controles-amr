@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import Can from "../components/Can";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -14,6 +13,21 @@ function toDateOnly(d) {
     if (!parsed) return null;
     parsed.setHours(0, 0, 0, 0);
     return parsed;
+  }
+
+  // Se vier "YYYY-MM-DD" (ou DateTime começando assim), trate como data-only local.
+  // Isso evita o bug D-1 quando o backend manda 00:00:00Z.
+  if (typeof d === "string") {
+    const mISO = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (mISO) {
+      const yyyy = Number(mISO[1]);
+      const mm = Number(mISO[2]);
+      const dd = Number(mISO[3]);
+      const local = new Date(yyyy, mm - 1, dd);
+      if (!Number.isFinite(local.getTime())) return null;
+      local.setHours(0, 0, 0, 0);
+      return local;
+    }
   }
 
   // Caso geral (Date, ISO etc.)
@@ -33,6 +47,7 @@ function isParcelaAtrasada(p) {
 
   if (!hoje || !venc) return false;
 
+  // Atrasado somente se vencimento já passou (vencimento == hoje NÃO é atrasado)
   return venc < hoje;
 }
 
@@ -148,9 +163,9 @@ function computeStatusContrato(contrato) {
 /* ---------------- UI components ---------------- */
 function Card({ title, right, children }) {
   return (
-    <div className="rounded-2xl border border-surface-border bg-surface-card">
+    <div className="rounded-2xl border border-slate-200 bg-white">
       <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-        <div className="text-xl font-semibold text-text-primary">{title}</div>
+        <div className="text-xl font-semibold text-slate-900">{title}</div>
         {right ? <div className="pt-0.5">{right}</div> : null}
       </div>
       <div className="p-5">{children}</div>
@@ -250,7 +265,6 @@ export default function PagamentosPage({ user }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [renegProcessando, setRenegProcessando] = useState(false);
-  const [renegociarId, setRenegociarId] = useState(null); // contrato pai em renegociação (admin-only)
 
   // modal novo contrato
   const [openNovo, setOpenNovo] = useState(false);
@@ -322,9 +336,9 @@ export default function PagamentosPage({ user }) {
   }
 
   useEffect(() => {
+    if (!isAdmin) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin]); // eslint-disable-line
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -338,33 +352,24 @@ export default function PagamentosPage({ user }) {
       setError("");
       setRenegProcessando(true);
       try {
-        // 🔁 apenas prepara (não cria nada)
-        const prev = await apiFetch(`/contratos/${id}/renegociar-preview`);
+        const resp = await apiFetch(`/contratos/${id}/renegociar`, { method: "POST" });
+
+        const novoId =
+          resp?.contratoNovo?.id ??
+          resp?.contratoNovoId ??
+          resp?.id;
 
         // limpa query param (pra não repetir ao voltar)
         navigate("/pagamentos", { replace: true });
 
-        // abre modal já preenchido (admin-only)
-        resetNovo();
-        setRenegociarId(Number(id));
-        setClienteId(String(prev?.clienteId ?? ""));
-        setNumeroContrato(String(prev?.numeroContratoNovo ?? ""));
-        setValorTotalDigits(String(prev?.saldoCents ?? ""));
-        const base = prev?.dataBaseISO ? toDDMMYYYY(new Date(prev.dataBaseISO)) : "";
-        const fpOrig = String(prev?.formaPagamentoOriginal || "AVISTA").trim().toUpperCase();
-        setFormaPagamento(["AVISTA", "PARCELADO", "ENTRADA_PARCELAS"].includes(fpOrig) ? fpOrig : "AVISTA");
+        await load();
 
-        // defaults de datas (o usuário pode ajustar)
-        setAvistaVenc(base);
-        setParcelasPrimeiroVenc(base);
-        setEntradaVenc(base);
-        setEntradaParcelasPrimeiroVenc(base);
-
-        setModalError("");
-        setOpenNovo(true);
-        loadClientes();
+        if (novoId) {
+          navigate(`/contratos/${novoId}`);
+        }
       } catch (e) {
-        setError(e?.message || "Falha ao preparar renegociação.");
+        navigate("/pagamentos", { replace: true });
+        setError(e?.message || "Falha ao renegociar saldo.");
       } finally {
         setRenegProcessando(false);
       }
@@ -391,7 +396,6 @@ export default function PagamentosPage({ user }) {
     setEntradaParcelasQtd("3");
     setEntradaParcelasPrimeiroVenc("");
     setObservacoes("");
-    setRenegociarId(null);
   }
 
   function openNovoContrato() {
@@ -489,34 +493,9 @@ export default function PagamentosPage({ user }) {
         };
       }
 
-      if (renegociarId) {
-        const body = { formaPagamento };
-
-        if (formaPagamento === "AVISTA") {
-          body.avista = { vencimento: avistaVenc };
-        }
-
-        if (formaPagamento === "PARCELADO") {
-          body.parcelas = { quantidade: Number(parcelasQtd), primeiroVencimento: parcelasPrimeiroVenc };
-        }
-
-        if (formaPagamento === "ENTRADA_PARCELAS") {
-          body.entrada = { valor: onlyDigits(entradaValorDigits), vencimento: entradaVenc };
-          body.parcelas = { quantidade: Number(entradaParcelasQtd), primeiroVencimento: entradaParcelasPrimeiroVenc };
-        }
-
-        const resp = await apiFetch(`/contratos/${renegociarId}/renegociar`, { method: "POST", body });
-        const novoId = resp?.contratoNovo?.id ?? resp?.contratoNovoId ?? resp?.id;
-
-        setOpenNovo(false);
-        setRenegociarId(null);
-        await load();
-        if (novoId) navigate(`/contratos/${novoId}`);
-      } else {
-        await apiFetch("/contratos", { method: "POST", body: payload });
-        setOpenNovo(false);
-        await load();
-      }
+      await apiFetch("/contratos", { method: "POST", body: payload });
+      setOpenNovo(false);
+      await load();
     } catch (e) {
       setModalError(e?.message || "Falha ao salvar contrato.");
     } finally {
@@ -631,25 +610,32 @@ async function cancelarParcela() {
     </div>
   );
 
+  if (!isAdmin) {
+    return (
+      <div className="p-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="text-xl font-semibold text-slate-900">Pagamentos</div>
+          <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
-    
       <Card
         title="Pagamentos"
         right={
-          <Can when={isAdmin} fallback={null}>
-            <button
-              type="button"
-              onClick={openNovoContrato}
-              className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-70"
-              disabled={loading}
-            >
-              + Novo Contrato
-            </button>
-          </Can>
+          <button
+            type="button"
+            onClick={openNovoContrato}
+            className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-70"
+            disabled={loading}
+          >
+            + Novo Contrato
+          </button>
         }
       >
-
         {searchRow}
 
         {error ? (
@@ -704,18 +690,13 @@ async function cancelarParcela() {
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Can
-                        when={isAdmin}
-                        fallback={<span title="Contrato (admin-only)">{c.numeroContrato}</span>}
-                      >
-                        <Link
-                          to={`/contratos/${c.id}`}
-                          className="hover:underline"
-                          title="Ver contrato (admin-only)"
-                        >
-                         {c.numeroContrato}
+                      {isAdmin ? (
+                        <Link to={`/contratos/${c.id}`} className="hover:underline" title="Abrir contrato">
+                          {c.numeroContrato}
                         </Link>
-                      </Can>
+                      ) : (
+                        <span title="Contrato (admin-only)">{c.numeroContrato}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
@@ -734,18 +715,15 @@ async function cancelarParcela() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <Can when={isAdmin}>
-                          <button
-                            type="button"
-                            onClick={() => openParcelasModal(c)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                            disabled={loading}
-                          >
-                            Parcelas
-                          </button>
-                        </Can>
-
-                        <Can when={isAdmin}>
+                        <button
+                          type="button"
+                          onClick={() => openParcelasModal(c)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                          disabled={loading}
+                        >
+                          Parcelas
+                        </button>
+                        <Can when={isAdmin && st !== "QUITADO" && st !== "RENEGOCIADO"}>
                           <button
                             type="button"
                             onClick={() => toggleContrato(c)}
@@ -777,15 +755,20 @@ async function cancelarParcela() {
       <Modal
         open={openNovo}
         title="Novo Contrato de Pagamento"
-        onClose={() => { setOpenNovo(false); setModalError(""); setRenegociarId(null); }}
+        onClose={() => { setOpenNovo(false); setModalError(""); }}
         footer={
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => { setOpenNovo(false); setRenegociarId(null); }}
+              onClick={() => setOpenNovo(false)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               disabled={loading}
             >
+        {modalError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {modalError}
+          </div>
+        )}
               Cancelar
             </button>
             <button
@@ -799,24 +782,8 @@ async function cancelarParcela() {
           </div>
         }
       >
-
-        {modalError ? (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {modalError}
-          </div>
-        ) : null}
-
-        {renegociarId ? (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <div className="font-semibold">Renegociação</div>
-            <div className="mt-1 text-xs text-amber-800">
-              Este contrato será criado a partir do saldo pendente do contrato #{renegociarId}. Cliente, número e valor total são calculados automaticamente.
-            </div>
-          </div>
-        ) : null}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select label="Cliente" value={clienteId} onChange={setClienteId} disabled={loading || Boolean(renegociarId)}>
+          <Select label="Cliente" value={clienteId} onChange={setClienteId} disabled={loading}>
             <option value="">Selecione…</option>
             {clientes.map((c) => (
               <option key={c.id} value={String(c.id)}>
@@ -830,7 +797,7 @@ async function cancelarParcela() {
             value={numeroContrato}
             onChange={setNumeroContrato}
             placeholder="Ex.: 20250904001A"
-            disabled={loading || Boolean(renegociarId)}
+            disabled={loading}
           />
 
           <label className="block">
@@ -841,7 +808,7 @@ async function cancelarParcela() {
                 value={maskBRLFromDigits(valorTotalDigits)}
                 onChange={(e) => setValorTotalDigits(onlyDigits(e.target.value))}
                 placeholder="0,00"
-                disabled={loading || Boolean(renegociarId)}
+                disabled={loading}
                 inputMode="numeric"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
