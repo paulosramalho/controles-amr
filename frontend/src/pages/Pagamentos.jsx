@@ -321,9 +321,9 @@ export default function PagamentosPage({ user }) {
   }
 
   useEffect(() => {
-    if (!isAdmin) return;
     load();
-  }, [isAdmin]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -595,32 +595,25 @@ async function cancelarParcela() {
     </div>
   );
 
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xl font-semibold text-slate-900">Pagamentos</div>
-          <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-6">
+    
       <Card
         title="Pagamentos"
         right={
-          <button
-            type="button"
-            onClick={openNovoContrato}
-            className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-70"
-            disabled={loading}
-          >
-            + Novo Contrato
-          </button>
+          <Can when={isAdmin} fallback={null}>
+            <button
+              type="button"
+              onClick={openNovoContrato}
+              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-70"
+              disabled={loading}
+            >
+              + Novo Contrato
+            </button>
+          </Can>
         }
       >
+
         {searchRow}
 
         {error ? (
