@@ -1618,7 +1618,7 @@ app.put("/api/usuarios/me", requireAuth, async (req, res) => {
 // =========================
 
 // Listar contratos (com cliente + parcelas)
-app.get("/api/contratos", requireAuth, async (req, res) => {
+app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
     const q = (req.query.q || "").toString().trim();
 
@@ -2592,6 +2592,79 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 
+
+// GET /api/contratos/:id/renegociar-preview
+// Retorna dados para pré-preencher o modal de renegociação (sem criar nada).
+app.get("/api/contratos/:id/renegociar-preview", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const contratoId = Number(req.params.id);
+    if (!Number.isFinite(contratoId)) {
+      return res.status(400).json({ message: "ID do contrato inválido." });
+    }
+
+    const contrato = await prisma.contratoPagamento.findUnique({
+      where: { id: contratoId },
+      include: { parcelas: true },
+    });
+
+    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
+
+    const pendentes = (contrato.parcelas || []).filter((p) => p.status === "PREVISTA");
+    if (pendentes.length === 0) {
+      return res.status(400).json({ message: "Não há saldo pendente para renegociar." });
+    }
+
+    // dataBase (default inteligente): menor vencimento dentre pendentes (normalizado para 12:00)
+    const dataBaseRaw = pendentes
+      .map((p) => p.vencimento)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+
+    const db0 = dataBaseRaw ? new Date(dataBaseRaw) : new Date();
+    const dataBase = new Date(db0.getFullYear(), db0.getMonth(), db0.getDate(), 12, 0, 0, 0);
+
+    // saldo pendente em centavos
+    const saldoCents = pendentes.reduce((acc, p) => acc + (moneyToCents(p.valorPrevisto) || 0n), 0n);
+    if (saldoCents <= 0n) {
+      return res.status(400).json({ message: "Saldo pendente inválido para renegociação." });
+    }
+
+    // raiz do número (remove -R{n} repetidamente no final)
+    function getNumeroRaiz(numeroContrato) {
+      let base = String(numeroContrato || "").trim();
+      while (/-R\d+$/.test(base)) base = base.replace(/-R\d+$/, "");
+      return base;
+    }
+
+    const raiz = getNumeroRaiz(contrato.numeroContrato);
+
+    // próximo sufixo R{n} baseado na raiz
+    const existing = await prisma.contratoPagamento.findMany({
+      where: { numeroContrato: { startsWith: `${raiz}-R` } },
+      select: { numeroContrato: true },
+    });
+
+    const used = new Set(existing.map((x) => x.numeroContrato));
+    let seq = 1;
+    let novoNumero = `${raiz}-R${seq}`;
+    while (used.has(novoNumero)) {
+      seq += 1;
+      novoNumero = `${raiz}-R${seq}`;
+    }
+
+    return res.json({
+      contratoId: contrato.id,
+      clienteId: contrato.clienteId,
+      numeroContratoNovo: novoNumero,
+      dataBaseISO: dataBase.toISOString(),
+      saldoCents: saldoCents.toString(), // em centavos (string)
+      formaPagamentoOriginal: contrato.formaPagamento,
+    });
+  } catch (err) {
+    console.error("Erro ao preparar renegociação:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao preparar renegociação." });
+  }
+});
 
 // POST /api/contratos/:id/renegociar
 app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req, res) => {
