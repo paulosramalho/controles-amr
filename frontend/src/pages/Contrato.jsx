@@ -145,7 +145,7 @@ export default function ContratoPage({ user }) {
     try {
       setLoading(true);
       setErrMsg("");
-      const data = await apiFetch(`/api/contratos/${id}`);
+      const data = await apiFetch(`/contratos/${id}`);
       setContrato(data);
     } catch (e) {
       setErrMsg(e?.message || "Erro ao carregar contrato.");
@@ -228,7 +228,7 @@ if (!isAdmin) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${receberParcela.id}/confirmar`, {
+      await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
           valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
@@ -287,7 +287,7 @@ if (!isAdmin) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${retParcela.id}/retificar`, {
+      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
         method: "POST",
         body: {
           adminPassword: retSenha,
@@ -319,43 +319,28 @@ if (!isAdmin) {
 
   if (errMsg && !contrato) {
     return (
-  <div className="p-6 space-y-6">
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-        >
-          Voltar
-        </button>
-        <Link
-          to="/pagamentos"
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-        >
-          Pagamentos
-        </Link>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <AdminOnly user={user}>
+      <div className="p-6 space-y-4">
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
-            className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-            title="Renegociar saldo do contrato"
+            onClick={() => navigate(-1)}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
           >
-            Renegociar Saldo
+            Voltar
           </button>
-        </AdminOnly>
+          <Link
+            to="/pagamentos"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+          >
+            Pagamentos
+          </Link>
+        </div>
 
-        <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
-      </div>
-    </div>
-
-    {errMsg ? (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        {errMsg}
-      </div>
-    ) : null}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {errMsg}
+        </div>
+       </div>
+    );
+  }
 
       <Card
         title={`Contrato #${contrato?.numero || ""}`}
