@@ -140,8 +140,12 @@ function Shell({ user, onLogout }) {
   const [openLivroCaixa, setOpenLivroCaixa] = useState(false);
 
   const menu = useMemo(() => {
-    if (!isAdmin) return [];
+     // USER: por ora, só Pagamentos (para validar barreiras)
+    if (!isAdmin) {
+      return [{ to: "/pagamentos", label: "Pagamentos" }];
+    }
 
+    // ADMIN: menu completo
     return [
       { to: "/dashboard", label: "Dashboard" },
 
@@ -154,23 +158,28 @@ function Shell({ user, onLogout }) {
         type: "group",
         label: "Livro Caixa",
         children: [
-          { to: "/livro-caixa/lancamentos", label: "Lançamentos" }, // sem expand/retrai
+          { to: "/livro-caixa/lancamentos", label: "Lançamentos" },
           { to: "/livro-caixa/visualizacao", label: "Visualização" },
           { to: "/livro-caixa/emissao", label: "Emissão" },
         ],
       },
 
-      { type: "group", label: "Configurações", children: [
-       { to: "/advogados", label: "Advogados" },
-        { to: "/clientes", label: "Clientes" },
-        { to: "/usuarios", label: "Usuários" },
-        { to: "/modelo-distribuicao", label: "Modelo de Distribuição" },
-      ]},
+      {
+        type: "group",
+        label: "Configurações",
+        children: [
+          { to: "/advogados", label: "Advogados" },
+          { to: "/clientes", label: "Clientes" },
+          { to: "/usuarios", label: "Usuários" },
+          { to: "/modelo-distribuicao", label: "Modelos de Distribuição" },
+        ],
+      },
 
       { to: "/historico", label: "Histórico" },
       { to: "/relatorios", label: "Relatórios" },
     ];
   }, [isAdmin]);
+
 
   const navClass = ({ isActive }) =>
     `block rounded-lg px-4 py-2 text-sm transition-colors ${
