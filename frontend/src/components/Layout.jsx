@@ -57,12 +57,12 @@ export default function Layout({ user, onLogout, children }) {
   }, [isAdmin]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-surface-bg flex">
       {/* Sidebar */}
-      <aside className="w-64 h-screen bg-white border-r border-slate-200 flex flex-col">
+      <aside className="w-64 h-screen bg-surface-card border-r border-surface-border flex flex-col">
         <div className="px-5 py-4 border-b border-slate-200">
-          <div className="text-base font-semibold text-slate-900">Controles-AMR</div>
-          <div className="mt-1 text-xs text-slate-600 truncate">
+          <div className="text-base font-semibold text-text-primary">Controles-AMR</div>
+          <div className="mt-1 text-xs text-text-secondary truncate">
             {user?.nome ? user.nome : user?.email ? user.email : "—"} • {role || "—"}
           </div>
         </div>
@@ -129,8 +129,8 @@ function MenuLink({ to, label, inset = false }) {
           "block rounded-xl px-3 py-2 text-sm font-semibold transition",
           inset ? "ml-1" : "",
           isActive
-            ? "bg-slate-900 text-white"
-            : "text-slate-800 hover:bg-slate-100 border border-transparent",
+            ? "bg-primary text-white"
+            : "text-text-primary hover:bg-surface-bg border border-transparent",
         ].join(" ")
       }
     >
