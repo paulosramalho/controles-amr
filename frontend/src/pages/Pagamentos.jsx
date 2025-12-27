@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import Can from "../components/Can";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -674,9 +675,18 @@ async function cancelarParcela() {
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Link to={`/contratos/${c.id}`} className="hover:underline" title="Ver contrato (somente leitura)">
-                        {c.numeroContrato}
-                      </Link>
+                      <Can
+                        when={isAdmin}
+                        fallback={<span title="Contrato (admin-only)">{c.numeroContrato}</span>}
+                      >
+                        <Link
+                          to={`/contratos/${c.id}`}
+                          className="hover:underline"
+                          title="Ver contrato (admin-only)"
+                        >
+                         {c.numeroContrato}
+                        </Link>
+                      </Can>
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
@@ -695,22 +705,27 @@ async function cancelarParcela() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openParcelasModal(c)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                          disabled={loading}
-                        >
-                          Parcelas
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleContrato(c)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                          disabled={loading}
-                        >
-                          {c?.ativo ? "Inativar" : "Ativar"}
-                        </button>
+                        <Can when={isAdmin}>
+                          <button
+                            type="button"
+                            onClick={() => openParcelasModal(c)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            disabled={loading}
+                          >
+                            Parcelas
+                          </button>
+                        </Can>
+
+                        <Can when={isAdmin}>
+                          <button
+                            type="button"
+                            onClick={() => toggleContrato(c)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            disabled={loading}
+                          >
+                            {c?.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -731,6 +746,13 @@ async function cancelarParcela() {
 
       {/* ---------- Modal: Novo Contrato ---------- */}
       <Modal
+        
+        {modalError ? (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {modalError}
+          </div>
+        ) : null}
+
         open={openNovo}
         title="Novo Contrato de Pagamento"
         onClose={() => { setOpenNovo(false); setModalError(""); }}
@@ -742,11 +764,6 @@ async function cancelarParcela() {
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               disabled={loading}
             >
-        {modalError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {modalError}
-          </div>
-        )}
               Cancelar
             </button>
             <button
