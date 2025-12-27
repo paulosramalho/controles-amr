@@ -182,7 +182,7 @@ export default function ContratoPage({ user }) {
     try {
       setLoading(true);
       setErrMsg("");
-      const data = await apiFetch(`/api/contratos/${id}`);
+      const data = await apiFetch(`/contratos/${id}`);
       setContrato(data);
     } catch (e) {
       setErrMsg(e?.message || "Erro ao carregar contrato.");
@@ -246,7 +246,7 @@ export default function ContratoPage({ user }) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${receberParcela.id}/confirmar`, {
+      await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
           valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
@@ -305,7 +305,7 @@ export default function ContratoPage({ user }) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${retParcela.id}/retificar`, {
+      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
         method: "POST",
         body: {
           adminPassword: retSenha,
