@@ -254,7 +254,7 @@ function Shell({ user, onLogout }) {
           <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
           <Route path="/repasses" element={<Placeholder title="Repasses" />} />
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
-
+          
           <Route path="/livro-caixa/lancamentos" element={<Placeholder title="Livro Caixa — Lançamentos" />} />
           <Route path="/livro-caixa/visualizacao" element={<Placeholder title="Livro Caixa — Visualização" />} />
           <Route path="/livro-caixa/emissao" element={<Placeholder title="Livro Caixa — Emissão" />} />
