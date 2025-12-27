@@ -60,10 +60,10 @@ function DateInput({ label, value, onChange, disabled, className = "" }) {
 
   return (
     <label className={`block ${className}`}>
-      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="text-sm font-medium text-text-secondary">{label}</div>
       <input
         type="date"
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className="mt-1 w-full rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
         value={toISO(value)}
         onChange={(e) => onChange(fromISO(e.target.value))}
         disabled={disabled}
@@ -148,9 +148,9 @@ function computeStatusContrato(contrato) {
 /* ---------------- UI components ---------------- */
 function Card({ title, right, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-        <div className="text-xl font-semibold text-slate-900">{title}</div>
+    <div className="rounded-2xl border border-surface-border bg-white">
+      <div className="px-5 py-4 border-b border-surface-border flex items-start justify-between gap-3">
+        <div className="text-xl font-semibold text-text-primary">{title}</div>
         {right ? <div className="pt-0.5">{right}</div> : null}
       </div>
       <div className="p-5">{children}</div>
@@ -179,15 +179,15 @@ function Modal({ open, title, onClose, children, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-5xl rounded-2xl bg-white shadow-xl border border-slate-200">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
-          <div className="text-base font-semibold text-slate-900">{title}</div>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" type="button">
+      <div className="relative w-full max-w-5xl rounded-2xl bg-surface-card shadow-xl border border-surface-border">
+        <div className="px-5 py-4 border-b border-surface-border flex items-center justify-between gap-3">
+          <div className="text-base font-semibold text-text-primary">{title}</div>
+          <button onClick={onClose} className="rounded-lg px-2 py-1 text-text-secondary hover:bg-surface-bg" type="button">
             ✕
           </button>
         </div>
         <div className="p-5">{children}</div>
-        {footer ? <div className="px-5 py-4 border-t border-slate-200">{footer}</div> : null}
+        {footer ? <div className="px-5 py-4 border-t border-surface-border">{footer}</div> : null}
       </div>
     </div>
   );
@@ -196,9 +196,9 @@ function Modal({ open, title, onClose, children, footer }) {
 function Input({ label, value, onChange, placeholder, disabled, type = "text" }) {
   return (
     <label className="block">
-      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="text-sm font-medium text-text-secondary">{label}</div>
       <input
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className="mt-1 w-full rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -212,9 +212,9 @@ function Input({ label, value, onChange, placeholder, disabled, type = "text" })
 function Select({ label, value, onChange, disabled, children }) {
   return (
     <label className="block">
-      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="text-sm font-medium text-text-secondary">{label}</div>
       <select
-        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className="mt-1 w-full rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -228,9 +228,9 @@ function Select({ label, value, onChange, disabled, children }) {
 function Textarea({ label, value, onChange, placeholder, disabled }) {
   return (
     <label className="block">
-      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="text-sm font-medium text-text-secondary">{label}</div>
       <textarea
-        className="mt-1 w-full min-h-[110px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+        className="mt-1 w-full min-h-[110px] rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -579,7 +579,7 @@ async function cancelarParcela() {
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
-        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+        className="w-full rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
         placeholder="Buscar por contrato, cliente, CPF/CNPJ…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -587,7 +587,7 @@ async function cancelarParcela() {
       <button
         type="button"
         onClick={load}
-        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+        className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-bg transition"
         disabled={loading}
       >
         Atualizar
@@ -605,7 +605,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={openNovoContrato}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-70"
+              className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary-hover transition disabled:opacity-70"
               disabled={loading}
             >
               + Novo Contrato
@@ -620,9 +620,9 @@ async function cancelarParcela() {
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
         ) : null}
 
-        <div className="mt-4 overflow-auto rounded-2xl border border-slate-200">
+        <div className="mt-4 overflow-auto rounded-2xl border border-surface-border">
           <table className="min-w-[1100px] w-full text-sm">
-            <thead className="bg-slate-50 text-slate-700">
+            <thead className="bg-surface-bg text-text-secondary">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">Contrato</th>
                 <th className="text-left px-4 py-3 font-semibold min-w-[320px]">Cliente</th>
@@ -636,7 +636,7 @@ async function cancelarParcela() {
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-surface-border">
               {filtered.map((c) => {
                 const parcelas = c?.parcelas || [];
                 const qtdParcelas = c?.resumo?.qtdParcelas ?? parcelas.length;
@@ -667,7 +667,7 @@ async function cancelarParcela() {
 
                 return (
                   <tr key={c.id} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                    <td className="px-4 py-3 font-semibold text-text-primary whitespace-nowrap">
                       <Can
                         when={isAdmin}
                         fallback={<span title="Contrato (admin-only)">{c.numeroContrato}</span>}
@@ -681,16 +681,16 @@ async function cancelarParcela() {
                         </Link>
                       </Can>
                     </td>
-                    <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+                    <td className="px-4 py-3 text-text-primary">{c?.cliente?.nomeRazaoSocial || "—"}</td>
+                    <td className="px-4 py-3 text-text-primary whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
+                    <td className="px-4 py-3 text-text-primary whitespace-nowrap">
                       R$ {formatBRLFromDecimal(totalRecebidoLinha)}
                     </td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
+                    <td className="px-4 py-3 text-text-primary whitespace-nowrap">
                       R$ {formatBRLFromDecimal(pendenteLinha)}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
-                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    <td className="px-4 py-3 text-text-secondary whitespace-nowrap">{normalizeForma(c.formaPagamento)}</td>
+                    <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
                       {qtdRecebidas}/{qtdParcelas}
                     </td>
                     <td className="px-4 py-3">
@@ -702,7 +702,7 @@ async function cancelarParcela() {
                           <button
                             type="button"
                             onClick={() => openParcelasModal(c)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            className="rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-sm font-semibold text-text-primary hover:bg-surface-bg"
                             disabled={loading}
                           >
                             Parcelas
@@ -713,7 +713,7 @@ async function cancelarParcela() {
                           <button
                             type="button"
                             onClick={() => toggleContrato(c)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            className="rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-sm font-semibold text-text-primary hover:bg-surface-bg"
                             disabled={loading}
                           >
                             {c?.ativo ? "Inativar" : "Ativar"}
@@ -727,7 +727,7 @@ async function cancelarParcela() {
 
               {!filtered.length ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={9}>
+                  <td className="px-4 py-10 text-center text-text-secondary" colSpan={9}>
                     {loading ? "Carregando..." : "Nenhum contrato encontrado."}
                   </td>
                 </tr>
@@ -747,7 +747,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={() => setOpenNovo(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-bg"
               disabled={loading}
             >
               Cancelar
@@ -755,7 +755,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={salvarContrato}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover"
               disabled={loading}
             >
               Salvar
@@ -789,19 +789,19 @@ async function cancelarParcela() {
           />
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Valor total</div>
+            <div className="text-sm font-medium text-text-secondary">Valor total</div>
             <div className="mt-1 relative">
               <input
-                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+                className="w-full rounded-xl border border-surface-border bg-surface-card pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
                 value={maskBRLFromDigits(valorTotalDigits)}
                 onChange={(e) => setValorTotalDigits(onlyDigits(e.target.value))}
                 placeholder="0,00"
                 disabled={loading}
                 inputMode="numeric"
               />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">R$</div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-text-secondary">
               Digite normalmente: 1→0,01; 12→0,12; 123→1,23; 123456→1.234,56
             </div>
           </label>
@@ -831,7 +831,7 @@ async function cancelarParcela() {
               inputMode="numeric"
             />
             <DateInput label="1º vencimento" value={parcelasPrimeiroVenc} onChange={setParcelasPrimeiroVenc} disabled={loading} />
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+            <div className="rounded-xl border border-surface-border bg-surface-bg p-3 text-xs text-text-secondary flex items-center">
               O backend divide o valor automaticamente e ajusta os centavos.
             </div>
           </div>
@@ -842,17 +842,17 @@ async function cancelarParcela() {
     {/* Linha 1: Entrada (valor e vencimento) + vencimento 1ª parcela */}
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <label className="block">
-        <div className="text-sm font-medium text-slate-700">Valor Entrada</div>
+        <div className="text-sm font-medium text-text-secondary">Valor Entrada</div>
         <div className="mt-1 relative">
           <input
-            className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+            className="w-full rounded-xl border border-surface-border bg-surface-card pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
             value={maskBRLFromDigits(entradaValorDigits)}
             onChange={(e) => setEntradaValorDigits(onlyDigits(e.target.value))}
             placeholder="0,00"
             disabled={loading}
             inputMode="numeric"
           />
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">R$</div>
         </div>
       </label>
 
@@ -882,7 +882,7 @@ async function cancelarParcela() {
         inputMode="numeric"
       />
 
-      <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex items-center">
+      <div className="md:col-span-2 rounded-xl border border-surface-border bg-surface-bg p-3 text-xs text-text-secondary flex items-center">
         A entrada fica como parcela nº 1. O backend divide o restante automaticamente e ajusta os centavos.
       </div>
     </div>
@@ -908,7 +908,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={() => setOpenParcelas(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-bg"
             >
               Fechar
             </button>
@@ -916,12 +916,12 @@ async function cancelarParcela() {
         }
       >
         {!selectedContrato ? (
-          <div className="text-sm text-slate-600">Selecione um contrato.</div>
+          <div className="text-sm text-text-secondary">Selecione um contrato.</div>
         ) : (
           <div className="space-y-4">
-            <div className="overflow-auto rounded-2xl border border-slate-200">
+            <div className="overflow-auto rounded-2xl border border-surface-border">
               <table className="min-w-[900px] w-full text-sm">
-                <thead className="bg-slate-50 text-slate-700">
+                <thead className="bg-surface-bg text-text-secondary">
                   <tr>
                     <th className="text-left px-4 py-3 font-semibold">#</th>
                     <th className="text-left px-4 py-3 font-semibold">Vencimento</th>
@@ -932,22 +932,22 @@ async function cancelarParcela() {
                     <th className="text-right px-4 py-3 font-semibold">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-surface-border">
                   {(selectedContrato.parcelas || []).map((p) => (
                     <tr key={p.id} className="bg-white">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{p.numero}</td>
-                      <td className="px-4 py-3 text-slate-800">{toDDMMYYYY(p.vencimento)}</td>
-                      <td className="px-4 py-3 text-slate-800">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
+                      <td className="px-4 py-3 font-semibold text-text-primary">{p.numero}</td>
+                      <td className="px-4 py-3 text-text-primary">{toDDMMYYYY(p.vencimento)}</td>
+                      <td className="px-4 py-3 text-text-primary">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                        {p.status === "CANCELADA" ? (
                        <div className="space-y-1">
                          <Badge tone="slate">Cancelada</Badge>
-                         <div className="text-xs text-slate-500">
+                         <div className="text-xs text-text-secondary">
                            {p.canceladaEm ? `Cancelada em ${toDDMMYYYY(p.canceladaEm)}` : "Cancelada"}
                            {p.canceladaPor?.nome ? ` por ${p.canceladaPor.nome}` : ""}
                          </div>
                          {p.cancelamentoMotivo ? (
-                           <div className="text-xs text-slate-500 truncate max-w-[260px]" title={p.cancelamentoMotivo}>
+                           <div className="text-xs text-text-secondary truncate max-w-[260px]" title={p.cancelamentoMotivo}>
                              Motivo: {p.cancelamentoMotivo}
                            </div>
                          ) : null}
@@ -960,25 +960,25 @@ async function cancelarParcela() {
                        <Badge tone="blue">Prevista</Badge>
                      )}
                       </td>
-                      <td className="px-4 py-3 text-slate-800">
+                      <td className="px-4 py-3 text-text-primary">
                         {p.valorRecebido ? `R$ ${formatBRLFromDecimal(p.valorRecebido)}` : "—"}
                         {p.dataRecebimento ? (
-                          <div className="text-xs text-slate-500 mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
+                          <div className="text-xs text-text-secondary mt-1">{toDDMMYYYY(p.dataRecebimento)}</div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{p.meioRecebimento || "—"}</td>
+                      <td className="px-4 py-3 text-text-secondary">{p.meioRecebimento || "—"}</td>
                       <td className="px-4 py-3 text-right">
                          <div className="flex justify-end gap-2">
                            {p.status === "PREVISTA" ? (
                            <button
                              type="button"
                              onClick={() => openConfirmParcela(p)}
-                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                             className="rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-sm font-semibold text-text-primary hover:bg-surface-bg"
                            >
                              Receber Parcela
                            </button>
                          ) : (
-                           <span className="text-slate-400 text-sm">—</span>
+                           <span className="text-text-secondary/70 text-sm">—</span>
                           )}
  
                           {isAdmin && p.status !== "RECEBIDA" && p.status !== "CANCELADA" ? (
@@ -997,7 +997,7 @@ async function cancelarParcela() {
 
                   {!(selectedContrato.parcelas || []).length ? (
                     <tr>
-                      <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                      <td className="px-4 py-8 text-center text-text-secondary" colSpan={7}>
                         Nenhuma parcela cadastrada.
                       </td>
                     </tr>
@@ -1006,20 +1006,20 @@ async function cancelarParcela() {
               </table>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 rounded-xl border border-surface-border bg-surface-bg p-4 text-sm">
               <div>
-                <div className="text-slate-500">Total previsto</div>
-                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
+                <div className="text-text-secondary">Total previsto</div>
+                <div className="font-semibold text-text-primary">R$ {formatBRLFromDecimal(totalPrevisto)}</div>
               </div>
 
               <div>
-                <div className="text-slate-500">Total recebido</div>
-                <div className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</div>
+                <div className="text-text-secondary">Total recebido</div>
+                <div className="font-semibold text-text-primary">R$ {formatBRLFromDecimal(totalRecebido)}</div>
               </div>
 
               <div>
-                <div className="text-slate-500">Diferença</div>
-                <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-slate-900"}`}>
+                <div className="text-text-secondary">Diferença</div>
+                <div className={`font-semibold ${diferencaTotais < 0 ? "text-red-600" : diferencaTotais > 0 ? "text-blue-600" : "text-text-primary"}`}>
                   R$ {formatBRLFromDecimal(diferencaTotais)}
                 </div>
               </div>
@@ -1038,7 +1038,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={() => setConfOpen(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-bg"
               disabled={confirming}
             >
               Cancelar
@@ -1046,7 +1046,7 @@ async function cancelarParcela() {
             <button
               type="button"
               onClick={confirmarRecebimento}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-70"
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-70"
               disabled={confirming}
             >
               Confirmar
@@ -1067,19 +1067,19 @@ async function cancelarParcela() {
           </Select>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
+            <div className="text-sm font-medium text-text-secondary">Valor recebido (opcional)</div>
             <div className="mt-1 relative">
               <input
-                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
+                className="w-full rounded-xl border border-surface-border bg-surface-card pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-surface-bg"
                 value={maskBRLFromDigits(confValorDigits)}
                 onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
                 placeholder="(vazio = valor previsto)"
                 disabled={confirming}
                 inputMode="numeric"
               />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">R$</div>
             </div>
-            <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
+            <div className="mt-1 text-xs text-text-secondary">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
           </label>
         </div>
       </Modal>
@@ -1089,16 +1089,16 @@ async function cancelarParcela() {
         title="Cancelar parcela"
       >
         <div className="space-y-4">
-          <div className="text-sm text-slate-700">
+          <div className="text-sm text-text-secondary">
             Você está cancelando a parcela{" "}
             <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe o
             motivo (obrigatório).
           </div>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Motivo</div>
+            <div className="text-sm font-medium text-text-secondary">Motivo</div>
             <input
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              className="mt-1 w-full rounded-xl border border-surface-border bg-surface-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               value={cancelMotivo}
               onChange={(e) => setCancelMotivo(e.target.value)}
               placeholder="Ex.: Renegociação / cancelamento do acordo"
@@ -1109,7 +1109,7 @@ async function cancelarParcela() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+              className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-bg"
               onClick={() => setCancelOpen(false)}
               disabled={canceling}
             >

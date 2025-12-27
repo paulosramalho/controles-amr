@@ -99,9 +99,9 @@ function Badge({ tone = "blue", children }) {
 
 function Card({ title, right, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-        <div className="text-sm font-semibold text-slate-900">{title}</div>
+    <div className="rounded-2xl border border-surface-border bg-surface-card shadow-sm">
+      <div className="flex items-center justify-between border-b border-surface-border px-5 py-4">
+        <div className="text-sm font-semibold text-text-primary">{title}</div>
         <div>{right}</div>
       </div>
       <div className="px-5 py-4">{children}</div>
@@ -157,14 +157,14 @@ export default function ContratoPage({ user }) {
 if (!isAdmin) {
   return (
     <div className="p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="text-xl font-semibold text-slate-900">Contrato</div>
-        <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
+      <div className="rounded-2xl border border-surface-border bg-surface-card p-5">
+        <div className="text-xl font-semibold text-text-primary">Contrato</div>
+        <div className="mt-2 text-sm text-text-secondary">Acesso restrito a administradores.</div>
 
         <div className="mt-4">
           <button
             onClick={() => navigate(-1)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+            className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm"
           >
             Voltar
           </button>
@@ -314,7 +314,7 @@ if (!isAdmin) {
   }
 
   if (loading) {
-    return <div className="p-6 text-slate-600">Carregando…</div>;
+    return <div className="p-6 text-text-secondary">Carregando…</div>;
   }
 
   if (errMsg && !contrato) {
@@ -323,13 +323,13 @@ if (!isAdmin) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+            className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm"
           >
             Voltar
           </button>
           <Link
             to="/pagamentos"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+            className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm"
           >
             Pagamentos
           </Link>
@@ -346,25 +346,25 @@ if (!isAdmin) {
       <Card
         title={`Contrato #${contrato?.numero || ""}`}
         right={
-          <div className="text-xs text-slate-500">
-            Criado em: <span className="font-medium text-slate-700">{toDDMMYYYY(contrato?.createdAt)}</span>
+          <div className="text-xs text-text-secondary">
+            Criado em: <span className="font-medium text-text-secondary">{toDDMMYYYY(contrato?.createdAt)}</span>
           </div>
         }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <div className="text-xs text-slate-500">Cliente</div>
-            <div className="text-sm font-semibold text-slate-900">{contrato?.cliente?.nome || "—"}</div>
+          <div className="rounded-xl bg-surface-bg px-4 py-3">
+            <div className="text-xs text-text-secondary">Cliente</div>
+            <div className="text-sm font-semibold text-text-primary">{contrato?.cliente?.nome || "—"}</div>
           </div>
 
-          <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <div className="text-xs text-slate-500">Valor Total</div>
-            <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
+          <div className="rounded-xl bg-surface-bg px-4 py-3">
+            <div className="text-xs text-text-secondary">Valor Total</div>
+            <div className="text-sm font-semibold text-text-primary">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
           </div>
 
-          <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <div className="text-xs text-slate-500">Forma de pagamento</div>
-            <div className="text-sm font-semibold text-slate-900">{contrato?.formaPagamento || "—"}</div>
+          <div className="rounded-xl bg-surface-bg px-4 py-3">
+            <div className="text-xs text-text-secondary">Forma de pagamento</div>
+            <div className="text-sm font-semibold text-text-primary">{contrato?.formaPagamento || "—"}</div>
           </div>
         </div>
       </Card>
@@ -372,14 +372,14 @@ if (!isAdmin) {
       <Card
         title="Parcelas"
         right={
-          <div className="text-xs text-slate-500">
-            PREVISTAS: <span className="font-semibold text-slate-700">{previstas.length}</span>
+          <div className="text-xs text-text-secondary">
+            PREVISTAS: <span className="font-semibold text-text-secondary">{previstas.length}</span>
           </div>
         }
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-xs text-slate-500">
+            <thead className="text-left text-xs text-text-secondary">
               <tr className="border-b">
                 <th className="py-2 pr-3">#</th>
                 <th className="py-2 pr-3">Vencimento</th>
@@ -401,7 +401,7 @@ if (!isAdmin) {
 
                 return (
                   <tr key={p.id} className="border-b last:border-b-0">
-                    <td className="py-3 pr-3 font-semibold text-slate-900">{p.numero}</td>
+                    <td className="py-3 pr-3 font-semibold text-text-primary">{p.numero}</td>
                     <td className="py-3 pr-3">{toDDMMYYYY(p.vencimento)}</td>
                     <td className="py-3 pr-3">R$ {formatBRLFromDecimal(p.valorPrevisto)}</td>
                     <td className="py-3 pr-3">
@@ -412,7 +412,7 @@ if (!isAdmin) {
                         <Can when={isAdmin && st === "PREVISTA"}>
                           <button
                             onClick={() => openReceber(p)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
+                            className="rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-xs font-semibold hover:bg-surface-bg"
                           >
                             Receber Parcela
                           </button>
@@ -421,7 +421,7 @@ if (!isAdmin) {
                         <Can when={isAdmin && podeRetificar}>
                           <button
                             onClick={() => openRetificar(p)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
+                            className="rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-xs font-semibold hover:bg-surface-bg"
                           >
                             Retificar
                           </button>
@@ -433,7 +433,7 @@ if (!isAdmin) {
               })}
               {!parcelas.length && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-slate-500">
+                  <td colSpan={5} className="py-4 text-center text-text-secondary">
                     Nenhuma parcela.
                   </td>
                 </tr>
@@ -446,37 +446,37 @@ if (!isAdmin) {
       {/* Modal Receber */}
       {receberOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg rounded-2xl bg-surface-card p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Receber parcela #{receberParcela?.numero}</div>
-              <button className="text-slate-500" onClick={closeModals}>✕</button>
+              <button className="text-text-secondary" onClick={closeModals}>✕</button>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3">
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Valor recebido (R$)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={maskBRLFromDigits(recValorDigits)}
                   onChange={(e) => setRecValorDigits(onlyDigits(e.target.value))}
                   placeholder="0,00"
                 />
               </label>
 
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Data de recebimento (DD/MM/AAAA)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={recData}
                   onChange={(e) => setRecData(e.target.value)}
                   placeholder="DD/MM/AAAA"
                 />
               </label>
 
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Meio
                 <select
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={recMeio}
                   onChange={(e) => setRecMeio(e.target.value)}
                 >
@@ -488,11 +488,11 @@ if (!isAdmin) {
                 </select>
               </label>
 
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Confirme senha do admin
                 <input
                   type="password"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={recSenha}
                   onChange={(e) => setRecSenha(e.target.value)}
                 />
@@ -500,10 +500,10 @@ if (!isAdmin) {
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm" onClick={closeModals}>
+              <button className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm" onClick={closeModals}>
                 Cancelar
               </button>
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={submitReceber}>
+              <button className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-sm font-semibold text-white" onClick={submitReceber}>
                 Confirmar
               </button>
             </div>
@@ -514,27 +514,27 @@ if (!isAdmin) {
       {/* Modal Retificar */}
       {retOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-2xl rounded-2xl bg-surface-card p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Retificar parcela #{retParcela?.numero}</div>
-              <button className="text-slate-500" onClick={closeModals}>✕</button>
+              <button className="text-text-secondary" onClick={closeModals}>✕</button>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Valor previsto (R$)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={maskBRLFromDigits(retValorDigits)}
                   onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
                   placeholder="0,00"
                 />
               </label>
 
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Vencimento (DD/MM/AAAA)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={retVenc}
                   onChange={(e) => setRetVenc(e.target.value)}
                   placeholder="DD/MM/AAAA"
@@ -542,7 +542,7 @@ if (!isAdmin) {
               </label>
             </div>
 
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="mt-4 rounded-xl border border-surface-border bg-surface-bg px-4 py-3">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={ratear} onChange={(e) => setRatear(e.target.checked)} />
                 <span className="font-semibold">Ratear entre as demais parcelas PREVISTAS</span>
@@ -550,7 +550,7 @@ if (!isAdmin) {
 
               {!ratear && (
                 <div className="mt-3 space-y-2">
-                  <div className="text-xs text-slate-600">
+                  <div className="text-xs text-text-secondary">
                     Ajuste manual (a soma deve manter o valor total do contrato/renegociação).
                   </div>
 
@@ -558,10 +558,10 @@ if (!isAdmin) {
                     {previstas
                       .filter((x) => x.id !== retParcela?.id)
                       .map((op) => (
-                        <label key={op.id} className="text-xs text-slate-600">
+                        <label key={op.id} className="text-xs text-text-secondary">
                           Parcela #{op.numero} (R$)
                           <input
-                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                            className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                             value={maskBRLFromDigits(manualOutros[op.id] || "")}
                             onChange={(e) => setManualOutros((prev) => ({ ...prev, [op.id]: onlyDigits(e.target.value) }))}
                             placeholder="0,00"
@@ -574,21 +574,21 @@ if (!isAdmin) {
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3">
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Motivo (obrigatório)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={retMotivo}
                   onChange={(e) => setRetMotivo(e.target.value)}
                   placeholder="Ex.: Valor digitado errado"
                 />
               </label>
 
-              <label className="text-xs text-slate-600">
+              <label className="text-xs text-text-secondary">
                 Confirme senha do admin
                 <input
                   type="password"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-surface-border px-3 py-2 text-sm"
                   value={retSenha}
                   onChange={(e) => setRetSenha(e.target.value)}
                 />
@@ -596,10 +596,10 @@ if (!isAdmin) {
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm" onClick={closeModals}>
+              <button className="rounded-xl border border-surface-border bg-surface-card px-4 py-2 text-sm" onClick={closeModals}>
                 Cancelar
               </button>
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={submitRetificar}>
+              <button className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-sm font-semibold text-white" onClick={submitRetificar}>
                 Salvar
               </button>
             </div>
