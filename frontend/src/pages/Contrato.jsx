@@ -222,6 +222,8 @@ export default function ContratoPage({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const contratoNumero = useMemo(() => getContratoNumeroRef(contrato), [contrato]);
+
   const parcelas = contrato?.parcelas || [];
   const previstas = useMemo(() => parcelas.filter((p) => p.status === "PREVISTA"), [parcelas]);
   const podeRetificarAlguma = previstas.length >= 2;
@@ -231,7 +233,19 @@ export default function ContratoPage({ user }) {
   const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
 
   // vínculos pai/filho (renegociações)
-  const paiId = contrato?.renegociadoDeId ?? contrato?.contratoPaiId ?? contrato?.paiId ?? contrato?.pai?.id ?? contrato?.renegociadoDe?.id ?? null;
+  const paiId = 
+     contrato?.renegociadoDeId ??
+     contrato?.contratoOrigemId ??
+     contrato?.origemContratoId ??
+     contrato?.contratoOriginalId ??
+     contrato?.contratoPai ??
+     contrato?.contratoPai?.id ??
+     contrato?.contratoPaiId ??
+     contrato?.paiId ??
+     contrato?.pai?.id ??
+     contrato?.renegociadoDe?.id ??
+     null;
+
   const paiNumero = getContratoNumeroRef(contrato?.renegociadoDe ?? contrato?.pai ?? contrato?.contratoPai) || (paiId ? String(paiId) : "");
 
   const filhoId = contrato?.renegociadoParaId ?? contrato?.contratoFilhoId ?? contrato?.filhoId ?? contrato?.filho?.id ?? contrato?.renegociadoPara?.id ?? null;
@@ -434,7 +448,7 @@ export default function ContratoPage({ user }) {
       )}
 
       <Card
-        title={`Contrato #${contrato?.numero || ""}`}
+        title={`Contrato ${contratoNumero || ""}`}
         right={
           <div className="text-xs text-slate-500">
             Criado em: <span className="font-medium text-slate-700">{toDDMMYYYY(contrato?.createdAt)}</span>
