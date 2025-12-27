@@ -1618,7 +1618,7 @@ app.put("/api/usuarios/me", requireAuth, async (req, res) => {
 // =========================
 
 // Listar contratos (com cliente + parcelas)
-app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
+app.get("/api/contratos", requireAuth, async (req, res) => {
   try {
     const q = (req.query.q || "").toString().trim();
 
