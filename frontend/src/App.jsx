@@ -231,7 +231,7 @@ function Shell({ user, onLogout }) {
         </nav>
 
         <div className="p-4 border-t border-slate-200 text-sm">
-          <div className="flex justify-between font-semibold text-slate-700">
+          <div className="flex justify-between font-bold text-slate-700">
             <span>{clock.date}</span>
             <span>{clock.time}</span>
           </div>
@@ -239,7 +239,7 @@ function Shell({ user, onLogout }) {
           {/* ✅ Usuário logado e tipo entre data/hora e sair */}
           <div className="mt-3">
             {/* Nome do usuário — destaque total */}
-            <div className="w-full bg-blue-100 text-blue-950 px-3 py-2 rounded-lg">
+            <div className="w-full bg-primary/10 text-primary px-3 py-2 rounded-lg">
               <div className="text-base font-bold">
                 {user?.nome || "—"}
               </div>
