@@ -1,4 +1,4 @@
-// src/pages/Contrato.jsx
+// src/pages/Contrato.jsx    26/12 - 23:58h
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
