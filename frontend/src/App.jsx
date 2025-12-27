@@ -240,12 +240,12 @@ function Shell({ user, onLogout }) {
           <div className="mt-3">
             {/* Nome do usuário — destaque total */}
             <div className="w-full bg-blue-100 text-blue-950 px-3 py-2 rounded-lg">
-              <div className="text-sm font-semibold uppercase tracking-wide">
-                {userLabel}
-              </div>
               <div className="text-base font-bold">
                 {user?.nome || "—"}
               </div>
+              <div className="text-sm font-semibold uppercase tracking-wide">
+                {userLabel}
+              </div>              
             </div>
           </div>
 
