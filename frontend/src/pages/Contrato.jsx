@@ -207,12 +207,33 @@ if (!isAdmin) {
     contrato?.numeroDoContrato ??
     "";
 
-  const nomeCliente =
-    contrato?.cliente?.nome ??
+  const nomeCliente = (() => {
+  const c = contrato?.cliente;
+
+  // caso venha como string direto
+  if (typeof c === "string") {
+    const s = c.trim();
+    return s || "—";
+  }
+
+  // caso venha como objeto (tenta várias chaves comuns)
+  const nome =
+    c?.nome ??
+    c?.nomeCompleto ??
+    c?.nome_completo ??
+    c?.razaoSocial ??
+    c?.razao_social ??
+    c?.nomeFantasia ??
+    c?.nome_fantasia ??
     contrato?.clienteNome ??
     contrato?.nomeCliente ??
     contrato?.cliente_nome ??
+    contrato?.nome_cliente ??
     "—";
+
+  return String(nome || "—");
+})();
+
 
   const formaPagamentoLabel = useMemo(() => {
     const fp =
