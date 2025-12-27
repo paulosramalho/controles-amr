@@ -319,34 +319,43 @@ if (!isAdmin) {
 
   if (errMsg && !contrato) {
     return (
-      <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errMsg}</div>
-        <button onClick={() => navigate(-1)} className="mt-4 rounded-xl border px-4 py-2 text-sm">
+  <div className="p-6 space-y-6">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+        >
           Voltar
         </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      <AdminOnly user={user}>
-        <button
-          onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
-          className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-          title="Renegociar saldo do contrato"
+        <Link
+          to="/pagamentos"
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
         >
-          Renegociar Saldo
-        </button>
-      </AdminOnly>
+          Pagamentos
+        </Link>
+      </div>
 
-      <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
+      <div className="flex items-center gap-3">
+        <AdminOnly user={user}>
+          <button
+            onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
+            className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+            title="Renegociar saldo do contrato"
+          >
+            Renegociar Saldo
+          </button>
+        </AdminOnly>
+
+        <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
+      </div>
     </div>
 
-
-      {errMsg && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{errMsg}</div>
-      )}
+    {errMsg ? (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        {errMsg}
+      </div>
+    ) : null}
 
       <Card
         title={`Contrato #${contrato?.numero || ""}`}
