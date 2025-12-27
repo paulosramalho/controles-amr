@@ -140,7 +140,7 @@ export default function ContratoPage({ user }) {
     try {
       setLoading(true);
       setErrMsg("");
-      const data = await apiFetch(`/api/contratos/${id}`);
+      const data = await apiFetch(`/contratos/${id}`);
       setContrato(data);
     } catch (e) {
       setErrMsg(e?.message || "Erro ao carregar contrato.");
