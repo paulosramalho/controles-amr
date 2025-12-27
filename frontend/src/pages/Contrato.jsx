@@ -26,6 +26,32 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+
+function normalizeForma(fp) {
+  const raw = String(fp || "").trim();
+  if (!raw) return "—";
+  const v = raw.toUpperCase().replace(/\s+/g, "");
+
+  // aceita variações comuns
+  if (v === "AVISTA" || v === "A_VISTA" || v === "ÀVISTA") return "À vista";
+  if (v === "PARCELADO") return "Parcelado";
+  if (v === "ENTRADA+PARCELAS" || v === "ENTRADA_PARCELAS" || v === "ENTRADAPARCELAS") return "Entrada + Parcelas";
+
+  // se já vier humanizado, só capitaliza padrão
+  const h = raw.toLowerCase();
+  if (h.includes("vista")) return "À vista";
+  if (h.includes("entrada") && h.includes("parc")) return "Entrada + Parcelas";
+  if (h.includes("parc")) return "Parcelado";
+
+  return raw;
+}
+
+function getContratoNumeroRef(c) {
+  if (!c) return "";
+  return c?.numeroContrato ?? c?.numero ?? c?.numero_ref ?? c?.id ?? "";
+}
+
+
 // Evita D-1 quando o backend manda DateTime em UTC 00:00:00Z
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
@@ -203,6 +229,36 @@ export default function ContratoPage({ user }) {
   const stContrato = useMemo(() => computeStatusContrato(contrato), [contrato]);
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
   const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
+
+  // vínculos pai/filho (renegociações)
+  const paiId = contrato?.renegociadoDeId ?? contrato?.contratoPaiId ?? contrato?.paiId ?? contrato?.pai?.id ?? contrato?.renegociadoDe?.id ?? null;
+  const paiNumero = getContratoNumeroRef(contrato?.renegociadoDe ?? contrato?.pai ?? contrato?.contratoPai) || (paiId ? String(paiId) : "");
+
+  const filhoId = contrato?.renegociadoParaId ?? contrato?.contratoFilhoId ?? contrato?.filhoId ?? contrato?.filho?.id ?? contrato?.renegociadoPara?.id ?? null;
+  const filhoNumero = getContratoNumeroRef(contrato?.renegociadoPara ?? contrato?.filho ?? contrato?.contratoFilho) || (filhoId ? String(filhoId) : "");
+
+  const renegInfoObs = useMemo(() => {
+    const base = String(contrato?.observacoes || "").trim();
+    const parts = [];
+    if (base) parts.push(base);
+
+    // Se este contrato é FILHO (tem pai)
+    if (paiId) {
+      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato #${paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
+      const already = base.toLowerCase().includes("renegocia") && base.includes(`#${paiNumero || paiId}`);
+      if (!already) parts.push(txt);
+    }
+
+    // Se este contrato é PAI (tem filho)
+    if (filhoId) {
+      const txt = `Renegociação: Este contrato originou o contrato #${filhoNumero || filhoId}.`;
+      const already = base.toLowerCase().includes("originou") && base.includes(`#${filhoNumero || filhoId}`);
+      if (!already) parts.push(txt);
+    }
+
+    return parts.filter(Boolean).join("\n");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contrato?.observacoes, paiId, paiNumero, filhoId, filhoNumero]);
 
   function openReceber(p) {
     setReceberParcela(p);
@@ -406,8 +462,42 @@ export default function ContratoPage({ user }) {
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
-            <div className="text-sm font-semibold text-slate-900">{contrato?.formaPagamento || "—"}</div>
+            <div className="text-sm font-semibold text-slate-900">{normalizeForma(contrato?.formaPagamento)}</div>
           </div>
+
+        {(paiId || filhoId) ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-xs font-semibold text-slate-600">Vínculos de renegociação</div>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+              {paiId ? (
+                <Link
+                  to={`/contratos/${paiId}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+                  title="Abrir contrato originário"
+                >
+                  ← Contrato originário #{paiNumero || paiId}
+                </Link>
+              ) : null}
+
+              {filhoId ? (
+                <Link
+                  to={`/contratos/${filhoId}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+                  title="Abrir contrato renegociado"
+                >
+                  Contrato renegociado #{filhoNumero || filhoId} →
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {renegInfoObs ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="text-xs font-semibold text-slate-600">Observações</div>
+            <div className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{renegInfoObs}</div>
+          </div>
+        ) : null}
         </div>
       </Card>
 
