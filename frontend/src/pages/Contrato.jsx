@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
+import AdminOnly from "../components/AdminOnly";
+import Can from "../components/Can";
 
 /* =========================
    Helpers (padrão do projeto)
@@ -114,6 +116,9 @@ export default function ContratoPage({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+
+
   const [contrato, setContrato] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
@@ -140,7 +145,7 @@ export default function ContratoPage({ user }) {
     try {
       setLoading(true);
       setErrMsg("");
-      const data = await apiFetch(`/contratos/${id}`);
+      const data = await apiFetch(`/api/contratos/${id}`);
       setContrato(data);
     } catch (e) {
       setErrMsg(e?.message || "Erro ao carregar contrato.");
@@ -148,6 +153,26 @@ export default function ContratoPage({ user }) {
       setLoading(false);
     }
   }
+
+if (!isAdmin) {
+  return (
+    <div className="p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="text-xl font-semibold text-slate-900">Contrato</div>
+        <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
+
+        <div className="mt-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+          >
+            Voltar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   useEffect(() => {
     load();
@@ -304,29 +329,20 @@ export default function ContratoPage({ user }) {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
-            Voltar
-          </button>
-          <Link to="/pagamentos" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
-            Pagamentos
-          </Link>
-        </div>
+    <div className="flex items-center gap-3">
+      <AdminOnly user={user}>
+        <button
+          onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
+          className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+          title="Renegociar saldo do contrato"
+        >
+          Renegociar Saldo
+        </button>
+      </AdminOnly>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
-            className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-            title="Renegociar saldo do contrato"
-          >
-            Renegociar Saldo
-          </button>
+      <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
+    </div>
 
-          <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
-        </div>
-      </div>
 
       {errMsg && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{errMsg}</div>
@@ -398,23 +414,23 @@ export default function ContratoPage({ user }) {
                     </td>
                     <td className="py-3 pr-3">
                       <div className="flex flex-wrap gap-2">
-                        {st === "PREVISTA" && (
+                        <Can when={isAdmin && st === "PREVISTA"}>
                           <button
                             onClick={() => openReceber(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
                           >
                             Receber Parcela
                           </button>
-                        )}
+                        </Can>
 
-                        {podeRetificar && (
+                        <Can when={isAdmin && podeRetificar}>
                           <button
                             onClick={() => openRetificar(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
                           >
                             Retificar
                           </button>
-                        )}
+                        </Can>
                       </div>
                     </td>
                   </tr>
