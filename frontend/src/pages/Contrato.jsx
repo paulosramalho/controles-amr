@@ -258,15 +258,15 @@ export default function ContratoPage({ user }) {
 
     // Se este contrato é FILHO (tem pai)
     if (paiId) {
-      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato #${paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
-      const already = base.toLowerCase().includes("renegocia") && base.includes(`#${paiNumero || paiId}`);
+      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato ${paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
+      const already = base.toLowerCase().includes("renegocia") && base.includes(`${paiNumero || paiId}`);
       if (!already) parts.push(txt);
     }
 
     // Se este contrato é PAI (tem filho)
     if (filhoId) {
-      const txt = `Renegociação: Este contrato originou o contrato #${filhoNumero || filhoId}.`;
-      const already = base.toLowerCase().includes("originou") && base.includes(`#${filhoNumero || filhoId}`);
+      const txt = `Renegociação: Este contrato originou o contrato ${filhoNumero || filhoId}.`;
+      const already = base.toLowerCase().includes("originou") && base.includes(`${filhoNumero || filhoId}`);
       if (!already) parts.push(txt);
     }
 
@@ -489,7 +489,7 @@ export default function ContratoPage({ user }) {
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
                   title="Abrir contrato originário"
                 >
-                  ← Contrato originário #{paiNumero || paiId}
+                  ← Contrato originário {paiNumero || paiId}
                 </Link>
               ) : null}
 
@@ -499,7 +499,7 @@ export default function ContratoPage({ user }) {
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
                   title="Abrir contrato renegociado"
                 >
-                  Contrato renegociado #{filhoNumero || filhoId} →
+                  Contrato renegociado {filhoNumero || filhoId} →
                 </Link>
               ) : null}
             </div>
@@ -594,7 +594,7 @@ export default function ContratoPage({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Receber parcela #{receberParcela?.numero}</div>
+              <div className="text-sm font-semibold">Receber parcela {receberParcela?.numero}</div>
               <button className="text-slate-500" onClick={closeModals}>✕</button>
             </div>
 
@@ -662,7 +662,7 @@ export default function ContratoPage({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
           <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Retificar parcela #{retParcela?.numero}</div>
+              <div className="text-sm font-semibold">Retificar parcela {retParcela?.numero}</div>
               <button className="text-slate-500" onClick={closeModals}>✕</button>
             </div>
 
@@ -705,7 +705,7 @@ export default function ContratoPage({ user }) {
                       .filter((x) => x.id !== retParcela?.id)
                       .map((op) => (
                         <label key={op.id} className="text-xs text-slate-600">
-                          Parcela #{op.numero} (R$)
+                          Parcela {op.numero} (R$)
                           <input
                             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                             value={maskBRLFromDigits(manualOutros[op.id] || "")}
