@@ -210,21 +210,18 @@ if (!isAdmin) {
   const nomeCliente = (() => {
   const c = contrato?.cliente;
 
-  // caso venha como string direto
-  if (typeof c === "string") {
-    const s = c.trim();
-    return s || "—";
-  }
+  if (typeof c === "string") return c.trim() || "—";
 
-  // caso venha como objeto (tenta várias chaves comuns)
   const nome =
-    c?.nome ??
-    c?.nomeCompleto ??
-    c?.nome_completo ??
+    c?.nomeRazaoSocial ??
+    c?.nome_razao_social ??
     c?.razaoSocial ??
     c?.razao_social ??
     c?.nomeFantasia ??
     c?.nome_fantasia ??
+    c?.nomeCompleto ??
+    c?.nome_completo ??
+    c?.nome ??
     contrato?.clienteNome ??
     contrato?.nomeCliente ??
     contrato?.cliente_nome ??
@@ -233,7 +230,6 @@ if (!isAdmin) {
 
   return String(nome || "—");
 })();
-
 
   const formaPagamentoLabel = useMemo(() => {
     const fp =
