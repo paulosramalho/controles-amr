@@ -677,40 +677,132 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
 
 // Modelo de Distribuição (admin-only)
 app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
-  const rows = await prisma.modeloDistribuicao.findMany({ orderBy: { cod: "asc" } });
-  res.json(rows);
+  try {
+    const rows = await prisma.modeloDistribuicao.findMany({
+      orderBy: { codigo: "asc" },
+      include: { itens: { orderBy: { ordem: "asc" } } }, // útil pro front já montar visão completa
+    });
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao listar modelos de distribuição." });
+  }
 });
 
 app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
-  const { cod, descricao, ativo } = req.body || {};
-  if (!cod || !String(cod).trim()) return res.status(400).json({ message: "Informe o código." });
+  try {
+    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
+    if (!codigo || !String(codigo).trim()) return res.status(400).json({ message: "Informe o código." });
+    if (!descricao || !String(descricao).trim()) return res.status(400).json({ message: "Informe a descrição." });
+    if (!periodicidade || !String(periodicidade).trim()) return res.status(400).json({ message: "Informe a periodicidade." });
 
-  const row = await prisma.modeloDistribuicao.create({
-    data: { cod: String(cod).trim(), descricao: descricao ? String(descricao).trim() : null, ativo: ativo !== false },
-  });
-  res.json(row);
+    const row = await prisma.modeloDistribuicao.create({
+      data: {
+        codigo: String(codigo).trim().toUpperCase(),
+        origem: origem ? String(origem).trim() : "REPASSE",
+        descricao: String(descricao).trim(),
+        periodicidade: String(periodicidade).trim(),
+        ativo: ativo !== false,
+      },
+    });
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao criar modelo de distribuição." });
+  }
 });
 
 app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
 
-  const { cod, descricao, ativo } = req.body || {};
-  const data = {};
-  if (cod !== undefined) data.cod = String(cod).trim();
-  if (descricao !== undefined) data.descricao = descricao ? String(descricao).trim() : null;
-  if (ativo !== undefined) data.ativo = !!ativo;
+    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
+    const data = {};
+    if (codigo !== undefined) data.codigo = String(codigo).trim().toUpperCase();
+    if (origem !== undefined) data.origem = origem ? String(origem).trim() : "REPASSE";
+    if (descricao !== undefined) data.descricao = String(descricao).trim();
+    if (periodicidade !== undefined) data.periodicidade = String(periodicidade).trim();
+    if (ativo !== undefined) data.ativo = !!ativo;
 
-  const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
-  res.json(row);
+    const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar modelo de distribuição." });
+  }
 });
 
 app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
 
-  await prisma.modeloDistribuicao.delete({ where: { id } });
-  res.json({ ok: true });
+    await prisma.modeloDistribuicao.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao excluir modelo de distribuição." });
+  }
+});
+
+app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const modeloId = Number(req.params.id);
+    if (!Number.isFinite(modeloId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    if (!Number.isFinite(Number(ordem))) return res.status(400).json({ message: "Informe a ordem." });
+    if (!destinoTipo) return res.status(400).json({ message: "Informe o destino." });
+    if (!Number.isFinite(Number(percentualBp))) return res.status(400).json({ message: "Informe o percentual (bp)." });
+
+    const item = await prisma.modeloDistribuicaoItem.create({
+      data: {
+        modeloId,
+        ordem: Number(ordem),
+        destinoTipo,
+        percentualBp: Number(percentualBp),
+        destinatario: destinatario ? String(destinatario).trim() : null,
+      },
+    });
+    res.json(item);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao adicionar item ao modelo." });
+  }
+});
+
+app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.itemId);
+    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    const data = {};
+    if (ordem !== undefined) data.ordem = Number(ordem);
+    if (destinoTipo !== undefined) data.destinoTipo = destinoTipo;
+    if (percentualBp !== undefined) data.percentualBp = Number(percentualBp);
+    if (destinatario !== undefined) data.destinatario = destinatario ? String(destinatario).trim() : null;
+
+    const item = await prisma.modeloDistribuicaoItem.update({ where: { id: itemId }, data });
+    res.json(item);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar item do modelo." });
+  }
+});
+
+app.delete("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.itemId);
+    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
+
+    await prisma.modeloDistribuicaoItem.delete({ where: { id: itemId } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao excluir item do modelo." });
+  }
 });
 
 /* =========================
