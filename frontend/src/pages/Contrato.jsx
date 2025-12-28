@@ -635,7 +635,7 @@ useEffect(() => {
  //   Contrato renegociado {ultimoFilhoNumero || filhoNumeroReal || filhoNumero || ultimoFilhoId || filhoId} →
  // </Link>
  // ) : null}
-
+}
 {renegChain.length > 1 ? (
   <div className="w-full pt-2 text-xs text-slate-500">
     Histórico:&nbsp;
