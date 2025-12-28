@@ -20,8 +20,9 @@ function maskBRLFromDigits(digits) {
 }
 
 function formatBRLFromDecimal(value) {
-  const num = Number(value ?? 0);
-  if (!Number.isFinite(num)) return "0,00";
+  if (value === null || value === undefined || value === "") return "—";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
   return num.toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -35,9 +36,6 @@ function displayFormaPagamento(fp) {
   if (v === "PARCELADO" || v === "PARCELAS") return "Parcelado";
   if (v === "ENTRADA_PARCELAS" || v === "ENTRADA+PARCELAS" || v === "ENTRADA_PARCELA" || v === "ENTRADA_PARCELA(S)") return "Entrada + Parcelas";
   return fp;
-}
-
-);
 }
 
 // Evita D-1 quando o backend manda DateTime em UTC 00:00:00Z
