@@ -500,8 +500,17 @@ const totalRecebido = useMemo(() => {
 
   previstasOrdenadas.forEach((op) => {
     const nn = Number(op?.valorPrevisto);
-    others[op.id] = Number.isFinite(nn) ? String(Math.round(nn * 100)) : "";
+    others[op.id] = Number.isFinite(nn) ? String(Math.round(nn * 100)) : "";  
   });
+
+  setManualOutros(
+    recomputeManualOutrosForDefaultCompensacao(
+      String(Math.round(Number(p.valorPrevisto) * 100)),
+      p,
+      previstas,
+      others
+    )
+  );
 
   setManualOutros(others);
   setRetOpen(true);
@@ -1048,10 +1057,16 @@ const totalRecebido = useMemo(() => {
             )}
 
             <div className="mt-5 flex justify-end gap-2">
-              <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm" onClick={closeModals}>
+              <button
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+                onClick={closeModals}
+              >
                 Cancelar
               </button>
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={submitRetificar}>
+              <button
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+                onClick={submitRetificar}
+              >
                 Salvar
               </button>
             </div>
