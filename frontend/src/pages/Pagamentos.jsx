@@ -562,7 +562,8 @@ try {
     setConfParcela(parcela);
     setConfData(toDDMMYYYY(new Date()));
     setConfMeio("PIX");
-    setConfValorDigits("");
+    const cents = Math.round(Number(parcela?.valorPrevisto || 0) * 100);
+    setConfValorDigits(String(Math.max(0, cents)));
     setConfOpen(true);
   }
 
@@ -606,12 +607,12 @@ async function cancelarParcela() {
 
     // ✅ Garantir consistência da lista e do contrato selecionado
     await load();
-  } catch (e) {
-    setError(e?.message || "Falha ao cancelar parcela.");
-  } finally {
-    setCanceling(false);
-  }
-}
+    } catch (e) {
+        setError(e?.message || "Falha ao cancelar parcela.");
+        } finally {
+        setCanceling(false);
+        }
+      }
 
   async function confirmarRecebimento() {
     if (!confParcela) return;
@@ -620,8 +621,18 @@ async function cancelarParcela() {
       return;
     }
 
+    // ✅ trava: valor recebido não pode ser diferente do previsto
+    const previstoCents = Math.round(Number(confParcela?.valorPrevisto || 0) * 100);
+    const recebidoCents = Number(onlyDigits(confValorDigits) || "0");
+
+    if (onlyDigits(confValorDigits) && recebidoCents !== previstoCents) {
+      setError("O valor recebido deve ser exatamente igual ao valor previsto da parcela.");
+      return;
+    }
+
     setError("");
     setConfirming(true);
+
     try {
       const body = {
         dataRecebimento: confData,
