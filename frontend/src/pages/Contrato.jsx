@@ -26,6 +26,32 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function parseBRLValueToNumber(v) {
+  if (v === null || v === undefined || v === "") return 0;
+
+  // number já em reais
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  const s = String(v).trim();
+  if (!s) return 0;
+
+  // só dígitos => centavos
+  if (/^\d+$/.test(s)) {
+    const cents = Number(s);
+    return Number.isFinite(cents) ? cents / 100 : 0;
+  }
+
+  // "1.500,00" (pt-BR)
+  if (s.includes(",") && s.match(/^\d{1,3}(\.\d{3})*,\d{2}$/)) {
+    const normalized = s.replace(/\./g, "").replace(",", ".");
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // fallback: "1500.00" ou "1500"
+  const num = Number(s);
+  return Number.isFinite(num) ? num : 0;
+}
 
 function normalizeForma(fp) {
   const raw = String(fp || "").trim();
@@ -379,13 +405,8 @@ const totalRecebido = useMemo(() => {
     .reduce((acc, p) => {
       const vr = p?.valorRecebido;
       const vp = p?.valorPrevisto;
-
-      const num =
-        typeof vr === "number" ? vr :
-        typeof vp === "number" ? vp :
-        Number(vr ?? vp);
-
-      return acc + (Number.isFinite(num) ? num : 0);
+      const usado = (vr !== null && vr !== undefined && vr !== "") ? vr : vp;
+      return acc + parseBRLValueToNumber(usado);
     }, 0);
 }, [parcelas]);
 
@@ -608,15 +629,22 @@ const totalRecebido = useMemo(() => {
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
-  <div className="text-xs text-slate-500">Valor Total</div>
-  <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <div className="text-xs text-slate-500">Valor Total</div>
+                <div className="text-sm font-semibold text-slate-900">
+                  R$ {formatBRLFromDecimal(contrato?.valorTotal)}
+                </div>
+              </div>
 
-  {totalRecebido > 0 ? (
-    <div className="mt-1 text-xs text-slate-600">
-      Valor recebido: <span className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</span>
-    </div>
-  ) : null}
-</div>
+              <div className="min-w-0 text-right">
+                <div className="text-xs text-slate-500">Valor recebido</div>
+                <div className="text-sm font-semibold text-slate-900">
+                  R$ {formatBRLFromDecimal(totalRecebido)}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
