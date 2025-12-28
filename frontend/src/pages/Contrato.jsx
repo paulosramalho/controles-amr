@@ -511,8 +511,6 @@ const totalRecebido = useMemo(() => {
       others
     )
   );
-
-  setManualOutros(others);
   setRetOpen(true);
 }
 
@@ -607,7 +605,7 @@ const totalRecebido = useMemo(() => {
       if (retVenc) patch.vencimento = retVenc;
       if (retValorDigits) patch.valorPrevisto = onlyDigits(retValorDigits);
 
-      if (!Object.keys(patch).length) return setErrMsg("Nada para retificar.");
+      if (!Object.keys(patch).length) return setRetErrMsg("Nada para retificar.");
 
       // Validação local (manual): soma deve fechar o total
       if (!ratear && patch.valorPrevisto !== undefined) {
@@ -623,7 +621,7 @@ const totalRecebido = useMemo(() => {
         const somaManual = sumDigitsMap(manualOutros);
 
         if (somaManual !== somaEsperada) {
-          return setErrMsg("Soma dos valores das demais parcelas não fecha com o total do contrato. Ajuste os valores ou renegocie.");
+          return setRetErrMsg("Soma dos valores das demais parcelas não fecha com o total do contrato. Ajuste os valores ou renegocie.");
         }
       }
 
