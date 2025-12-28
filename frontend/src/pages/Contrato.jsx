@@ -34,7 +34,15 @@ function displayFormaPagamento(fp) {
   if (!v) return "—";
   if (v === "A_VISTA" || v === "AVISTA" || v === "À_VISTA") return "À vista";
   if (v === "PARCELADO" || v === "PARCELAS") return "Parcelado";
-  if (v === "ENTRADA_PARCELAS" || v === "ENTRADA+PARCELAS" || v === "ENTRADA_PARCELA" || v === "ENTRADA_PARCELA(S)") return "Entrada + Parcelas";
+  if (
+    v === "ENTRADA_PARCELAS" ||
+    v === "ENTRADA+PARCELAS" ||
+    v === "ENTRADA_PARCELADO" ||
+    v === "ENTRADA+PARCELADO" ||
+    v === "ENTRADA_PARCELA" ||
+    v === "ENTRADA_PARCELA(S)"
+  )
+    return "Entrada + Parcelas";
   return fp;
 }
 
