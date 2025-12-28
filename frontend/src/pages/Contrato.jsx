@@ -53,6 +53,47 @@ function parseBRLValueToNumber(v) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function parseBRLHeuristic(recebido, previsto) {
+  if (recebido === null || recebido === undefined || recebido === "") return 0;
+
+  // number assume reais
+  if (typeof recebido === "number") return Number.isFinite(recebido) ? recebido : 0;
+
+  const s = String(recebido).trim();
+  if (!s) return 0;
+
+  // se for "1.500,00" etc (pt-BR)
+  if (s.includes(",") && s.match(/^\d{1,3}(\.\d{3})*,\d{2}$/)) {
+    const normalized = s.replace(/\./g, "").replace(",", ".");
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // se for "1500.00" ou "1500"
+  if (!/^\d+$/.test(s)) {
+    const num = Number(s);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // só dígitos: pode ser reais OU centavos
+  const raw = Number(s);
+  if (!Number.isFinite(raw)) return 0;
+
+  const asReais = raw;       // 20000 -> 20000.00
+  const asCentavos = raw/100; // 20000 -> 200.00
+
+  // se tiver previsto, escolhe o mais próximo dele
+  const vp = (typeof previsto === "number" && Number.isFinite(previsto)) ? previsto : null;
+  if (vp !== null) {
+    const dReais = Math.abs(asReais - vp);
+    const dCent = Math.abs(asCentavos - vp);
+    return dReais <= dCent ? asReais : asCentavos;
+  }
+
+  // sem previsto: preferir reais (evita o seu caso 20.000 virar 200)
+  return asReais;
+}
+
 function normalizeForma(fp) {
   const raw = String(fp || "").trim();
   if (!raw) return "—";
@@ -406,7 +447,7 @@ const totalRecebido = useMemo(() => {
       const vr = p?.valorRecebido;
       const vp = p?.valorPrevisto;
       const usado = (vr !== null && vr !== undefined && vr !== "") ? vr : vp;
-      return acc + parseBRLValueToNumber(usado);
+      return acc + parseBRLHeuristic(usado, vp);
     }, 0);
 }, [parcelas]);
 
