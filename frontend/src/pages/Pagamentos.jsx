@@ -316,19 +316,20 @@ export default function PagamentosPage({ user }) {
   const [cancelParcela, setCancelParcela] = useState(null);
   const [cancelMotivo, setCancelMotivo] = useState("");
 
-  async function load() {
-    setError("");
-    setLoading(true);
-    try {
-      const query = q ? `?q=${encodeURIComponent(q)}` : "";
-      const data = await apiFetch(`/contratos${query}`);
-      setRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e?.message || "Falha ao carregar contratos.");
-    } finally {
-      setLoading(false);
-    }
+  async function load(qValue = "") {
+  setError("");
+  setLoading(true);
+  try {
+    const qq = String(qValue || "").trim();
+    const query = qq ? `?q=${encodeURIComponent(qq)}` : "";
+    const data = await apiFetch(`/contratos${query}`);
+    setRows(Array.isArray(data) ? data : []);
+  } catch (e) {
+    setError(e?.message || "Falha ao carregar contratos.");
+  } finally {
+    setLoading(false);
   }
+}
 
   async function loadClientes() {
     try {
@@ -340,9 +341,18 @@ export default function PagamentosPage({ user }) {
   }
 
   useEffect(() => {
-  load();
+  load("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  }, []);
+
+  useEffect(() => {
+  const t = setTimeout(() => {
+    load(q);
+  }, 300); // debounce 300ms
+
+  return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   useEffect(() => {
   if (!isAdmin) return;
