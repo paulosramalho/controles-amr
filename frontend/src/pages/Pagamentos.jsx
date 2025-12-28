@@ -1140,21 +1140,22 @@ async function cancelarParcela() {
             <option value="OUTRO">OUTRO</option>
           </Select>
 
-          <label className="block">
-            <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
-            <div className="mt-1 relative">
-              <input
-                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                value={maskBRLFromDigits(confValorDigits)}
-                onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
-                placeholder="(vazio = valor previsto)"
-                disabled={confirming}
-                inputMode="numeric"
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-            </div>
-            <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
-          </label>
+          <label className="text-sm font-medium">Valor recebido (R$)</label>
+
+          <input
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+            value={Number(confParcela?.valorPrevisto || 0).toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+            })}
+            disabled
+          />
+
+          <p className="mt-1 text-xs text-slate-500">
+            Valor fixo (igual ao previsto).  
+            Para receber valor diferente, utilize <strong>Retificar Parcela</strong> no Contrato (Admin).
+          </p>
+
         </div>
         {confErrMsg && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
