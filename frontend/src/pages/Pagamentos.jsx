@@ -305,6 +305,7 @@ export default function PagamentosPage({ user }) {
   const [confirming, setConfirming] = useState(false);
   const [confOpen, setConfOpen] = useState(false);
   const [confParcela, setConfParcela] = useState(null);
+  const [confErrMsg, setConfErrMsg] = useState("");
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
   const [confValorDigits, setConfValorDigits] = useState("");
@@ -564,6 +565,7 @@ try {
     setConfMeio("PIX");
     const cents = Math.round(Number(parcela?.valorPrevisto || 0) * 100);
     setConfValorDigits(String(Math.max(0, cents)));
+    setConfErrMsg(""); // 👈 limpar erro do modal
     setConfOpen(true);
   }
 
@@ -617,7 +619,7 @@ async function cancelarParcela() {
   async function confirmarRecebimento() {
     if (!confParcela) return;
     if (!parseDateDDMMYYYY(confData)) {
-      setError("Data de recebimento inválida (DD/MM/AAAA).");
+      setConfErrMsg("Data de recebimento inválida (DD/MM/AAAA).");
       return;
     }
 
@@ -626,11 +628,11 @@ async function cancelarParcela() {
     const recebidoCents = Number(onlyDigits(confValorDigits) || "0");
 
     if (onlyDigits(confValorDigits) && recebidoCents !== previstoCents) {
-      setError("O valor recebido deve ser exatamente igual ao valor previsto da parcela.");
+      setConfErrMsg("O valor recebido deve ser exatamente igual ao valor previsto da parcela.");
       return;
     }
 
-    setError("");
+    setConfErrMsg("");
     setConfirming(true);
 
     try {
@@ -644,7 +646,7 @@ async function cancelarParcela() {
       setConfOpen(false);
       await load();
     } catch (e) {
-      setError(e?.message || "Falha ao confirmar recebimento.");
+      setConfErrMsg(e?.message || "Falha ao confirmar recebimento.");
     } finally {
       setConfirming(false);
     }
@@ -1104,7 +1106,7 @@ async function cancelarParcela() {
       <Modal
         open={confOpen}
         title={confParcela ? `Receber Parcela — Parcela ${confParcela.numero}` : "Receber Parcela"}
-        onClose={() => setConfOpen(false)}
+        onClose={() => { setConfOpen(false); setConfErrMsg(""); }}
         footer={
           <div className="flex items-center justify-end gap-2">
             <button
@@ -1154,6 +1156,11 @@ async function cancelarParcela() {
             <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
           </label>
         </div>
+        {confErrMsg && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {confErrMsg}
+          </div>
+        )}
       </Modal>
 <Modal
         open={cancelOpen}
