@@ -268,6 +268,7 @@ export default function ContratoPage({ user }) {
   const [receberParcela, setReceberParcela] = useState(null);
   const [recValorDigits, setRecValorDigits] = useState("");
   const [recData, setRecData] = useState("");
+  const [recDataISO, setRecDataISO] = useState("");
   const [recMeio, setRecMeio] = useState("PIX");
   const [recSenha, setRecSenha] = useState("");
 
@@ -483,6 +484,11 @@ const totalRecebido = useMemo(() => {
     setRecMeio("PIX");
     setRecSenha("");
     setReceberOpen(true);
+
+    const todayISO = new Date().toISOString().slice(0, 10);
+    setRecDataISO(todayISO);
+    setRecData(todayISO.split("-").reverse().join("/"));
+
   }
 
   function openRetificar(p) {
@@ -895,12 +901,16 @@ const totalRecebido = useMemo(() => {
               </label>
 
               <label className="text-xs text-slate-600">
-                Data de recebimento (DD/MM/AAAA)
+                Data de recebimento
                 <input
+                  type="date"
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={recData}
-                  onChange={(e) => setRecData(e.target.value)}
-                  placeholder="DD/MM/AAAA"
+                  value={recDataISO || ""}
+                  onChange={(e) => {
+                    const iso = e.target.value; // YYYY-MM-DD
+                    setRecDataISO(iso);
+                    setRecData(iso ? iso.split("-").reverse().join("/") : "");
+                  }}
                 />
               </label>
 
