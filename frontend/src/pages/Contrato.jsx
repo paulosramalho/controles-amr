@@ -485,23 +485,25 @@ const totalRecebido = useMemo(() => {
   }
 
   function openRetificar(p) {
-    setRetParcela(p);
-    const n = Number(p?.valorPrevisto);
-    setRetValorDigits(Number.isFinite(n) ? String(Math.round(n * 100)) : "");
-    setRetVenc(p?.vencimento ? toDDMMYYYY(p.vencimento) : "");
-    setRetMotivo("");
-    setRetSenha("");
-    setRatear(true);
+  setRetParcela(p);
+  const n = Number(p?.valorPrevisto);
+  setRetValorDigits(Number.isFinite(n) ? String(Math.round(n * 100)) : "");
+  setRetVenc(p?.vencimento ? toDDMMYYYY(p.vencimento) : "");
+  setRetMotivo("");
+  setRetSenha("");
+  setRatear(false); // 🔴 DEFAULT: NÃO ratear
 
-    const others = {};
-    for (const op of previstas.filter((x) => x.id !== p.id)) {
-      const nn = Number(op?.valorPrevisto);
-      others[op.id] = Number.isFinite(nn) ? String(Math.round(nn * 100)) : "";
-    }
-    setManualOutros(others);
+  const others = {};
+  const previstasOrdenadas = previstas.filter((x) => x.id !== p.id);
 
-    setRetOpen(true);
-  }
+  previstasOrdenadas.forEach((op) => {
+    const nn = Number(op?.valorPrevisto);
+    others[op.id] = Number.isFinite(nn) ? String(Math.round(nn * 100)) : "";
+  });
+
+  setManualOutros(others);
+  setRetOpen(true);
+}
 
   async function submitReceber() {
     if (!receberParcela) return;
