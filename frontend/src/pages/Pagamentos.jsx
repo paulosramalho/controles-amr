@@ -347,8 +347,12 @@ export default function PagamentosPage({ user }) {
   if (!isAdmin) return;
 
   const params = new URLSearchParams(location.search || "");
+
   const id = params.get("renegociar");
   if (!id) return;
+
+  // ✅ novo
+  if (!Array.isArray(rows) || rows.length === 0) return;
 
   (async () => {
     setError("");
@@ -853,7 +857,7 @@ async function cancelarParcela() {
                 value={maskBRLFromDigits(valorTotalDigits)}
                 onChange={(e) => setValorTotalDigits(onlyDigits(e.target.value))}
                 placeholder="0,00"
-                disabled={loading}
+                disabled={loading || !!renegociarId}
                 inputMode="numeric"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
