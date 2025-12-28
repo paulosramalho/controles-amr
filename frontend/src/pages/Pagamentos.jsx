@@ -389,7 +389,15 @@ export default function PagamentosPage({ user }) {
       resetNovo();
       setRenegociarId(Number(id));
       setNumeroContrato(novoNumero);
-      setRenegociarId(null);
+
+      // cliente do contrato pai (prioriza clienteId, senão cliente.id)
+      const cid = pai?.clienteId ?? pai?.cliente?.id ?? "";
+      setClienteId(cid ? String(cid) : "");
+
+      // mantém observações atuais do pai e adiciona a linha de renegociação (sem duplicar)
+      const baseObs = String(pai?.observacoes || "").trim();
+      const linhaReneg = `Renegociação: Este contrato será criado a partir do saldo pendente do contrato ${pai?.numeroContrato || id}. Cliente, número e valor total são calculados automaticamente.`;
+      setObservacoes(baseObs ? `${baseObs}\n\n${linhaReneg}` : linhaReneg);
 
       // pendente vem em number (reais) -> converter para dígitos centavos (máscara)
       const cents = Math.round((Number(pendente) || 0) * 100);
