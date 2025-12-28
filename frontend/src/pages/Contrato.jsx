@@ -185,6 +185,9 @@ export default function ContratoPage({ user }) {
   const [contrato, setContrato] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
+  
+  const [paiNumeroReal, setPaiNumeroReal] = useState("");
+  const [filhoNumeroReal, setFilhoNumeroReal] = useState("");
 
   // Receber
   const [receberOpen, setReceberOpen] = useState(false);
@@ -222,6 +225,34 @@ export default function ContratoPage({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+useEffect(() => {
+  let alive = true;
+
+  async function fetchRefs() {
+    try {
+      // pai
+      if (paiId && !paiNumeroReal) {
+        const p = await apiFetch(`/contratos/${paiId}`);
+        if (!alive) return;
+        setPaiNumeroReal(getContratoNumeroRef(p) || "");
+      }
+
+      // filho
+      if (filhoId && !filhoNumeroReal) {
+        const f = await apiFetch(`/contratos/${filhoId}`);
+        if (!alive) return;
+        setFilhoNumeroReal(getContratoNumeroRef(f) || "");
+      }
+    } catch {
+      // silêncio: se não vier, segue mostrando id sem quebrar
+    }
+  }
+
+  fetchRefs();
+  return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [paiId, filhoId]);
+
   const contratoNumero = useMemo(() => getContratoNumeroRef(contrato), [contrato]);
 
   const parcelas = contrato?.parcelas || [];
@@ -258,14 +289,14 @@ export default function ContratoPage({ user }) {
 
     // Se este contrato é FILHO (tem pai)
     if (paiId) {
-      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato ${paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
+      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato ${paiNumeroReal || paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
       const already = base.toLowerCase().includes("renegocia") && base.includes(`${paiNumero || paiId}`);
       if (!already) parts.push(txt);
     }
 
     // Se este contrato é PAI (tem filho)
     if (filhoId) {
-      const txt = `Renegociação: Este contrato originou o contrato ${filhoNumero || filhoId}.`;
+      const txt = `Renegociação: Este contrato originou o contrato ${filhoNumeroReal || filhoNumero || filhoId}.`;
       const already = base.toLowerCase().includes("originou") && base.includes(`${filhoNumero || filhoId}`);
       if (!already) parts.push(txt);
     }
@@ -480,7 +511,7 @@ export default function ContratoPage({ user }) {
           </div>
 
         {(paiId || filhoId) ? (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-1">
             <div className="text-xs font-semibold text-slate-600">Vínculos de renegociação</div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
               {paiId ? (
@@ -489,7 +520,7 @@ export default function ContratoPage({ user }) {
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
                   title="Abrir contrato originário"
                 >
-                  ← Contrato originário {paiNumero || paiId}
+                  ← Contrato originário {paiNumeroReal || paiNumero || paiId}
                 </Link>
               ) : null}
 
@@ -499,7 +530,7 @@ export default function ContratoPage({ user }) {
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
                   title="Abrir contrato renegociado"
                 >
-                  Contrato renegociado {filhoNumero || filhoId} →
+                  Contrato renegociado {filhoNumeroReal || filhoNumero || filhoId} →
                 </Link>
               ) : null}
             </div>
@@ -507,9 +538,9 @@ export default function ContratoPage({ user }) {
         ) : null}
 
         {renegInfoObs ? (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 md:col-span-2">
             <div className="text-xs font-semibold text-slate-600">Observações</div>
-            <div className="mt-2 whitespace-pre-wrap text-sm text-slate-800">{renegInfoObs}</div>
+            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{renegInfoObs}</div>
           </div>
         ) : null}
         </div>

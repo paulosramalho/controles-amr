@@ -1033,7 +1033,7 @@ async function cancelarParcela() {
       {/* ---------- Modal: Confirmar recebimento ---------- */}
       <Modal
         open={confOpen}
-        title={confParcela ? `Receber Parcela — Parcela #${confParcela.numero}` : "Receber Parcela"}
+        title={confParcela ? `Receber Parcela — Parcela ${confParcela.numero}` : "Receber Parcela"}
         onClose={() => setConfOpen(false)}
         footer={
           <div className="flex items-center justify-end gap-2">
@@ -1093,7 +1093,7 @@ async function cancelarParcela() {
         <div className="space-y-4">
           <div className="text-sm text-slate-700">
             Você está cancelando a parcela{" "}
-            <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe o
+            <span className="font-semibold">{cancelParcela?.numero}</span>. Informe o
             motivo (obrigatório).
           </div>
 
