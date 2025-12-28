@@ -271,6 +271,8 @@ export default function PagamentosPage({ user }) {
   const [openNovo, setOpenNovo] = useState(false);
   const [modalError, setModalError] = useState("");
 
+  const [renegociarId, setRenegociarId] = useState(null);
+
   // modal parcelas
   const [openParcelas, setOpenParcelas] = useState(false);
   const [selectedContrato, setSelectedContrato] = useState(null);
@@ -342,41 +344,70 @@ export default function PagamentosPage({ user }) {
 }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
+  if (!isAdmin) return;
 
-    const params = new URLSearchParams(location.search || "");
-    const id = params.get("renegociar");
-    if (!id) return;
-    if (renegProcessando) return;
+  const params = new URLSearchParams(location.search || "");
+  const id = params.get("renegociar");
+  if (!id) return;
 
-    (async () => {
-      setError("");
-      setRenegProcessando(true);
+  (async () => {
+    setError("");
+    try {
+      // 1) carrega o contrato pai
+      const pai = await apiFetch(`/contratos/${id}`);
+
+      // 2) calcula saldo pendente = soma das PREVISTAS
+      const parcelas = Array.isArray(pai?.parcelas) ? pai.parcelas : [];
+      const pendente = parcelas
+        .filter((p) => p.status === "PREVISTA")
+        .reduce((acc, p) => acc + Number(p?.valorPrevisto || 0), 0);
+
+      // 3) sugere novo número (mantém o padrão raiz-Rn)
+      const base = String(pai?.numeroContrato || "").trim() || String(id);
+      const m = base.match(/^(.*?)(-R(\d+))?$/i);
+      const root = m ? m[1] : base;
+
+      // tenta descobrir próximo R olhando renegociadoPara em cadeia (se não existir, cai no R1)
+      let nextR = 1;
       try {
-        const resp = await apiFetch(`/contratos/${id}/renegociar`, { method: "POST" });
-
-        const novoId =
-          resp?.contratoNovo?.id ??
-          resp?.contratoNovoId ??
-          resp?.id;
-
-        // limpa query param (pra não repetir ao voltar)
-        navigate("/pagamentos", { replace: true });
-
-        await load();
-
-        if (novoId) {
-          navigate(`/contratos/${novoId}`);
+        let cur = pai;
+        let guard = 0;
+        while ((cur?.renegociadoParaId || cur?.renegociadoPara?.id) && guard++ < 20) {
+          const nxId = cur.renegociadoParaId ?? cur.renegociadoPara?.id;
+          const nx = await apiFetch(`/contratos/${nxId}`);
+          cur = nx;
+          const mm = String(cur?.numeroContrato || "").match(/-R(\d+)$/i);
+          if (mm) nextR = Math.max(nextR, Number(mm[1]) + 1);
         }
-      } catch (e) {
-        navigate("/pagamentos", { replace: true });
-        setError(e?.message || "Falha ao renegociar saldo.");
-      } finally {
-        setRenegProcessando(false);
+      } catch {
+        // silêncio: mantém nextR
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, location.search]);
+
+      const novoNumero = `${root}-R${nextR}`;
+
+      // 4) abre modal com campos pré-preenchidos
+      resetNovo();
+      setRenegociarId(Number(id));
+      setNumeroContrato(novoNumero);
+      setRenegociarId(null);
+
+      // pendente vem em number (reais) -> converter para dígitos centavos (máscara)
+      const cents = Math.round((Number(pendente) || 0) * 100);
+      setValorTotalDigits(String(cents));
+
+      setModalError("");
+      setOpenNovo(true);
+      await loadClientes();
+
+      // 5) limpa o query param pra não reabrir
+      navigate("/pagamentos", { replace: true });
+    } catch (e) {
+      navigate("/pagamentos", { replace: true });
+      setError(e?.message || "Falha ao preparar renegociação.");
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isAdmin, location.search]);
 
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
@@ -494,7 +525,13 @@ export default function PagamentosPage({ user }) {
         };
       }
 
-      await apiFetch("/contratos", { method: "POST", body: payload });
+      if (renegociarId) {
+        await apiFetch(`/contratos/${renegociarId}/renegociar`, { method: "POST", body: payload });
+        setRenegociarId(null);
+      } else {
+        await apiFetch("/contratos", { method: "POST", body: payload });
+      }
+
       setOpenNovo(false);
       await load();
     } catch (e) {
