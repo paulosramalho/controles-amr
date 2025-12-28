@@ -1965,6 +1965,7 @@ app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (_req, 
 // Retificar parcela (auditável)
 // Retificar parcela (auditável) — preserva total do contrato/renegociação
 app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
+ try {
   const parcelaId = Number(req.params.id);
   const {
     adminPassword,
