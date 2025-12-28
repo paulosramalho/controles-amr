@@ -193,6 +193,9 @@ export default function ContratoPage({ user }) {
   const [ultimoFilhoId, setUltimoFilhoId] = useState(null);
   const [ultimoFilhoNumero, setUltimoFilhoNumero] = useState("");
 
+  const [prevLink, setPrevLink] = useState(null); // { id, numero }
+  const [nextLink, setNextLink] = useState(null); // { id, numero }
+
   // Receber
   const [receberOpen, setReceberOpen] = useState(false);
   const [receberParcela, setReceberParcela] = useState(null);
@@ -251,47 +254,86 @@ export default function ContratoPage({ user }) {
 useEffect(() => {
   let alive = true;
 
-  async function walkRenegChain() {
+  async function buildChainAndNeighbors() {
     try {
-      // começa do contrato atual e vai seguindo renegociadoParaId
-      const chain = [];
+      if (!contrato?.id) {
+        setRenegChain([]);
+        setPrevLink(null);
+        setNextLink(null);
+        return;
+      }
+
       const visited = new Set();
 
-      let cur = contrato;
-      let nextId = cur?.renegociadoParaId ?? cur?.renegociadoPara?.id ?? null;
+      // 1) achar o ROOT (original): sobe pelo paiId até não ter mais
+      let root = contrato;
+      let guard = 0;
 
-      while (nextId && !visited.has(nextId) && chain.length < 20) {
-        visited.add(nextId);
+      while (true) {
+        const pid =
+          root?.renegociadoDeId ??
+          root?.contratoOrigemId ??
+          root?.origemContratoId ??
+          root?.contratoOriginalId ??
+          root?.contratoPaiId ??
+          root?.paiId ??
+          root?.pai?.id ??
+          root?.renegociadoDe?.id ??
+          null;
 
-        const next = await apiFetch(`/contratos/${nextId}`);
+        if (!pid) break;
+        if (visited.has(pid) || guard++ > 20) break;
+        visited.add(pid);
+
+        const p = await apiFetch(`/contratos/${pid}`);
         if (!alive) return;
+        root = p;
+      }
 
-        chain.push({ id: nextId, numero: getContratoNumeroRef(next) || String(nextId) });
+      // 2) descer: root -> renegociadoParaId -> ... até acabar
+      const chain = [];
+      let cur = root;
+      let guard2 = 0;
+      const visited2 = new Set();
 
-        // avança
-        nextId = next?.renegociadoParaId ?? next?.renegociadoPara?.id ?? null;
+      while (cur?.id && !visited2.has(cur.id) && guard2++ < 25) {
+        visited2.add(cur.id);
+        chain.push({ id: cur.id, numero: getContratoNumeroRef(cur) || String(cur.id), raw: cur });
+
+        const nextId = cur?.renegociadoParaId ?? cur?.renegociadoPara?.id ?? null;
+        if (!nextId) break;
+
+        const nx = await apiFetch(`/contratos/${nextId}`);
+        if (!alive) return;
+        cur = nx;
       }
 
       if (!alive) return;
 
       setRenegChain(chain);
 
-      const last = chain[chain.length - 1];
-      setUltimoFilhoId(last?.id || null);
-      setUltimoFilhoNumero(last?.numero || "");
+      // 3) vizinhos do contrato atual na cadeia
+      const idx = chain.findIndex((x) => String(x.id) === String(contrato.id));
+      const prev = idx > 0 ? chain[idx - 1] : null;
+      const next = idx >= 0 && idx < chain.length - 1 ? chain[idx + 1] : null;
+
+      setPrevLink(prev ? { id: prev.id, numero: prev.numero } : null);
+      setNextLink(next ? { id: next.id, numero: next.numero } : null);
     } catch {
-      // silêncio: se falhar, mantém o comportamento atual (R1)
       if (!alive) return;
+      // fallback seguro: mantém o básico sem quebrar
       setRenegChain([]);
-      setUltimoFilhoId(null);
-      setUltimoFilhoNumero("");
+      setPrevLink(null);
+      setNextLink(null);
     }
   }
 
-  walkRenegChain();
-  return () => { alive = false; };
+  buildChainAndNeighbors();
+  return () => {
+    alive = false;
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [contrato?.id, contrato?.renegociadoParaId]);
+}, [contrato?.id]);
 
 useEffect(() => {
   let alive = true;
@@ -564,14 +606,26 @@ useEffect(() => {
             <div className="text-xs font-semibold text-slate-600">Vínculos de renegociação</div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
               {paiId ? (
-                <Link
-                  to={`/contratos/${paiId}`}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
-                  title="Abrir contrato originário"
-                >
-                  ← Contrato originário {paiNumeroReal || paiNumero || paiId}
-                </Link>
-              ) : null}
+                {prevLink ? (
+  <Link
+    to={`/contratos/${prevLink.id}`}
+    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+    title="Voltar uma etapa"
+  >
+    ← {prevLink.numero}
+  </Link>
+) : null}
+
+{nextLink ? (
+  <Link
+    to={`/contratos/${nextLink.id}`}
+    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+    title="Avançar uma etapa"
+  >
+    {nextLink.numero} →
+  </Link>
+) : null}
+
 
               {(ultimoFilhoId || filhoId) ? (
   <Link
@@ -584,16 +638,18 @@ useEffect(() => {
 ) : null}
 
 {renegChain.length > 1 ? (
-  <div className="mt-2 text-xs text-slate-500">
+  <div className="w-full pt-2 text-xs text-slate-500">
     Histórico:&nbsp;
-    {renegChain.map((x, idx) => (
-      <span key={x.id}>
-        <Link to={`/contratos/${x.id}`} className="font-semibold hover:underline">
-          {x.numero}
-        </Link>
-        {idx < renegChain.length - 1 ? " → " : ""}
-      </span>
-    ))}
+    {renegChain
+      .filter((x) => String(x.id) !== String(contrato?.id))
+      .map((x, idx, arr) => (
+        <span key={x.id}>
+          <Link to={`/contratos/${x.id}`} className="font-semibold hover:underline">
+            {x.numero}
+          </Link>
+          {idx < arr.length - 1 ? " · " : ""}
+        </span>
+      ))}
   </div>
 ) : null}
 
