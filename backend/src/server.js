@@ -1965,162 +1965,176 @@ app.put("/api/parcelas/:id/admin-edit", requireAuth, requireAdmin, async (_req, 
 // Retificar parcela (auditável)
 // Retificar parcela (auditável) — preserva total do contrato/renegociação
 app.post("/api/parcelas/:id/retificar", requireAuth, requireAdmin, async (req, res) => {
- try {
-  const parcelaId = Number(req.params.id);
-  const {
-    adminPassword,
-    motivo,
-    patch,
-    ratearEntreDemais,
-    valoresOutrasParcelas,
-  } = req.body;
+  try {
+    const parcelaId = Number(req.params.id);
+    if (!Number.isFinite(parcelaId)) return res.status(400).json({ message: "ID inválido." });
 
-  if (!adminPassword) {
-    return res.status(400).json({ error: "Senha do admin obrigatória." });
-  }
+    const { adminPassword, motivo, patch, ratearEntreDemais, valoresOutrasParcelas } = req.body || {};
 
-  if (!motivo || !motivo.trim()) {
-    return res.status(400).json({ error: "Motivo da retificação é obrigatório." });
-  }
+    // ✅ mantém seu padrão: senha admin via bcrypt (já existente no server)
+    const ok = await requireAdminPassword(req, res, adminPassword);
+    if (!ok) return;
 
-  const admin = await prisma.usuario.findFirst({
-    where: { isAdmin: true },
-  });
+    const motivoTxt = String(motivo || "").trim();
+    if (!motivoTxt) return res.status(400).json({ message: "Informe o motivo da retificação." });
 
-  if (!admin || admin.senha !== adminPassword) {
-    return res.status(403).json({ error: "Senha de administrador inválida." });
-  }
-
-  const parcela = await prisma.parcelaContrato.findUnique({
-    where: { id: parcelaId },
-    include: {
-      contrato: {
-        include: {
-          parcelas: true,
-        },
-      },
-    },
-  });
-
-  if (!parcela || parcela.status !== "PREVISTA") {
-    return res.status(400).json({ error: "Somente parcelas PREVISTAS podem ser retificadas." });
-  }
-
-  const contrato = parcela.contrato;
-  const parcelasPrevistas = contrato.parcelas.filter(
-    (p) => p.status === "PREVISTA"
-  );
-
-  if (parcelasPrevistas.length < 2) {
-    return res.status(400).json({ error: "É necessário ao menos duas parcelas PREVISTAS." });
-  }
-
-  const alvoAtual = Math.round(Number(parcela.valorPrevisto) * 100);
-  const alvoNovo =
-    patch?.valorPrevisto !== undefined
-      ? Number(String(patch.valorPrevisto).replace(/\D/g, ""))
-      : alvoAtual;
-
-  const delta = alvoNovo - alvoAtual;
-
-  const outras = parcelasPrevistas.filter((p) => p.id !== parcela.id);
-
-  let novosValores = {};
-
-  if (ratearEntreDemais) {
-    // RATEIO AUTOMÁTICO (resto na primeira)
-    const somaOutrosAtual = outras.reduce(
-      (acc, p) => acc + Math.round(Number(p.valorPrevisto) * 100),
-      0
-    );
-
-    const somaEsperada = somaOutrosAtual - delta;
-    const base = Math.floor(somaEsperada / outras.length);
-    const resto = somaEsperada - base * outras.length;
-
-    outras.forEach((p, idx) => {
-      novosValores[p.id] = base + (idx === 0 ? resto : 0);
+    // carrega parcela + contrato + parcelas
+    const parcela = await prisma.parcelaContrato.findUnique({
+      where: { id: parcelaId },
+      include: { contrato: { include: { parcelas: true } } },
     });
-  } else if (valoresOutrasParcelas) {
-    // AJUSTE MANUAL
-    let somaManual = 0;
-    for (const pid of Object.keys(valoresOutrasParcelas)) {
-      const v = Number(String(valoresOutrasParcelas[pid]).replace(/\D/g, ""));
-      if (v <= 0) {
-        return res.status(400).json({ error: "Valor inválido em parcela manual." });
-      }
-      somaManual += v;
-      novosValores[Number(pid)] = v;
+    if (!parcela) return res.status(404).json({ message: "Parcela não encontrada." });
+    if (parcela.status !== "PREVISTA") {
+      return res.status(400).json({ message: "Somente parcelas PREVISTAS podem ser retificadas." });
     }
 
-    const somaOutrosAtual = outras.reduce(
-      (acc, p) => acc + Math.round(Number(p.valorPrevisto) * 100),
-      0
-    );
+    const contrato = parcela.contrato;
+    const previstas = (contrato?.parcelas || []).filter((p) => p.status === "PREVISTA");
+    if (previstas.length < 2) {
+      return res.status(400).json({ message: "É necessário ao menos duas parcelas PREVISTAS." });
+    }
 
-    if (somaManual !== somaOutrosAtual - delta) {
-      return res.status(400).json({
-        error: "Soma das parcelas não fecha com o valor total do contrato.",
+    // ---- valores em centavos (BigInt), usando helpers já existentes no seu server ----
+    const alvoAtual = moneyToCents(parcela.valorPrevisto);
+    if (alvoAtual === null) return res.status(400).json({ message: "Valor atual da parcela inválido." });
+
+    const alvoNovo =
+      patch?.valorPrevisto !== undefined && patch?.valorPrevisto !== null && String(patch.valorPrevisto).trim() !== ""
+        ? moneyToCents(patch.valorPrevisto)
+        : alvoAtual;
+
+    if (alvoNovo === null || alvoNovo <= 0n) {
+      return res.status(400).json({ message: "Novo valor da parcela inválido." });
+    }
+
+    const delta = alvoNovo - alvoAtual; // + => aumentou alvo, então outras devem reduzir; - => outras aumentam
+
+    const outras = previstas.filter((p) => p.id !== parcela.id);
+
+    // mapa de "novos valores" (centavos) apenas para parcelas que serão ajustadas
+    const novos = new Map(); // parcelaId -> BigInt cents
+
+    // Modo 1: RATEIO (diferença distribuída igualmente; resto na primeira)
+    if (ratearEntreDemais) {
+      const n = BigInt(outras.length);
+      const totalAdjust = -delta; // o que precisa ser aplicado no conjunto das outras para manter soma
+
+      const base = totalAdjust / n; // BigInt trunca para zero
+      const resto = totalAdjust - base * n; // pode ser negativo; vai na primeira
+
+      outras.forEach((p, idx) => {
+        const before = moneyToCents(p.valorPrevisto) ?? 0n;
+        const add = base + (idx === 0 ? resto : 0n); // ✅ resto na primeira
+        const after = before + add;
+        novos.set(p.id, after);
       });
     }
-  } else {
-    // DEFAULT → compensar tudo na PRIMEIRA parcela
-    const primeira = outras[0];
-    novosValores[primeira.id] =
-      Math.round(Number(primeira.valorPrevisto) * 100) - delta;
-  }
+    // Modo 2: MANUAL (valores absolutos editados)
+    else if (valoresOutrasParcelas && typeof valoresOutrasParcelas === "object") {
+      for (const p of outras) {
+        if (valoresOutrasParcelas[p.id] === undefined) continue; // permite mandar subset
+        const v = moneyToCents(valoresOutrasParcelas[p.id]);
+        if (v === null || v <= 0n) {
+          return res.status(400).json({ message: "Valor inválido em ajuste manual." });
+        }
+        novos.set(p.id, v);
+      }
+    }
+    // Modo 3: DEFAULT (compensar tudo na primeira PREVISTA)
+    else {
+      const primeira = outras[0];
+      const before = moneyToCents(primeira.valorPrevisto);
+      if (before === null) return res.status(400).json({ message: "Valor da parcela de compensação inválido." });
+      novos.set(primeira.id, before - delta);
+    }
 
-  await prisma.$transaction(async (tx) => {
-    // Atualiza parcela alvo
-    await tx.parcelaContrato.update({
-      where: { id: parcela.id },
-      data: {
-        valorPrevisto: alvoNovo / 100,
-        vencimento: patch?.vencimento
-          ? new Date(patch.vencimento.split("/").reverse().join("-"))
-          : parcela.vencimento,
-      },
-    });
-
-    await tx.retificacaoParcela.create({
-      data: {
-        parcelaId: parcela.id,
-        motivo,
-        criadoPorId: admin.id,
-        alteracoes: {
-          valorPrevisto: { before: alvoAtual / 100, after: alvoNovo / 100 },
-        },
-      },
-    });
-
-    // Atualiza demais parcelas
+    // valida: nenhuma parcela pode ficar <= 0
     for (const p of outras) {
-      if (novosValores[p.id] === undefined) continue;
+      if (!novos.has(p.id)) continue;
+      const after = novos.get(p.id);
+      if (after === null || after <= 0n) {
+        return res.status(400).json({
+          message: "A retificação gerou parcela com valor inválido (<= 0). Ajuste manualmente ou renegocie.",
+        });
+      }
+    }
 
-      const before = Math.round(Number(p.valorPrevisto) * 100);
-      const after = novosValores[p.id];
+    // valida: soma das PREVISTAS não muda (preserva total do contrato sem mexer em recebidas/canceladas)
+    const somaPrevistasAntes = previstas.reduce((acc, p) => acc + (moneyToCents(p.valorPrevisto) || 0n), 0n);
+
+    const somaPrevistasDepois = previstas.reduce((acc, p) => {
+      if (p.id === parcela.id) return acc + alvoNovo;
+      if (novos.has(p.id)) return acc + (novos.get(p.id) || 0n);
+      return acc + (moneyToCents(p.valorPrevisto) || 0n);
+    }, 0n);
+
+    if (somaPrevistasDepois !== somaPrevistasAntes) {
+      return res.status(400).json({ message: "Soma das parcelas PREVISTAS não fecha. Verifique os valores." });
+    }
+
+    // vencimento (opcional)
+    const novoVenc = patch?.vencimento ? parseDateInput(patch.vencimento) : null;
+    if (patch?.vencimento && !novoVenc) {
+      return res.status(400).json({ message: "Vencimento inválido (use DD/MM/AAAA)." });
+    }
+
+    const userId = req.user?.id ? Number(req.user.id) : null;
+
+    await prisma.$transaction(async (tx) => {
+      // --- atualiza alvo
+      const alvoBeforeDec = parcela.valorPrevisto;
+      const alvoAfterDec = centsToDecimalString(alvoNovo);
 
       await tx.parcelaContrato.update({
-        where: { id: p.id },
-        data: { valorPrevisto: after / 100 },
+        where: { id: parcela.id },
+        data: {
+          valorPrevisto: alvoAfterDec,
+          ...(novoVenc ? { vencimento: novoVenc } : {}),
+        },
       });
 
       await tx.retificacaoParcela.create({
         data: {
-          parcelaId: p.id,
-          motivo: `Compensação de retificação da parcela ${parcela.numero}: ${motivo}`,
-          criadoPorId: admin.id,
+          parcelaId: parcela.id,
+          motivo: motivoTxt,
+          criadoPorId: userId,
           alteracoes: {
-            valorPrevisto: { before: before / 100, after: after / 100 },
+            valorPrevisto: { before: alvoBeforeDec, after: alvoAfterDec },
+            ...(novoVenc ? { vencimento: { before: parcela.vencimento, after: novoVenc } } : {}),
           },
+          snapshotAntes: parcela,
+          snapshotDepois: { ...parcela, valorPrevisto: alvoAfterDec, ...(novoVenc ? { vencimento: novoVenc } : {}) },
         },
       });
-    }
-  });
 
-  res.json({ ok: true });
-});
+      // --- atualiza demais afetadas
+      for (const p of outras) {
+        if (!novos.has(p.id)) continue;
 
+        const beforeDec = p.valorPrevisto;
+        const afterDec = centsToDecimalString(novos.get(p.id));
+
+        await tx.parcelaContrato.update({
+          where: { id: p.id },
+          data: { valorPrevisto: afterDec },
+        });
+
+        await tx.retificacaoParcela.create({
+          data: {
+            parcelaId: p.id,
+            motivo: `Compensação/Rateio da retificação da parcela ${parcela.numero}: ${motivoTxt}`,
+            criadoPorId: userId,
+            alteracoes: {
+              valorPrevisto: { before: beforeDec, after: afterDec },
+            },
+            snapshotAntes: p,
+            snapshotDepois: { ...p, valorPrevisto: afterDec },
+          },
+        });
+      }
+    });
+
+    return res.json({ ok: true });
   } catch (err) {
     const status = err?.status || 500;
     console.error("Erro ao retificar parcela:", err);
