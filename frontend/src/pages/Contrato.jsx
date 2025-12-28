@@ -280,6 +280,7 @@ export default function ContratoPage({ user }) {
   const [retSenha, setRetSenha] = useState("");
   const [ratear, setRatear] = useState(true);
   const [manualOutros, setManualOutros] = useState({}); // {parcelaId: digits}
+  const [retErrMsg, setRetErrMsg] = useState("");
 
   async function load() {
     try {
@@ -492,6 +493,7 @@ const totalRecebido = useMemo(() => {
   setRetMotivo("");
   setRetSenha("");
   setRatear(false); // 🔴 DEFAULT: NÃO ratear
+  setRetErrMsg("");
 
   const others = {};
   const previstasOrdenadas = previstas.filter((x) => x.id !== p.id);
@@ -544,14 +546,53 @@ const totalRecebido = useMemo(() => {
     }
     return total; // centavos (number)
   }
+ function recomputeManualOutrosForDefaultCompensacao(nextRetValorDigits, alvoParcela, previstasList, prevManualOutros) {
+  if (!alvoParcela) return prevManualOutros;
 
+  const alvoAtual = Number.isFinite(Number(alvoParcela.valorPrevisto))
+    ? Math.round(Number(alvoParcela.valorPrevisto) * 100)
+    : 0;
+
+  const alvoNovo = Number(onlyDigits(nextRetValorDigits || "0")); // centavos
+  const delta = alvoNovo - alvoAtual; // centavos
+
+  // outras previstas (exceto alvo)
+  const outras = (previstasList || []).filter((p) => p.id !== alvoParcela.id);
+  if (!outras.length) return prevManualOutros;
+
+  const primeira = outras[0];
+
+  // valores atuais em centavos
+  const atualMap = {};
+  for (const p of outras) {
+    const vp = Number.isFinite(Number(p.valorPrevisto)) ? Math.round(Number(p.valorPrevisto) * 100) : 0;
+    atualMap[p.id] = String(vp);
+  }
+
+  // aplica compensação toda na primeira: after = before - delta
+  const beforePrimeira = Number(atualMap[primeira.id] || "0");
+  const afterPrimeira = beforePrimeira - delta;
+
+  // não deixa <= 0 (deixa o backend também travar, mas já evita UX ruim)
+  if (afterPrimeira <= 0) {
+    return {
+      ...atualMap,
+      [primeira.id]: String(Math.max(0, afterPrimeira)),
+    };
+  }
+
+  return {
+    ...atualMap,
+    [primeira.id]: String(afterPrimeira),
+  };
+}
   async function submitRetificar() {
     if (!retParcela) return;
     try {
-      setErrMsg("");
+      setRetErrMsg("");
 
       const motivo = String(retMotivo || "").trim();
-      if (!motivo) return setErrMsg("Informe o motivo da retificação.");
+      if (!motivo) return setRetErrMsg("Informe o motivo da retificação.");
 
       const patch = {};
       if (retVenc) patch.vencimento = retVenc;
@@ -592,8 +633,8 @@ const totalRecebido = useMemo(() => {
       setRetParcela(null);
       await load();
     } catch (e) {
-      setErrMsg(e?.message || "Erro ao salvar retificação.");
-    }
+  setRetErrMsg(e?.message || "Erro ao salvar retificação.");
+}
   }
 
   function closeModals() {
@@ -601,6 +642,7 @@ const totalRecebido = useMemo(() => {
     setReceberParcela(null);
     setRetOpen(false);
     setRetParcela(null);
+    setRetErrMsg("");
   }
 
   if (loading) {
@@ -904,7 +946,21 @@ const totalRecebido = useMemo(() => {
                 <input
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   value={maskBRLFromDigits(retValorDigits)}
-                  onChange={(e) => setRetValorDigits(onlyDigits(e.target.value))}
+                  onChange={(e) => {
+  const next = onlyDigits(e.target.value);
+  setRetValorDigits(next);
+
+  // se estiver no modo manual (não-rateio), propõe automaticamente a compensação
+  if (!ratear) {
+    setManualOutros((prev) =>
+      recomputeManualOutrosForDefaultCompensacao(next, retParcela, previstas, prev)
+    );
+  }
+
+  // limpa erro do modal quando o usuário mexe
+  if (retErrMsg) setRetErrMsg("");
+}}
+
                   placeholder="0,00"
                 />
               </label>
@@ -922,7 +978,19 @@ const totalRecebido = useMemo(() => {
 
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={ratear} onChange={(e) => setRatear(e.target.checked)} />
+                <input type="checkbox" checked={ratear} onChange={(e) => {
+  const checked = e.target.checked;
+  setRatear(checked);
+  setRetErrMsg("");
+
+  // ao voltar para manual, repropoe a compensação padrão
+  if (!checked) {
+    setManualOutros((prev) =>
+      recomputeManualOutrosForDefaultCompensacao(retValorDigits, retParcela, previstas, prev)
+    );
+  }
+}}
+ />
                 <span className="font-semibold">Ratear entre as demais parcelas PREVISTAS</span>
               </label>
 
@@ -972,6 +1040,14 @@ const totalRecebido = useMemo(() => {
                 />
               </label>
             </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+
+            {retErrMsg && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {retErrMsg}
+              </div>
+            )}
 
             <div className="mt-5 flex justify-end gap-2">
               <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm" onClick={closeModals}>
