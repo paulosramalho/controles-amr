@@ -155,9 +155,14 @@ export default function ContratoPage({ user }) {
   }, [id]);
 
   const parcelas = contrato?.parcelas || [];
-  const totalPago = useMemo(() => (parcelas || []).reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0), [parcelas]);
   const previstas = useMemo(() => parcelas.filter((p) => p.status === "PREVISTA"), [parcelas]);
   const podeRetificarAlguma = previstas.length >= 2;
+
+  const totalPago = useMemo(() => {
+    return (parcelas || [])
+      .filter((p) => p.status === "RECEBIDA")
+      .reduce((acc, p) => acc + Number(p?.valorRecebido || p?.valorPrevisto || 0), 0);
+  }, [parcelas]);
 
   const stContrato = useMemo(() => computeStatusContrato(contrato), [contrato]);
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
@@ -353,6 +358,7 @@ export default function ContratoPage({ user }) {
                 <div className="text-xs text-slate-500">Valor Total</div>
                 <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
               </div>
+
               <div className="min-w-0 text-right">
                 <div className="text-xs text-slate-500">Total pago</div>
                 <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPago)}</div>
