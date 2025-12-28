@@ -678,37 +678,66 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
 // Modelo de Distribuição (admin-only)
 app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const rows = await prisma.modeloDistribuicao.findMany({
-      orderBy: { codigo: "asc" },
-      include: { itens: { orderBy: { ordem: "asc" } } }, // útil pro front já montar visão completa
-    });
-    res.json(rows);
+    // ⚠️ Esta área passou por mudanças de schema ao longo do tempo.
+    // Para evitar quebra quando o banco/schema estiverem em fases diferentes,
+    // fazemos fallback de campos/ordenação.
+
+    let rows;
+    try {
+      rows = await prisma.modeloDistribuicao.findMany({ orderBy: { cod: "asc" } });
+    } catch (e1) {
+      // ambiente legado (sem coluna `cod`)
+      rows = await prisma.modeloDistribuicao.findMany({ orderBy: { codigo: "asc" } });
+    }
+
+    // Normaliza para o shape esperado pelo front atual.
+    const out = (rows || []).map((r) => ({
+      id: r.id,
+      // prioridade: novo campo `cod`, senão usa `codigo` legado
+      cod: r.cod ?? r.codigo ?? "",
+      // se existir `descricao`, usa; senão reaproveita `tipo` legado
+      descricao: r.descricao ?? r.tipo ?? null,
+      // se existir `ativo`, usa; senão considera ativo
+      ativo: typeof r.ativo === "boolean" ? r.ativo : true,
+    }));
+
+    return res.json(out);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao listar modelos de distribuição." });
+    console.error("[modelo-distribuicao][GET]", err);
+    return res.status(500).json({ message: "Erro ao listar modelos de distribuição." });
   }
 });
 
 app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
-    if (!codigo || !String(codigo).trim()) return res.status(400).json({ message: "Informe o código." });
-    if (!descricao || !String(descricao).trim()) return res.status(400).json({ message: "Informe a descrição." });
-    if (!periodicidade || !String(periodicidade).trim()) return res.status(400).json({ message: "Informe a periodicidade." });
+    const { cod, descricao, ativo } = req.body || {};
+    if (!cod || !String(cod).trim()) return res.status(400).json({ message: "Informe o código." });
 
-    const row = await prisma.modeloDistribuicao.create({
-      data: {
-        codigo: String(codigo).trim().toUpperCase(),
-        origem: origem ? String(origem).trim() : "REPASSE",
-        descricao: String(descricao).trim(),
-        periodicidade: String(periodicidade).trim(),
-        ativo: ativo !== false,
-      },
+    const codNorm = String(cod).trim();
+    const descNorm = descricao ? String(descricao).trim() : null;
+
+    let row;
+    try {
+      // schema mais novo
+      row = await prisma.modeloDistribuicao.create({
+        data: { cod: codNorm, descricao: descNorm, ativo: ativo !== false },
+      });
+    } catch (e1) {
+      // schema legado (sem `descricao`/`ativo`)
+      row = await prisma.modeloDistribuicao.create({
+        data: { cod: codNorm, tipo: descNorm },
+      });
+    }
+
+    return res.json({
+      id: row.id,
+      cod: row.cod ?? row.codigo ?? codNorm,
+      descricao: row.descricao ?? row.tipo ?? descNorm,
+      ativo: typeof row.ativo === "boolean" ? row.ativo : true,
     });
-    res.json(row);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao criar modelo de distribuição." });
+    console.error("[modelo-distribuicao][POST]", err);
+    return res.status(500).json({ message: "Erro ao criar modelo de distribuição." });
   }
 });
 
@@ -717,19 +746,36 @@ app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, r
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
 
-    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
-    const data = {};
-    if (codigo !== undefined) data.codigo = String(codigo).trim().toUpperCase();
-    if (origem !== undefined) data.origem = origem ? String(origem).trim() : "REPASSE";
-    if (descricao !== undefined) data.descricao = String(descricao).trim();
-    if (periodicidade !== undefined) data.periodicidade = String(periodicidade).trim();
-    if (ativo !== undefined) data.ativo = !!ativo;
+    const { cod, descricao, ativo } = req.body || {};
 
-    const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
-    res.json(row);
+    const codNorm = cod !== undefined ? String(cod).trim() : undefined;
+    const descNorm = descricao !== undefined ? (descricao ? String(descricao).trim() : null) : undefined;
+
+    let row;
+    try {
+      // schema mais novo
+      const data = {};
+      if (codNorm !== undefined) data.cod = codNorm;
+      if (descNorm !== undefined) data.descricao = descNorm;
+      if (ativo !== undefined) data.ativo = !!ativo;
+      row = await prisma.modeloDistribuicao.update({ where: { id }, data });
+    } catch (e1) {
+      // schema legado
+      const data = {};
+      if (codNorm !== undefined) data.cod = codNorm;
+      if (descNorm !== undefined) data.tipo = descNorm;
+      row = await prisma.modeloDistribuicao.update({ where: { id }, data });
+    }
+
+    return res.json({
+      id: row.id,
+      cod: row.cod ?? row.codigo ?? "",
+      descricao: row.descricao ?? row.tipo ?? null,
+      ativo: typeof row.ativo === "boolean" ? row.ativo : true,
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao atualizar modelo de distribuição." });
+    console.error("[modelo-distribuicao][PUT]", err);
+    return res.status(500).json({ message: "Erro ao atualizar modelo de distribuição." });
   }
 });
 
@@ -739,10 +785,10 @@ app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req
     if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
 
     await prisma.modeloDistribuicao.delete({ where: { id } });
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao excluir modelo de distribuição." });
+    console.error("[modelo-distribuicao][DELETE]", err);
+    return res.status(500).json({ message: "Erro ao excluir modelo de distribuição." });
   }
 });
 
