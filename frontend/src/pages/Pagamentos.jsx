@@ -1140,21 +1140,22 @@ async function cancelarParcela() {
             <option value="OUTRO">OUTRO</option>
           </Select>
 
-          <label className="text-sm font-medium">Valor recebido (R$)</label>
+          <label className="block">
+            <div className="text-sm font-medium text-slate-700">Valor recebido (R$)</div>
 
-          <input
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-            value={Number(confParcela?.valorPrevisto || 0).toLocaleString("pt-BR", {
-              style: "currency",
-              currency: "BRL",
-            })}
-            disabled
-          />
+            <input
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+              value={Number(confParcela?.valorPrevisto || 0).toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              })}
+              disabled
+            />
 
-          <p className="mt-1 text-xs text-slate-500">
-            Valor fixo (igual ao previsto).  
-            Para receber valor diferente, utilize <strong>Retificar Parcela</strong> no Contrato (Admin).
-          </p>
+            <div className="mt-1 text-xs text-slate-500">
+              Valor fixo (igual ao previsto). Para receber valor diferente, use <strong>Retificar Parcela</strong> no Contrato (Admin).
+            </div> 
+          </label>
 
         </div>
         {confErrMsg && (

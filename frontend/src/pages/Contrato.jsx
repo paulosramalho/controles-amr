@@ -530,12 +530,11 @@ const totalRecebido = useMemo(() => {
       await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
-          valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
           dataRecebimento: recData,
           meioRecebimento: recMeio,
-          adminPassword: recSenha,
-        },
-      });
+         adminPassword: recSenha,
+       },
+     });
 
       setReceberOpen(false);
       setReceberParcela(null);
@@ -883,11 +882,16 @@ const totalRecebido = useMemo(() => {
               <label className="text-xs text-slate-600">
                 Valor recebido (R$)
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={maskBRLFromDigits(recValorDigits)}
-                  onChange={(e) => setRecValorDigits(onlyDigits(e.target.value))}
-                  placeholder="0,00"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  value={Number(receberParcela?.valorPrevisto || 0).toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                  disabled
                 />
+                <div className="mt-1 text-[11px] text-slate-500 leading-snug">
+                  Valor fixo (igual ao previsto). Para receber valor diferente, use <span className="font-semibold">Retificar</span> (Admin).
+                </div>
               </label>
 
               <label className="text-xs text-slate-600">
