@@ -947,16 +947,16 @@ const totalRecebido = useMemo(() => {
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                   value={maskBRLFromDigits(retValorDigits)}
                   onChange={(e) => {
-  const next = onlyDigits(e.target.value);
-  setRetValorDigits(next);
+                    const next = onlyDigits(e.target.value);
+                    setRetValorDigits(next);
 
-  // se estiver no modo manual (não-rateio), propõe automaticamente a compensação
-  if (!ratear) {
-    setManualOutros((prev) =>
-      recomputeManualOutrosForDefaultCompensacao(next, retParcela, previstas, prev)
-    );
-  }
-
+                    // se estiver no modo manual (não-rateio), propõe automaticamente a compensação
+                    if (!ratear) {
+                      setManualOutros((prev) =>
+                        recomputeManualOutrosForDefaultCompensacao(next, retParcela, previstas, prev)
+                      );
+                    }
+                  }} 
   // limpa erro do modal quando o usuário mexe
   if (retErrMsg) setRetErrMsg("");
 }}
