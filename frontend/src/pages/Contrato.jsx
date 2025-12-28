@@ -605,7 +605,6 @@ useEffect(() => {
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-1">
             <div className="text-xs font-semibold text-slate-600">Vínculos de renegociação</div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-              {paiId ? (
                 {prevLink ? (
   <Link
     to={`/contratos/${prevLink.id}`}
