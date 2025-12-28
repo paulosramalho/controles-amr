@@ -626,16 +626,16 @@ useEffect(() => {
 ) : null}
 
 
- //             {(ultimoFilhoId || filhoId) ? (
- // <Link
- //   to={`/contratos/${ultimoFilhoId || filhoId}`}
- //   className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
- //   title="Abrir contrato renegociado"
- // >
- //   Contrato renegociado {ultimoFilhoNumero || filhoNumeroReal || filhoNumero || ultimoFilhoId || filhoId} →
- // </Link>
- // ) : null}
-}
+              {(ultimoFilhoId || filhoId) ? (
+  <Link
+    to={`/contratos/${ultimoFilhoId || filhoId}`}
+    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+    title="Abrir contrato renegociado"
+  >
+    Contrato renegociado {ultimoFilhoNumero || filhoNumeroReal || filhoNumero || ultimoFilhoId || filhoId} →
+  </Link>
+ ) : null}
+
 {renegChain.length > 1 ? (
   <div className="w-full pt-2 text-xs text-slate-500">
     Histórico:&nbsp;
