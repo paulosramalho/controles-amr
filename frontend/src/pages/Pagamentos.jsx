@@ -669,7 +669,7 @@ async function cancelarParcela() {
   const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
   const diferencaTotais = totalRecebido - totalPrevisto;
 
- // const searchRow = (
+  const searchRow = (
     <div className="flex items-center gap-3">
       <input
         value={q}
@@ -687,7 +687,7 @@ async function cancelarParcela() {
         Atualizar
       </button>
     </div>
-//  );
+  );
 
   return (
     <div className="p-6">
