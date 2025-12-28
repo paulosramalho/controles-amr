@@ -367,21 +367,26 @@ export default function PagamentosPage({ user }) {
       const m = base.match(/^(.*?)(-R(\d+))?$/i);
       const root = m ? m[1] : base;
 
-      // tenta descobrir próximo R olhando renegociadoPara em cadeia (se não existir, cai no R1)
       let nextR = 1;
-      try {
-        let cur = pai;
-        let guard = 0;
-        while ((cur?.renegociadoParaId || cur?.renegociadoPara?.id) && guard++ < 20) {
-          const nxId = cur.renegociadoParaId ?? cur.renegociadoPara?.id;
-          const nx = await apiFetch(`/contratos/${nxId}`);
-          cur = nx;
-          const mm = String(cur?.numeroContrato || "").match(/-R(\d+)$/i);
-          if (mm) nextR = Math.max(nextR, Number(mm[1]) + 1);
-        }
-      } catch {
-        // silêncio: mantém nextR
-      }
+
+// calcula pelo que já existe na lista (mais robusto que depender da cadeia)
+try {
+  const re = new RegExp(`^${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-R(\\d+)$`, "i");
+  let maxR = 0;
+
+  for (const r of rows || []) {
+    const num = String(r?.numeroContrato || "").trim();
+    const mm = num.match(re);
+    if (mm) {
+      const n = Number(mm[1]);
+      if (Number.isFinite(n)) maxR = Math.max(maxR, n);
+    }
+  }
+
+  nextR = maxR > 0 ? maxR + 1 : 1;
+} catch {
+  nextR = 1;
+}
 
       const novoNumero = `${root}-R${nextR}`;
 
@@ -415,7 +420,7 @@ export default function PagamentosPage({ user }) {
     }
   })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [isAdmin, location.search]);
+}, [isAdmin, location.search, rows]);
 
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
