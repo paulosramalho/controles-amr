@@ -220,6 +220,25 @@ export default function ContratoPage({ user }) {
     }
   }
 
+  // vínculos pai/filho (renegociações)
+  const paiId = 
+     contrato?.renegociadoDeId ??
+     contrato?.contratoOrigemId ??
+     contrato?.origemContratoId ??
+     contrato?.contratoOriginalId ??
+     contrato?.contratoPai ??
+     contrato?.contratoPai?.id ??
+     contrato?.contratoPaiId ??
+     contrato?.paiId ??
+     contrato?.pai?.id ??
+     contrato?.renegociadoDe?.id ??
+     null;
+
+  const paiNumero = getContratoNumeroRef(contrato?.renegociadoDe ?? contrato?.pai ?? contrato?.contratoPai) || (paiId ? String(paiId) : "");
+
+  const filhoId = contrato?.renegociadoParaId ?? contrato?.contratoFilhoId ?? contrato?.filhoId ?? contrato?.filho?.id ?? contrato?.renegociadoPara?.id ?? null;
+  const filhoNumero = getContratoNumeroRef(contrato?.renegociadoPara ?? contrato?.filho ?? contrato?.contratoFilho) || (filhoId ? String(filhoId) : "");
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -263,25 +282,6 @@ useEffect(() => {
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
   const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
 
-  // vínculos pai/filho (renegociações)
-  const paiId = 
-     contrato?.renegociadoDeId ??
-     contrato?.contratoOrigemId ??
-     contrato?.origemContratoId ??
-     contrato?.contratoOriginalId ??
-     contrato?.contratoPai ??
-     contrato?.contratoPai?.id ??
-     contrato?.contratoPaiId ??
-     contrato?.paiId ??
-     contrato?.pai?.id ??
-     contrato?.renegociadoDe?.id ??
-     null;
-
-  const paiNumero = getContratoNumeroRef(contrato?.renegociadoDe ?? contrato?.pai ?? contrato?.contratoPai) || (paiId ? String(paiId) : "");
-
-  const filhoId = contrato?.renegociadoParaId ?? contrato?.contratoFilhoId ?? contrato?.filhoId ?? contrato?.filho?.id ?? contrato?.renegociadoPara?.id ?? null;
-  const filhoNumero = getContratoNumeroRef(contrato?.renegociadoPara ?? contrato?.filho ?? contrato?.contratoFilho) || (filhoId ? String(filhoId) : "");
-
   const renegInfoObs = useMemo(() => {
     const base = String(contrato?.observacoes || "").trim();
     const parts = [];
@@ -303,7 +303,7 @@ useEffect(() => {
 
     return parts.filter(Boolean).join("\n");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contrato?.observacoes, paiId, paiNumero, filhoId, filhoNumero]);
+  }, [contrato?.observacoes, paiId, paiNumero, paiNumeroReal, filhoId, filhoNumero, filhoNumeroReal]);
 
   function openReceber(p) {
     setReceberParcela(p);
