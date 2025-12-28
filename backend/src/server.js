@@ -675,6 +675,77 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
   }
 });
 
+// Modelo de Distribuição (admin-only)
+app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rows = await prisma.modeloDistribuicao.findMany({
+      orderBy: { codigo: "asc" },
+      include: { itens: { orderBy: { ordem: "asc" } } }, // útil pro front já montar visão completa
+    });
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao listar modelos de distribuição." });
+  }
+});
+
+app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
+    if (!codigo || !String(codigo).trim()) return res.status(400).json({ message: "Informe o código." });
+    if (!descricao || !String(descricao).trim()) return res.status(400).json({ message: "Informe a descrição." });
+    if (!periodicidade || !String(periodicidade).trim()) return res.status(400).json({ message: "Informe a periodicidade." });
+
+    const row = await prisma.modeloDistribuicao.create({
+      data: {
+        codigo: String(codigo).trim().toUpperCase(),
+        origem: origem ? String(origem).trim() : "REPASSE",
+        descricao: String(descricao).trim(),
+        periodicidade: String(periodicidade).trim(),
+        ativo: ativo !== false,
+      },
+    });
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao criar modelo de distribuição." });
+  }
+});
+
+app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { codigo, origem, descricao, periodicidade, ativo } = req.body || {};
+    const data = {};
+    if (codigo !== undefined) data.codigo = String(codigo).trim().toUpperCase();
+    if (origem !== undefined) data.origem = origem ? String(origem).trim() : "REPASSE";
+    if (descricao !== undefined) data.descricao = String(descricao).trim();
+    if (periodicidade !== undefined) data.periodicidade = String(periodicidade).trim();
+    if (ativo !== undefined) data.ativo = !!ativo;
+
+    const row = await prisma.modeloDistribuicao.update({ where: { id }, data });
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao atualizar modelo de distribuição." });
+  }
+});
+
+app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    await prisma.modeloDistribuicao.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erro ao excluir modelo de distribuição." });
+  }
+});
+
 app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async (req, res) => {
   try {
     const modeloId = Number(req.params.id);
