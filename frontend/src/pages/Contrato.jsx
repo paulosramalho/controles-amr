@@ -26,99 +26,6 @@ function formatBRLFromDecimal(value) {
   return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function parseBRLValueToNumber(v) {
-  if (v === null || v === undefined || v === "") return 0;
-
-  // number já em reais
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-
-  const s = String(v).trim();
-  if (!s) return 0;
-
-  // só dígitos => centavos
-  if (/^\d+$/.test(s)) {
-    const cents = Number(s);
-    return Number.isFinite(cents) ? cents / 100 : 0;
-  }
-
-  // "1.500,00" (pt-BR)
-  if (s.includes(",") && s.match(/^\d{1,3}(\.\d{3})*,\d{2}$/)) {
-    const normalized = s.replace(/\./g, "").replace(",", ".");
-    const num = Number(normalized);
-    return Number.isFinite(num) ? num : 0;
-  }
-
-  // fallback: "1500.00" ou "1500"
-  const num = Number(s);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function parseBRLHeuristic(recebido, previsto) {
-  if (recebido === null || recebido === undefined || recebido === "") return 0;
-
-  // number assume reais
-  if (typeof recebido === "number") return Number.isFinite(recebido) ? recebido : 0;
-
-  const s = String(recebido).trim();
-  if (!s) return 0;
-
-  // se for "1.500,00" etc (pt-BR)
-  if (s.includes(",") && s.match(/^\d{1,3}(\.\d{3})*,\d{2}$/)) {
-    const normalized = s.replace(/\./g, "").replace(",", ".");
-    const num = Number(normalized);
-    return Number.isFinite(num) ? num : 0;
-  }
-
-  // se for "1500.00" ou "1500"
-  if (!/^\d+$/.test(s)) {
-    const num = Number(s);
-    return Number.isFinite(num) ? num : 0;
-  }
-
-  // só dígitos: pode ser reais OU centavos
-  const raw = Number(s);
-  if (!Number.isFinite(raw)) return 0;
-
-  const asReais = raw;       // 20000 -> 20000.00
-  const asCentavos = raw/100; // 20000 -> 200.00
-
-  // se tiver previsto, escolhe o mais próximo dele
-  const vp = (typeof previsto === "number" && Number.isFinite(previsto)) ? previsto : null;
-  if (vp !== null) {
-    const dReais = Math.abs(asReais - vp);
-    const dCent = Math.abs(asCentavos - vp);
-    return dReais <= dCent ? asReais : asCentavos;
-  }
-
-  // sem previsto: preferir reais (evita o seu caso 20.000 virar 200)
-  return asReais;
-}
-
-function normalizeForma(fp) {
-  const raw = String(fp || "").trim();
-  if (!raw) return "—";
-  const v = raw.toUpperCase().replace(/\s+/g, "");
-
-  // aceita variações comuns
-  if (v === "AVISTA" || v === "A_VISTA" || v === "ÀVISTA") return "À vista";
-  if (v === "PARCELADO") return "Parcelado";
-  if (v === "ENTRADA+PARCELAS" || v === "ENTRADA_PARCELAS" || v === "ENTRADAPARCELAS") return "Entrada + Parcelas";
-
-  // se já vier humanizado, só capitaliza padrão
-  const h = raw.toLowerCase();
-  if (h.includes("vista")) return "À vista";
-  if (h.includes("entrada") && h.includes("parc")) return "Entrada + Parcelas";
-  if (h.includes("parc")) return "Parcelado";
-
-  return raw;
-}
-
-function getContratoNumeroRef(c) {
-  if (!c) return "";
-  return c?.numeroContrato ?? c?.numero ?? c?.numero_ref ?? c?.id ?? "";
-}
-
-
 // Evita D-1 quando o backend manda DateTime em UTC 00:00:00Z
 function toDDMMYYYY(dateLike) {
   if (!dateLike) return "—";
@@ -142,62 +49,20 @@ function todayAtNoonLocal() {
   return d;
 }
 
-// Normaliza datas para evitar efeito D-1 quando o backend manda DateTime em UTC (ex.: 2025-12-27T00:00:00.000Z)
-// - Se vier "DD/MM/AAAA" -> parse local
-// - Se vier "YYYY-MM-DD" (ou começar assim) -> trata como data-only local
-// - Caso geral -> Date() e normaliza para 12:00 local
-function toDateOnlyNoonLocal(v) {
-  if (!v) return null;
-
-  // DD/MM/AAAA
-  const s = String(v).trim();
-  const mBR = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (mBR) {
-    const dd = Number(mBR[1]);
-    const mm = Number(mBR[2]);
-    const yyyy = Number(mBR[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
-    if (!Number.isFinite(d.getTime())) return null;
-    return d;
-  }
-
-  // YYYY-MM-DD (ou prefixo)
-  const mISO = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (mISO) {
-    const yyyy = Number(mISO[1]);
-    const mm = Number(mISO[2]);
-    const dd = Number(mISO[3]);
-    const d = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
-    if (!Number.isFinite(d.getTime())) return null;
-    return d;
-  }
-
-  const d = new Date(v);
-  if (!Number.isFinite(d.getTime())) return null;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-}
-
 function computeStatusContrato(c) {
   if (!c) return "EM_DIA";
-
-  // PRIORIDADE (regra de negócio):
-  // 1) Renegociado prevalece sobre Cancelado (quando todas as parcelas foram canceladas por renegociação)
-  if (c.renegociadoParaId || c?.renegociadoPara?.id) return "RENEGOCIADO";
+  if (c.status === "CANCELADO") return "CANCELADO";
+  if (c.status === "RENEGOCIADO") return "RENEGOCIADO";
+  if (c.status === "QUITADO") return "QUITADO";
 
   const parcelas = c.parcelas || [];
-  if (!parcelas.length) return "EM_DIA";
-
-  const allCanceladas = parcelas.every((p) => p.status === "CANCELADA");
-  if (allCanceladas) return "CANCELADO";
-
-  const allEncerradas = parcelas.every((p) => p.status === "RECEBIDA" || p.status === "CANCELADA");
-  if (allEncerradas) return "QUITADO";
-
   const pendentes = parcelas.filter((p) => p.status === "PREVISTA");
+  if (!pendentes.length) return "QUITADO";
+
   const ref = todayAtNoonLocal().getTime();
   const atrasada = pendentes.some((p) => {
-    const v = toDateOnlyNoonLocal(p.vencimento);
-    if (!v) return false;
+    const v = p.vencimento ? new Date(p.vencimento) : null;
+    if (!v || Number.isNaN(v.getTime())) return false;
     return v.getTime() < ref;
   });
 
@@ -252,16 +117,6 @@ export default function ContratoPage({ user }) {
   const [contrato, setContrato] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
-  
-  const [paiNumeroReal, setPaiNumeroReal] = useState("");
-  const [filhoNumeroReal, setFilhoNumeroReal] = useState("");
-
-  const [renegChain, setRenegChain] = useState([]); // [{ id, numero }]
-  const [ultimoFilhoId, setUltimoFilhoId] = useState(null);
-  const [ultimoFilhoNumero, setUltimoFilhoNumero] = useState("");
-
-  const [prevLink, setPrevLink] = useState(null); // { id, numero }
-  const [nextLink, setNextLink] = useState(null); // { id, numero }
 
   // Receber
   const [receberOpen, setReceberOpen] = useState(false);
@@ -294,185 +149,18 @@ export default function ContratoPage({ user }) {
     }
   }
 
-  // vínculos pai/filho (renegociações)
-  const paiId = 
-     contrato?.renegociadoDeId ??
-     contrato?.contratoOrigemId ??
-     contrato?.origemContratoId ??
-     contrato?.contratoOriginalId ??
-     contrato?.contratoPai ??
-     contrato?.contratoPai?.id ??
-     contrato?.contratoPaiId ??
-     contrato?.paiId ??
-     contrato?.pai?.id ??
-     contrato?.renegociadoDe?.id ??
-     null;
-
-  const paiNumero = getContratoNumeroRef(contrato?.renegociadoDe ?? contrato?.pai ?? contrato?.contratoPai) || (paiId ? String(paiId) : "");
-
-  const filhoId = contrato?.renegociadoParaId ?? contrato?.contratoFilhoId ?? contrato?.filhoId ?? contrato?.filho?.id ?? contrato?.renegociadoPara?.id ?? null;
-  const filhoNumero = getContratoNumeroRef(contrato?.renegociadoPara ?? contrato?.filho ?? contrato?.contratoFilho) || (filhoId ? String(filhoId) : "");
-
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-useEffect(() => {
-  let alive = true;
-
-  async function buildChainAndNeighbors() {
-    try {
-      if (!contrato?.id) {
-        setRenegChain([]);
-        setPrevLink(null);
-        setNextLink(null);
-        return;
-      }
-
-      const visited = new Set();
-
-      // 1) achar o ROOT (original): sobe pelo paiId até não ter mais
-      let root = contrato;
-      let guard = 0;
-
-      while (true) {
-        const pid =
-          root?.renegociadoDeId ??
-          root?.contratoOrigemId ??
-          root?.origemContratoId ??
-          root?.contratoOriginalId ??
-          root?.contratoPaiId ??
-          root?.paiId ??
-          root?.pai?.id ??
-          root?.renegociadoDe?.id ??
-          null;
-
-        if (!pid) break;
-        if (visited.has(pid) || guard++ > 20) break;
-        visited.add(pid);
-
-        const p = await apiFetch(`/contratos/${pid}`);
-        if (!alive) return;
-        root = p;
-      }
-
-      // 2) descer: root -> renegociadoParaId -> ... até acabar
-      const chain = [];
-      let cur = root;
-      let guard2 = 0;
-      const visited2 = new Set();
-
-      while (cur?.id && !visited2.has(cur.id) && guard2++ < 25) {
-        visited2.add(cur.id);
-        chain.push({ id: cur.id, numero: getContratoNumeroRef(cur) || String(cur.id), raw: cur });
-
-        const nextId = cur?.renegociadoParaId ?? cur?.renegociadoPara?.id ?? null;
-        if (!nextId) break;
-
-        const nx = await apiFetch(`/contratos/${nextId}`);
-        if (!alive) return;
-        cur = nx;
-      }
-
-      if (!alive) return;
-
-      setRenegChain(chain);
-
-      // 3) vizinhos do contrato atual na cadeia
-      const idx = chain.findIndex((x) => String(x.id) === String(contrato.id));
-      const prev = idx > 0 ? chain[idx - 1] : null;
-      const next = idx >= 0 && idx < chain.length - 1 ? chain[idx + 1] : null;
-
-      setPrevLink(prev ? { id: prev.id, numero: prev.numero } : null);
-      setNextLink(next ? { id: next.id, numero: next.numero } : null);
-    } catch {
-      if (!alive) return;
-      // fallback seguro: mantém o básico sem quebrar
-      setRenegChain([]);
-      setPrevLink(null);
-      setNextLink(null);
-    }
-  }
-
-  buildChainAndNeighbors();
-  return () => {
-    alive = false;
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [contrato?.id]);
-
-useEffect(() => {
-  let alive = true;
-
-  async function fetchRefs() {
-    try {
-      // pai
-      if (paiId && !paiNumeroReal) {
-        const p = await apiFetch(`/contratos/${paiId}`);
-        if (!alive) return;
-        setPaiNumeroReal(getContratoNumeroRef(p) || "");
-      }
-
-      // filho
-      if (filhoId && !filhoNumeroReal) {
-        const f = await apiFetch(`/contratos/${filhoId}`);
-        if (!alive) return;
-        setFilhoNumeroReal(getContratoNumeroRef(f) || "");
-      }
-    } catch {
-      // silêncio: se não vier, segue mostrando id sem quebrar
-    }
-  }
-
-  fetchRefs();
-  return () => { alive = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [paiId, filhoId]);
-
-  const contratoNumero = useMemo(() => getContratoNumeroRef(contrato), [contrato]);
-
   const parcelas = contrato?.parcelas || [];
+  const totalPago = useMemo(() => (parcelas || []).reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0), [parcelas]);
   const previstas = useMemo(() => parcelas.filter((p) => p.status === "PREVISTA"), [parcelas]);
   const podeRetificarAlguma = previstas.length >= 2;
 
   const stContrato = useMemo(() => computeStatusContrato(contrato), [contrato]);
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
-  const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
-
-const totalRecebido = useMemo(() => {
-  return (parcelas || [])
-    .filter((p) => p.status === "RECEBIDA")
-    .reduce((acc, p) => {
-      const vr = p?.valorRecebido;
-      const vp = p?.valorPrevisto;
-      const usado = (vr !== null && vr !== undefined && vr !== "") ? vr : vp;
-      return acc + parseBRLHeuristic(usado, vp);
-    }, 0);
-}, [parcelas]);
-
-  const renegInfoObs = useMemo(() => {
-    const base = String(contrato?.observacoes || "").trim();
-    const parts = [];
-    if (base) parts.push(base);
-
-    // Se este contrato é FILHO (tem pai)
-    if (paiId) {
-      const txt = `Renegociação: Este contrato foi criado a partir do saldo pendente do contrato ${paiNumeroReal || paiNumero || paiId}. Cliente, número e valor total são calculados automaticamente.`;
-      const already = base.toLowerCase().includes("renegocia") && base.includes(`${paiNumero || paiId}`);
-      if (!already) parts.push(txt);
-    }
-
-    // Se este contrato é PAI (tem filho)
-    if (filhoId) {
-      const txt = `Renegociação: Este contrato originou o contrato ${filhoNumeroReal || filhoNumero || filhoId}.`;
-      const already = base.toLowerCase().includes("originou") && base.includes(`${filhoNumero || filhoId}`);
-      if (!already) parts.push(txt);
-    }
-
-    return parts.filter(Boolean).join("\n");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contrato?.observacoes, paiId, paiNumero, paiNumeroReal, filhoId, filhoNumero, filhoNumeroReal]);
 
   function openReceber(p) {
     setReceberParcela(p);
@@ -516,7 +204,7 @@ const totalRecebido = useMemo(() => {
         }
       }
 
-      await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
+      await apiFetch(`/api/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
           valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
@@ -575,7 +263,7 @@ const totalRecebido = useMemo(() => {
         }
       }
 
-      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
+      await apiFetch(`/api/parcelas/${retParcela.id}/retificar`, {
         method: "POST",
         body: {
           adminPassword: retSenha,
@@ -629,15 +317,13 @@ const totalRecebido = useMemo(() => {
         </div>
 
         <div className="flex items-center gap-3">
-          {!contratoTravado && (
-            <button
-              onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
-              className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-              title="Renegociar contrato"
-            >
-              Renegociar Contrato
-            </button>
-          )}
+          <button
+            onClick={() => navigate(`/pagamentos?renegociar=${contrato?.id}`)}
+            className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+            title="Renegociar saldo do contrato"
+          >
+            Renegociar Saldo
+          </button>
 
           <Badge tone={stBadge.tone}>{stBadge.label}</Badge>
         </div>
@@ -648,7 +334,7 @@ const totalRecebido = useMemo(() => {
       )}
 
       <Card
-        title={`Contrato ${contratoNumero || ""}`}
+        title={`Contrato #${contrato?.numero || ""}`}
         right={
           <div className="text-xs text-slate-500">
             Criado em: <span className="font-medium text-slate-700">{toDDMMYYYY(contrato?.createdAt)}</span>
@@ -658,90 +344,26 @@ const totalRecebido = useMemo(() => {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Cliente</div>
-            <div className="text-sm font-semibold text-slate-900">
-              {contrato?.cliente?.nome ||
-                contrato?.cliente?.nomeRazaoSocial ||
-                contrato?.cliente?.nomeCompleto ||
-                contrato?.cliente?.razaoSocial ||
-                contrato?.clienteNome ||
-                contrato?.nomeCliente ||
-                "—"}
-            </div>
+            <div className="text-sm font-semibold text-slate-900">{contrato?.cliente?.nome || "—"}</div>
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0">
                 <div className="text-xs text-slate-500">Valor Total</div>
-                <div className="text-sm font-semibold text-slate-900">
-                  R$ {formatBRLFromDecimal(contrato?.valorTotal)}
-                </div>
+                <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
               </div>
-
               <div className="min-w-0 text-right">
-                <div className="text-xs text-slate-500">Valor recebido</div>
-                <div className="text-sm font-semibold text-slate-900">
-                  R$ {formatBRLFromDecimal(totalRecebido)}
-                </div>
+                <div className="text-xs text-slate-500">Total pago</div>
+                <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPago)}</div>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
-            <div className="text-sm font-semibold text-slate-900">{normalizeForma(contrato?.formaPagamento)}</div>
+            <div className="text-sm font-semibold text-slate-900">{contrato?.formaPagamento || "—"}</div>
           </div>
-
-        {(paiId || filhoId) ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-1">
-            <div className="text-xs font-semibold text-slate-600">Vínculos de renegociação</div>
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                {prevLink ? (
-  <Link
-    to={`/contratos/${prevLink.id}`}
-    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
-    title="Voltar uma etapa"
-  >
-    ← {prevLink.numero}
-  </Link>
-) : null}
-
-{nextLink ? (
-  <Link
-    to={`/contratos/${nextLink.id}`}
-    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
-    title="Avançar uma etapa"
-  >
-    {nextLink.numero} →
-  </Link>
-) : null}
-
-{renegChain.length > 1 ? (
-  <div className="w-full pt-2 text-xs text-slate-500">
-    Histórico:&nbsp;
-    {renegChain
-      .filter((x) => String(x.id) !== String(contrato?.id))
-      .map((x, idx, arr) => (
-        <span key={x.id}>
-          <Link to={`/contratos/${x.id}`} className="font-semibold hover:underline">
-            {x.numero}
-          </Link>
-          {idx < arr.length - 1 ? " · " : ""}
-        </span>
-      ))}
-  </div>
-) : null}
-
-            </div>
-          </div>
-        ) : null}
-
-        {renegInfoObs ? (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 md:col-span-2">
-            <div className="text-xs font-semibold text-slate-600">Observações</div>
-            <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{renegInfoObs}</div>
-          </div>
-        ) : null}
         </div>
       </Card>
 
@@ -785,7 +407,7 @@ const totalRecebido = useMemo(() => {
                     </td>
                     <td className="py-3 pr-3">
                       <div className="flex flex-wrap gap-2">
-                        {!contratoTravado && st === "PREVISTA" && (
+                        {st === "PREVISTA" && (
                           <button
                             onClick={() => openReceber(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
@@ -794,7 +416,7 @@ const totalRecebido = useMemo(() => {
                           </button>
                         )}
 
-                        {!contratoTravado && podeRetificar && (
+                        {podeRetificar && (
                           <button
                             onClick={() => openRetificar(p)}
                             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
@@ -824,7 +446,7 @@ const totalRecebido = useMemo(() => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Receber parcela {receberParcela?.numero}</div>
+              <div className="text-sm font-semibold">Receber parcela #{receberParcela?.numero}</div>
               <button className="text-slate-500" onClick={closeModals}>✕</button>
             </div>
 
@@ -892,7 +514,7 @@ const totalRecebido = useMemo(() => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={closeModals}>
           <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Retificar parcela {retParcela?.numero}</div>
+              <div className="text-sm font-semibold">Retificar parcela #{retParcela?.numero}</div>
               <button className="text-slate-500" onClick={closeModals}>✕</button>
             </div>
 
@@ -935,7 +557,7 @@ const totalRecebido = useMemo(() => {
                       .filter((x) => x.id !== retParcela?.id)
                       .map((op) => (
                         <label key={op.id} className="text-xs text-slate-600">
-                          Parcela {op.numero} (R$)
+                          Parcela #{op.numero} (R$)
                           <input
                             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                             value={maskBRLFromDigits(manualOutros[op.id] || "")}
