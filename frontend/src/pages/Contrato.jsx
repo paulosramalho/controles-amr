@@ -20,10 +20,14 @@ function maskBRLFromDigits(digits) {
 }
 
 function formatBRLFromDecimal(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
-  return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return "0,00";
+  return num.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function displayFormaPagamento(fp) {
   const v = (fp || "").toString().trim().toUpperCase();
   if (!v) return "—";
