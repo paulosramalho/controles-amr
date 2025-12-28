@@ -956,12 +956,10 @@ const totalRecebido = useMemo(() => {
                         recomputeManualOutrosForDefaultCompensacao(next, retParcela, previstas, prev)
                       );
                     }
-                  }} 
-  // limpa erro do modal quando o usuário mexe
-  if (retErrMsg) setRetErrMsg("");
-}}
 
-                  placeholder="0,00"
+                    // limpa erro do modal quando o usuário mexe
+                    if (retErrMsg) setRetErrMsg("");
+                  }}
                 />
               </label>
 
