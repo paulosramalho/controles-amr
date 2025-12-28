@@ -189,6 +189,10 @@ export default function ContratoPage({ user }) {
   const [paiNumeroReal, setPaiNumeroReal] = useState("");
   const [filhoNumeroReal, setFilhoNumeroReal] = useState("");
 
+  const [renegChain, setRenegChain] = useState([]); // [{ id, numero }]
+  const [ultimoFilhoId, setUltimoFilhoId] = useState(null);
+  const [ultimoFilhoNumero, setUltimoFilhoNumero] = useState("");
+
   // Receber
   const [receberOpen, setReceberOpen] = useState(false);
   const [receberParcela, setReceberParcela] = useState(null);
@@ -243,6 +247,51 @@ export default function ContratoPage({ user }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+useEffect(() => {
+  let alive = true;
+
+  async function walkRenegChain() {
+    try {
+      // começa do contrato atual e vai seguindo renegociadoParaId
+      const chain = [];
+      const visited = new Set();
+
+      let cur = contrato;
+      let nextId = cur?.renegociadoParaId ?? cur?.renegociadoPara?.id ?? null;
+
+      while (nextId && !visited.has(nextId) && chain.length < 20) {
+        visited.add(nextId);
+
+        const next = await apiFetch(`/contratos/${nextId}`);
+        if (!alive) return;
+
+        chain.push({ id: nextId, numero: getContratoNumeroRef(next) || String(nextId) });
+
+        // avança
+        nextId = next?.renegociadoParaId ?? next?.renegociadoPara?.id ?? null;
+      }
+
+      if (!alive) return;
+
+      setRenegChain(chain);
+
+      const last = chain[chain.length - 1];
+      setUltimoFilhoId(last?.id || null);
+      setUltimoFilhoNumero(last?.numero || "");
+    } catch {
+      // silêncio: se falhar, mantém o comportamento atual (R1)
+      if (!alive) return;
+      setRenegChain([]);
+      setUltimoFilhoId(null);
+      setUltimoFilhoNumero("");
+    }
+  }
+
+  walkRenegChain();
+  return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [contrato?.id, contrato?.renegociadoParaId]);
 
 useEffect(() => {
   let alive = true;
@@ -524,15 +573,30 @@ useEffect(() => {
                 </Link>
               ) : null}
 
-              {filhoId ? (
-                <Link
-                  to={`/contratos/${filhoId}`}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
-                  title="Abrir contrato renegociado"
-                >
-                  Contrato renegociado {filhoNumeroReal || filhoNumero || filhoId} →
-                </Link>
-              ) : null}
+              {(ultimoFilhoId || filhoId) ? (
+  <Link
+    to={`/contratos/${ultimoFilhoId || filhoId}`}
+    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-800 hover:bg-slate-100"
+    title="Abrir contrato renegociado"
+  >
+    Contrato renegociado {ultimoFilhoNumero || filhoNumeroReal || filhoNumero || ultimoFilhoId || filhoId} →
+  </Link>
+) : null}
+
+{renegChain.length > 1 ? (
+  <div className="mt-2 text-xs text-slate-500">
+    Histórico:&nbsp;
+    {renegChain.map((x, idx) => (
+      <span key={x.id}>
+        <Link to={`/contratos/${x.id}`} className="font-semibold hover:underline">
+          {x.numero}
+        </Link>
+        {idx < renegChain.length - 1 ? " → " : ""}
+      </span>
+    ))}
+  </div>
+) : null}
+
             </div>
           </div>
         ) : null}
