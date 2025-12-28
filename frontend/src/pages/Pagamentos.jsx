@@ -342,81 +342,7 @@ export default function PagamentosPage({ user }) {
   load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
-
-  useEffect(() => {
-  if (!isAdmin) return;
-
-  const params = new URLSearchParams(location.search || "");
-  const id = params.get("renegociar");
-  if (!id) return;
-
-  (async () => {
-    setError("");
-    try {
-      // 1) carrega o contrato pai
-      const pai = await apiFetch(`/contratos/${id}`);
-
-      // 2) calcula saldo pendente = soma das PREVISTAS
-      const parcelas = Array.isArray(pai?.parcelas) ? pai.parcelas : [];
-      const pendente = parcelas
-        .filter((p) => p.status === "PREVISTA")
-        .reduce((acc, p) => acc + Number(p?.valorPrevisto || 0), 0);
-
-      // 3) sugere novo número (mantém o padrão raiz-Rn)
-      const base = String(pai?.numeroContrato || "").trim() || String(id);
-      const m = base.match(/^(.*?)(-R(\d+))?$/i);
-      const root = m ? m[1] : base;
-
-      // tenta descobrir próximo R olhando renegociadoPara em cadeia (se não existir, cai no R1)
-      let nextR = 1;
-      try {
-        let cur = pai;
-        let guard = 0;
-        while ((cur?.renegociadoParaId || cur?.renegociadoPara?.id) && guard++ < 20) {
-          const nxId = cur.renegociadoParaId ?? cur.renegociadoPara?.id;
-          const nx = await apiFetch(`/contratos/${nxId}`);
-          cur = nx;
-          const mm = String(cur?.numeroContrato || "").match(/-R(\d+)$/i);
-          if (mm) nextR = Math.max(nextR, Number(mm[1]) + 1);
-        }
-      } catch {
-        // silêncio: mantém nextR
-      }
-
-      const novoNumero = `${root}-R${nextR}`;
-
-      // 4) abre modal com campos pré-preenchidos
-      resetNovo();
-      setRenegociarId(Number(id));
-      setNumeroContrato(novoNumero);
-
-      // cliente do contrato pai (prioriza clienteId, senão cliente.id)
-      const cid = pai?.clienteId ?? pai?.cliente?.id ?? "";
-      setClienteId(cid ? String(cid) : "");
-
-      // mantém observações atuais do pai e adiciona a linha de renegociação (sem duplicar)
-      const baseObs = String(pai?.observacoes || "").trim();
-      const linhaReneg = `Renegociação: Este contrato será criado a partir do saldo pendente do contrato ${pai?.numeroContrato || id}. Cliente, número e valor total são calculados automaticamente.`;
-      setObservacoes(baseObs ? `${baseObs}\n\n${linhaReneg}` : linhaReneg);
-
-      // pendente vem em number (reais) -> converter para dígitos centavos (máscara)
-      const cents = Math.round((Number(pendente) || 0) * 100);
-      setValorTotalDigits(String(cents));
-
-      setModalError("");
-      setOpenNovo(true);
-      await loadClientes();
-
-      // 5) limpa o query param pra não reabrir
-      navigate("/pagamentos", { replace: true });
-    } catch (e) {
-      navigate("/pagamentos", { replace: true });
-      setError(e?.message || "Falha ao preparar renegociação.");
-    }
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [isAdmin, location.search]);
-
+  
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
     const fresh = rows.find((r) => r.id === selectedContrato.id);
@@ -818,7 +744,12 @@ async function cancelarParcela() {
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select label="Cliente" value={clienteId} onChange={setClienteId} disabled={loading}>
+          <Select
+            label="Cliente"
+            value={clienteId}
+            onChange={setClienteId}
+            disabled={loading || !!renegociarId}
+          >
             <option value="">Selecione…</option>
             {clientes.map((c) => (
               <option key={c.id} value={String(c.id)}>
@@ -832,7 +763,7 @@ async function cancelarParcela() {
             value={numeroContrato}
             onChange={setNumeroContrato}
             placeholder="Ex.: 20250904001A"
-            disabled={loading}
+            disabled={loading || !!renegociarId}
           />
 
           <label className="block">
