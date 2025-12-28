@@ -373,6 +373,22 @@ useEffect(() => {
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
   const contratoTravado = stContrato === "QUITADO" || stContrato === "RENEGOCIADO" || stContrato === "CANCELADO";
 
+const totalRecebido = useMemo(() => {
+  return (parcelas || [])
+    .filter((p) => p.status === "RECEBIDA")
+    .reduce((acc, p) => {
+      const vr = p?.valorRecebido;
+      const vp = p?.valorPrevisto;
+
+      const num =
+        typeof vr === "number" ? vr :
+        typeof vp === "number" ? vp :
+        Number(vr ?? vp);
+
+      return acc + (Number.isFinite(num) ? num : 0);
+    }, 0);
+}, [parcelas]);
+
   const renegInfoObs = useMemo(() => {
     const base = String(contrato?.observacoes || "").trim();
     const parts = [];
@@ -592,9 +608,15 @@ useEffect(() => {
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <div className="text-xs text-slate-500">Valor Total</div>
-            <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
-          </div>
+  <div className="text-xs text-slate-500">Valor Total</div>
+  <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
+
+  {totalRecebido > 0 ? (
+    <div className="mt-1 text-xs text-slate-600">
+      Valor recebido: <span className="font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalRecebido)}</span>
+    </div>
+  ) : null}
+</div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
