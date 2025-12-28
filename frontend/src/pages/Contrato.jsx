@@ -23,7 +23,17 @@ function formatBRLFromDecimal(value) {
   if (value === null || value === undefined || value === "") return "—";
   const num = Number(value);
   if (!Number.isFinite(num)) return "—";
-  return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+function displayFormaPagamento(fp) {
+  const v = (fp || "").toString().trim().toUpperCase();
+  if (!v) return "—";
+  if (v === "A_VISTA" || v === "AVISTA" || v === "À_VISTA") return "À vista";
+  if (v === "PARCELADO" || v === "PARCELAS") return "Parcelado";
+  if (v === "ENTRADA_PARCELAS" || v === "ENTRADA+PARCELAS" || v === "ENTRADA_PARCELA" || v === "ENTRADA_PARCELA(S)") return "Entrada + Parcelas";
+  return fp;
+}
+
+);
 }
 
 // Evita D-1 quando o backend manda DateTime em UTC 00:00:00Z
@@ -49,6 +59,56 @@ function todayAtNoonLocal() {
   return d;
 }
 
+
+function parseVencimentoToLocalNoon(venc) {
+  if (!venc) return null;
+
+  // If ISO date (YYYY-MM-DD or YYYY-MM-DDTHH:mm...), parse components to avoid UTC shift
+  const m = String(venc).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(d)) {
+      return new Date(y, mo - 1, d, 12, 0, 0, 0); // noon local
+    }
+  }
+
+  const dt = new Date(venc);
+  if (Number.isNaN(dt.getTime())) return null;
+  dt.setHours(12, 0, 0, 0);
+  return dt;
+}
+
+function parseMoneyHeuristic(recebido, previsto) {
+  if (recebido === null || recebido === undefined || recebido === "") return 0;
+  if (typeof recebido === "number") return Number.isFinite(recebido) ? recebido : 0;
+
+  const s = String(recebido).trim();
+  if (!s) return 0;
+
+  // pt-BR "1.500,00"
+  if (s.includes(",") && /^\d{1,3}(\.\d{3})*,\d{2}$/.test(s)) {
+    const num = Number(s.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // If only digits, could be reais or cents. Choose closer to previsto (when available).
+  if (/^\d+$/.test(s)) {
+    const raw = Number(s);
+    if (!Number.isFinite(raw)) return 0;
+    const asReais = raw;
+    const asCentavos = raw / 100;
+    const vp = typeof previsto === "number" && Number.isFinite(previsto) ? previsto : null;
+    if (vp !== null) {
+      return Math.abs(asReais - vp) <= Math.abs(asCentavos - vp) ? asReais : asCentavos;
+    }
+    return asReais;
+  }
+
+  const num = Number(s);
+  return Number.isFinite(num) ? num : 0;
+}
 function computeStatusContrato(c) {
   if (!c) return "EM_DIA";
   if (c.status === "CANCELADO") return "CANCELADO";
@@ -61,7 +121,7 @@ function computeStatusContrato(c) {
 
   const ref = todayAtNoonLocal().getTime();
   const atrasada = pendentes.some((p) => {
-    const v = p.vencimento ? new Date(p.vencimento) : null;
+    const v = parseVencimentoToLocalNoon(p.vencimento);
     if (!v || Number.isNaN(v.getTime())) return false;
     return v.getTime() < ref;
   });
@@ -155,14 +215,19 @@ export default function ContratoPage({ user }) {
   }, [id]);
 
   const parcelas = contrato?.parcelas || [];
+  const totalPago = useMemo(() => (parcelas || []).reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0), [parcelas]);
   const previstas = useMemo(() => parcelas.filter((p) => p.status === "PREVISTA"), [parcelas]);
-  const podeRetificarAlguma = previstas.length >= 2;
 
   const totalPago = useMemo(() => {
     return (parcelas || [])
       .filter((p) => p.status === "RECEBIDA")
-      .reduce((acc, p) => acc + Number(p?.valorRecebido || p?.valorPrevisto || 0), 0);
+      .reduce((acc, p) => {
+        const usado = p?.valorRecebido ?? p?.valorPrevisto ?? 0;
+        return acc + parseMoneyHeuristic(usado, p?.valorPrevisto);
+      }, 0);
   }, [parcelas]);
+
+  const podeRetificarAlguma = previstas.length >= 2;
 
   const stContrato = useMemo(() => computeStatusContrato(contrato), [contrato]);
   const stBadge = useMemo(() => statusToBadge(stContrato), [stContrato]);
@@ -209,7 +274,7 @@ export default function ContratoPage({ user }) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${receberParcela.id}/confirmar`, {
+      await apiFetch(`/parcelas/${receberParcela.id}/confirmar`, {
         method: "PATCH",
         body: {
           valorRecebido: onlyDigits(recValorDigits || ""), // centavos (padrão)
@@ -268,7 +333,7 @@ export default function ContratoPage({ user }) {
         }
       }
 
-      await apiFetch(`/api/parcelas/${retParcela.id}/retificar`, {
+      await apiFetch(`/parcelas/${retParcela.id}/retificar`, {
         method: "POST",
         body: {
           adminPassword: retSenha,
@@ -358,7 +423,6 @@ export default function ContratoPage({ user }) {
                 <div className="text-xs text-slate-500">Valor Total</div>
                 <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(contrato?.valorTotal)}</div>
               </div>
-
               <div className="min-w-0 text-right">
                 <div className="text-xs text-slate-500">Total pago</div>
                 <div className="text-sm font-semibold text-slate-900">R$ {formatBRLFromDecimal(totalPago)}</div>
@@ -368,7 +432,7 @@ export default function ContratoPage({ user }) {
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
             <div className="text-xs text-slate-500">Forma de pagamento</div>
-            <div className="text-sm font-semibold text-slate-900">{contrato?.formaPagamento || "—"}</div>
+            <div className="text-sm font-semibold text-slate-900">{displayFormaPagamento(contrato?.formaPagamento)}</div>
           </div>
         </div>
       </Card>
