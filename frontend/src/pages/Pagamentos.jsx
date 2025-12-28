@@ -669,24 +669,25 @@ async function cancelarParcela() {
   const totalRecebido = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorRecebido || 0), 0);
   const diferencaTotais = totalRecebido - totalPrevisto;
 
-  const searchRow = (
+ // const searchRow = (
     <div className="flex items-center gap-3">
       <input
-        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-        placeholder="Buscar por contrato, cliente, CPF/CNPJ…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        placeholder="Buscar por contrato, cliente, CPF/CNPJ…"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"  
       />
       <button
         type="button"
         onClick={load}
         className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
         disabled={loading}
+        title="Atualizar"
       >
         Atualizar
       </button>
     </div>
-  );
+//  );
 
   return (
     <div className="p-6">
