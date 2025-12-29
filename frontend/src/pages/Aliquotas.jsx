@@ -207,6 +207,7 @@ export default function AliquotasPage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xl font-semibold text-slate-900">Alíquotas</div>
+          <div className="text-sm text-slate-600">Cadastro mensal para uso em Repasses.</div>
         </div>
 
         <PrimaryButton type="button" onClick={openCreate}>
