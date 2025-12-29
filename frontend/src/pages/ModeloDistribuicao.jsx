@@ -125,13 +125,14 @@ export default function ModeloDistribuicao() {
     return (Number(bp) / 100).toFixed(2);
   }
 
+  function clampPercentToRemaining(percentStr, remainingBp) {
+    const bp = percentToBp(percentStr);
+    if (!Number.isFinite(bp) || bp <= 0) return { bp: NaN, str: "" };   
+    const clamped = Math.min(bp, Math.max(0, remainingBp));
+    return { bp: clamped, str: (clamped / 100).toFixed(2).replace(".", ",") };
+  }
+
   function somaBp(itens) {
-    function clampPercentToRemaining(percentStr, remainingBp) {
-      const bp = percentToBp(percentStr);
-      if (!Number.isFinite(bp) || bp <= 0) return { bp: NaN, str: "" };
-      const clamped = Math.min(bp, Math.max(0, remainingBp));
-      return { bp: clamped, str: (clamped / 100).toFixed(2).replace(".", ",") };
-    }
     return (itens || []).reduce((a, i) => a + Number(i.percentualBp || 0), 0);
   }
 
@@ -369,10 +370,8 @@ async function saveEditItem(itemId) {
         ordem,
         destinoTipo: e.destinoTipo,
         percentualBp,
-        destinatario: e.destinatario ? String(e.destinatario).trim() : null,
       },
     });
-
     await loadItens(e.modeloId);
     cancelEditItem(itemId);
   } catch (err) {
@@ -485,6 +484,7 @@ function bpToPercent0(bp) {
             </thead>
 
             <tbody className="divide-y divide-slate-200 bg-white">
+
               {filtered.map((x) => {
                 const itensLocal = itensByModelo[x.id] || [];
                 const soma = somaBp(itensLocal);
@@ -494,6 +494,19 @@ function bpToPercent0(bp) {
                 const lockOrigemTipo = itensLocal.length > 0;
                 const somaOk = soma === 10000;
  
+                const origemForCheck = lockOrigemTipo ? firstOrigem : (novoItem[x.id]?.origem || "");
+                const tipoForCheck = lockOrigemTipo ? firstTipo : (novoItem[x.id]?.periodicidade || "");
+                const destinoForCheck = novoItem[x.id]?.destinoTipo || "";
+                const { bp: bpCheck } = clampPercentToRemaining(novoItem[x.id]?.percentual, restanteBp);
+
+                const canAdd =
+                  restanteBp > 0 &&
+                  !!origemForCheck &&
+                  !!tipoForCheck &&
+                  !!destinoForCheck &&
+                  Number.isFinite(bpCheck) &&
+                  bpCheck > 0;
+
                 return (
                   <Fragment key={x.id}>
                     {/* Linha principal do modelo */}
@@ -618,20 +631,7 @@ function bpToPercent0(bp) {
                                           [x.id]: { ...(s[x.id] || {}), percentual: str || raw },
                                         }));
                                       }}
-                                    />
-
-                                    const origemForCheck = lockOrigemTipo ? firstOrigem : (novoItem[x.id]?.origem || "");
-                                    const tipoForCheck = lockOrigemTipo ? firstTipo : (novoItem[x.id]?.periodicidade || "");
-                                    const destinoForCheck = novoItem[x.id]?.destinoTipo || "";
-                                    const { bp: bpCheck } = clampPercentToRemaining(novoItem[x.id]?.percentual, restanteBp);
-
-                                    const canAdd =
-                                      restanteBp > 0 &&
-                                      !!origemForCheck &&
-                                      !!tipoForCheck &&
-                                      !!destinoForCheck &&
-                                      Number.isFinite(bpCheck) &&
-                                      bpCheck > 0;
+                                    />                                    
 
                                     <PrimaryButton
                                       className="md:col-span-1"
