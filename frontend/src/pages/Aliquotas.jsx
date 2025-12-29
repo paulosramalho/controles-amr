@@ -217,10 +217,6 @@ export default function AliquotasPage() {
 
             {/* Conteúdo do card */}
             <div className="p-5 space-y-3">
-              <div className="text-sm text-slate-600">
-                Cadastro mensal para uso em Repasses.
-              </div>
-
               <div className="flex flex-col md:flex-row md:items-center gap-3">
                 <input
                   value={q}
@@ -241,49 +237,49 @@ export default function AliquotasPage() {
 
               {/* tabela continua aqui embaixo como já está */}
 
-          <div className="overflow-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[700px] w-full text-sm">
-              <thead className="bg-white text-slate-700 border-b border-slate-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">Mês</th>
-                  <th className="text-left px-4 py-3 font-semibold">Ano</th>
-                  <th className="text-right px-4 py-3 font-semibold">Percentual (%)</th>
-                  <th className="text-right px-4 py-3 font-semibold">Ações</th>
-                </tr>
-              </thead>
+              <div className="overflow-auto rounded-2xl border border-slate-200">
+                <table className="min-w-[700px] w-full text-sm">
+                  <thead className="bg-white text-slate-700 border-b border-slate-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold">Mês</th>
+                      <th className="text-left px-4 py-3 font-semibold">Ano</th>
+                      <th className="text-right px-4 py-3 font-semibold">Percentual (%)</th>
+                      <th className="text-right px-4 py-3 font-semibold">Ações</th>
+                    </tr>
+                  </thead>
 
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-3">{String(r.mes).padStart(2, "0")}</td>
-                    <td className="px-4 py-3">{r.ano}</td>
-                    <td className="px-4 py-3 text-right">{bpToPercent0(r.percentualBp)}%</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" onClick={() => openEdit(r)}>
-                          Editar
-                        </Button>
-                        <DangerButton type="button" onClick={() => remove(r)}>
-                          Excluir
-                        </DangerButton>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {filtered.map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-4 py-3">{String(r.mes).padStart(2, "0")}</td>
+                        <td className="px-4 py-3">{r.ano}</td>
+                        <td className="px-4 py-3 text-right">{bpToPercent0(r.percentualBp)}%</td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" onClick={() => openEdit(r)}>
+                              Editar
+                            </Button>
+                            <DangerButton type="button" onClick={() => remove(r)}>
+                              Excluir
+                            </DangerButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
 
-                {!filtered.length && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                      Nenhuma alíquota cadastrada.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    {!filtered.length && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                          Nenhuma alíquota cadastrada.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      </div>
 
       <Modal
         open={modalOpen}
