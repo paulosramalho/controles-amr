@@ -10,6 +10,7 @@ import UsuariosPage from "./pages/Usuarios";
 import ModeloDistribuicaoPage from "./pages/ModeloDistribuicao";
 import ClientesPage from "./pages/Clientes";
 import ContratoPage from "./pages/Contrato";
+import AliquotasPage from "./pages/Aliquotas";
 
 /* ---------------- clock ---------------- */
 function useClock() {
@@ -172,6 +173,7 @@ function Shell({ user, onLogout }) {
           { to: "/clientes", label: "Clientes" },
           { to: "/usuarios", label: "Usuários" },
           { to: "/modelo-distribuicao", label: "Modelos de Distribuição" },
+          { to: "/aliquotas", label: "Alíquotas" },
         ],
       },
 
@@ -280,6 +282,8 @@ function Shell({ user, onLogout }) {
 
           {/* ✅ CORRIGIDO */}
           <Route path="/modelo-distribuicao" element={<ModeloDistribuicaoPage user={user} />} />
+
+          <Route path="/aliquotas" element={<AliquotasPage user={user} />} />
 
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
           <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
