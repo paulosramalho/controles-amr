@@ -1735,16 +1735,33 @@ app.put("/api/usuarios/me", requireAuth, async (req, res) => {
 app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
     const q = (req.query.q || "").toString().trim();
+const qDigits = onlyDigits(q);
 
-    const where = q
-      ? {
-          OR: [
-            { numeroContrato: { contains: q, mode: "insensitive" } },
-            { cliente: { nomeRazaoSocial: { contains: q, mode: "insensitive" } } },
-            { cliente: { cpfCnpj: { contains: onlyDigits(q) } } },
-          ],
-        }
-      : undefined;
+// Busca ids de clientes pelo nome (robusto)
+let clienteIdsPorNome = [];
+if (q) {
+  const clientesMatch = await prisma.cliente.findMany({
+    where: { nomeRazaoSocial: { contains: q, mode: "insensitive" } },
+    select: { id: true },
+    take: 200,
+  });
+  clienteIdsPorNome = clientesMatch.map(c => c.id);
+}
+
+const where = q
+  ? {
+      OR: [
+        { numeroContrato: { contains: q, mode: "insensitive" } },
+
+        // busca por CPF/CNPJ (com máscara ou sem)
+        { cliente: { cpfCnpj: { contains: qDigits } } },
+
+        // ✅ busca por nome do cliente via IN (garante que funciona)
+        ...(clienteIdsPorNome.length ? [{ clienteId: { in: clienteIdsPorNome } }] : []),
+      ],
+    }
+  : undefined;
+
 
     const contratos = await prisma.contratoPagamento.findMany({
       where,
