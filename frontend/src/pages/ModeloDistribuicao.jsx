@@ -1,6 +1,7 @@
 // src/pages/ModeloDistribuicao.jsx
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { Fragment } from "react";
 
 function Button({ children, className = "", ...props }) {
   return (
@@ -90,6 +91,37 @@ export default function ModeloDistribuicao() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null); // item ou null
   const [form, setForm] = useState({ cod: "", descricao: "", ativo: true });
+
+  // controle de expansão
+  const [openItens, setOpenItens] = useState({}); // { [modeloId]: true }
+
+  // itens por modelo
+  const [itensByModelo, setItensByModelo] = useState({});
+  const [itensLoading, setItensLoading] = useState({});
+  const [itensError, setItensError] = useState({});
+
+  // formulário de novo item
+  const [novoItem, setNovoItem] = useState({}); // { [modeloId]: {...} }
+
+  // edição inline
+  const [editItem, setEditItem] = useState({});
+  const [savingItem, setSavingItem] = useState({});
+
+  function percentToBp(p) {
+    const v = String(p ?? "").replace(",", ".").trim();
+    const n = Number(v);
+    if (!Number.isFinite(n)) return NaN;
+    return Math.round(n * 100);
+  }
+
+  function bpToPercent(bp) {
+    if (!Number.isFinite(Number(bp))) return "";
+    return (Number(bp) / 100).toFixed(2);
+  }
+
+  function somaBp(itens) {
+    return (itens || []).reduce((a, i) => a + Number(i.percentualBp || 0), 0);
+  }
 
   async function load() {
     setError("");
@@ -196,6 +228,34 @@ export default function ModeloDistribuicao() {
     }
   }
 
+async function loadItens(modeloId) {
+  setItensLoading((s) => ({ ...s, [modeloId]: true }));
+  setItensError((s) => ({ ...s, [modeloId]: "" }));
+  try {
+    const data = await apiFetch(`/modelo-distribuicao/${modeloId}/itens`);
+    setItensByModelo((s) => ({ ...s, [modeloId]: Array.isArray(data) ? data : [] }));
+  } catch (e) {
+    setItensError((s) => ({ ...s, [modeloId]: e?.message || "Erro ao carregar itens." }));
+  } finally {
+    setItensLoading((s) => ({ ...s, [modeloId]: false }));
+  }
+}
+
+function toggleItens(modeloId) {
+  setOpenItens((s) => {
+    const next = !s[modeloId];
+    return { ...s, [modeloId]: next };
+  });
+
+  if (!openItens[modeloId]) {
+    if (!itensByModelo[modeloId]) loadItens(modeloId);
+    setNovoItem((s) => ({
+      ...s,
+      [modeloId]: s[modeloId] || { ordem: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+    }));
+  }
+}
+
   return (
     <div className="p-6 space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white">
@@ -244,37 +304,114 @@ export default function ModeloDistribuicao() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {filtered.map((x) => (
-                  <tr key={x.id}>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{x.cod}</td>
-                    <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
-                    <td className="px-4 py-3">
-                      {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" onClick={() => openEdit(x)}>
-                          Editar
-                        </Button>
-                        <Button type="button" onClick={() => toggleAtivo(x)} disabled={loading}>
-                          {x.ativo ? "Desativar" : "Ativar"}
-                        </Button>
-                        <DangerButton type="button" onClick={() => remove(x)} disabled={loading}>
-                          Excluir
-                        </DangerButton>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+  {filtered.map((x) => {
+    const itens = itensByModelo[x.id] || [];
+    const soma = somaBp(itens);
+    const somaOk = soma === 10000;
 
-                {!filtered.length ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
-                      Nenhum registro encontrado.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
+    return (
+      <Fragment key={x.id}>
+        {/* Linha principal do modelo */}
+        <tr>
+          <td className="px-4 py-3 font-semibold text-slate-900">{x.cod}</td>
+          <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
+          <td className="px-4 py-3">
+            {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
+          </td>
+          <td className="px-4 py-3">
+            <div className="flex justify-end gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => toggleItens(x.id)}
+                className="text-sm font-semibold text-slate-700 underline hover:text-slate-900"
+              >
+                Itens {openItens[x.id] ? "▾" : "▸"}
+              </button>
+
+              <Button type="button" onClick={() => openEdit(x)}>
+                Editar
+              </Button>
+              <Button type="button" onClick={() => toggleAtivo(x)} disabled={loading}>
+                {x.ativo ? "Desativar" : "Ativar"}
+              </Button>
+              <DangerButton type="button" onClick={() => remove(x)} disabled={loading}>
+                Excluir
+              </DangerButton>
+            </div>
+          </td>
+        </tr>
+
+        {/* Linha expandida dos itens */}
+        {openItens[x.id] && (
+          <tr>
+            <td colSpan={4} className="bg-slate-50">
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="font-semibold text-slate-800">
+                    Itens do modelo <span className="font-mono">{x.cod}</span>
+                  </div>
+                  <div className={`font-semibold ${somaOk ? "text-emerald-700" : "text-red-700"}`}>
+                    Soma: {(soma / 100).toFixed(2)}%
+                  </div>
+                </div>
+
+                {!somaOk && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                    A soma dos percentuais deve ser exatamente <b>100%</b>.
+                  </div>
+                )}
+
+                {itensLoading[x.id] ? (
+                  <div className="text-sm text-slate-500">Carregando itens…</div>
+                ) : itensError[x.id] ? (
+                  <div className="text-sm text-red-700">{itensError[x.id]}</div>
+                ) : (
+                  <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Ordem</th>
+                        <th className="px-3 py-2 text-left">Destino</th>
+                        <th className="px-3 py-2 text-right">%</th>
+                        <th className="px-3 py-2 text-left">Destinatário</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((it) => (
+                        <tr key={it.id} className="border-t">
+                          <td className="px-3 py-2">{it.ordem}</td>
+                          <td className="px-3 py-2">{it.destinoTipo}</td>
+                          <td className="px-3 py-2 text-right">{bpToPercent(it.percentualBp)}%</td>
+                          <td className="px-3 py-2">{it.destinatario || "—"}</td>
+                        </tr>
+                      ))}
+
+                      {!itens.length && (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+                            Nenhum item cadastrado.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  })}
+
+  {!filtered.length && (
+    <tr>
+      <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
+        Nenhum registro encontrado.
+      </td>
+    </tr>
+  )}
+</tbody>
+
             </table>
           </div>
         </div>
