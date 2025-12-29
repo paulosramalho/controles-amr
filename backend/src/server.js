@@ -789,65 +789,6 @@ app.delete("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req
   }
 });
 
-app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const modeloId = Number(req.params.id);
-    if (!Number.isFinite(modeloId)) return res.status(400).json({ message: "ID inválido." });
-
-    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
-    if (!Number.isFinite(Number(ordem))) return res.status(400).json({ message: "Informe a ordem." });
-    if (!destinoTipo) return res.status(400).json({ message: "Informe o destino." });
-    if (!Number.isFinite(Number(percentualBp))) return res.status(400).json({ message: "Informe o percentual (bp)." });
-
-    const item = await prisma.modeloDistribuicaoItem.create({
-      data: {
-        modeloId,
-        ordem: Number(ordem),
-        destinoTipo,
-        percentualBp: Number(percentualBp),
-        destinatario: destinatario ? String(destinatario).trim() : null,
-      },
-    });
-    res.json(item);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao adicionar item ao modelo." });
-  }
-});
-
-app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const itemId = Number(req.params.itemId);
-    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
-
-    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
-    const data = {};
-    if (ordem !== undefined) data.ordem = Number(ordem);
-    if (destinoTipo !== undefined) data.destinoTipo = destinoTipo;
-    if (percentualBp !== undefined) data.percentualBp = Number(percentualBp);
-    if (destinatario !== undefined) data.destinatario = destinatario ? String(destinatario).trim() : null;
-
-    const item = await prisma.modeloDistribuicaoItem.update({ where: { id: itemId }, data });
-    res.json(item);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao atualizar item do modelo." });
-  }
-});
-
-app.delete("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const itemId = Number(req.params.itemId);
-    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
-
-    await prisma.modeloDistribuicaoItem.delete({ where: { id: itemId } });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Erro ao excluir item do modelo." });
-  }
-});
-
 // Itens do Modelo de Distribuição (admin-only)
 
 // listar itens de um modelo
@@ -874,11 +815,18 @@ app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async 
     const modeloId = Number(req.params.id);
     if (!Number.isFinite(modeloId)) return res.status(400).json({ message: "ID inválido." });
 
-    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    const { ordem, origem, periodicidade, destinoTipo, percentualBp, destinatario } = req.body || {};
     const o = Number(ordem);
     const p = Number(percentualBp);
 
     if (!Number.isFinite(o) || o <= 0) return res.status(400).json({ message: "Ordem inválida." });
+
+    const org = String(origem || "").trim().toUpperCase();
+    const per = String(periodicidade || "").trim().toUpperCase();
+
+    if (!org) return res.status(400).json({ message: "Informe a origem." });
+    if (!per) return res.status(400).json({ message: "Informe o tipo." });
+
     if (!destinoTipo) return res.status(400).json({ message: "Informe o destino." });
     if (!Number.isFinite(p) || p <= 0) return res.status(400).json({ message: "Percentual inválido." });
 
@@ -886,6 +834,8 @@ app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async 
       data: {
         modeloId,
         ordem: o,
+        origem: org,
+        periodicidade: per,
         destinoTipo,
         percentualBp: p,
         destinatario: destinatario ? String(destinatario).trim() : null,
@@ -893,6 +843,7 @@ app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async 
     });
 
     res.json(row);
+
   } catch (err) {
     console.error("[modelo-distribuicao][itens][POST]", err);
     // unique (modeloId, ordem)
@@ -909,7 +860,7 @@ app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, asy
     const itemId = Number(req.params.itemId);
     if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
 
-    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    const { ordem, origem, periodicidade, destinoTipo, percentualBp, destinatario } = req.body || {};
     const data = {};
 
     if (ordem !== undefined) {
@@ -917,6 +868,19 @@ app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, asy
       if (!Number.isFinite(o) || o <= 0) return res.status(400).json({ message: "Ordem inválida." });
       data.ordem = o;
     }
+
+    if (origem !== undefined) {
+      const org = String(origem || "").trim().toUpperCase();
+      if (!org) return res.status(400).json({ message: "Informe a origem." });
+      data.origem = org;
+    }
+
+    if (periodicidade !== undefined) {
+      const per = String(periodicidade || "").trim().toUpperCase();
+      if (!per) return res.status(400).json({ message: "Informe o tipo." });
+      data.periodicidade = per;
+    }
+
     if (destinoTipo !== undefined) data.destinoTipo = destinoTipo;
 
     if (percentualBp !== undefined) {
@@ -929,6 +893,7 @@ app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, asy
 
     const row = await prisma.modeloDistribuicaoItem.update({ where: { id: itemId }, data });
     res.json(row);
+
   } catch (err) {
     console.error("[modelo-distribuicao][itens][PUT]", err);
     if (err?.code === "P2002") {

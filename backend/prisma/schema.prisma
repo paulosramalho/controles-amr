@@ -245,6 +245,8 @@ model ModeloDistribuicaoItem {
   updatedAt    DateTime            @default(now()) @updatedAt @db.Timestamp(6)
   modeloId     Int                 @map("modeloId")
   ordem        Int
+  origem        String  @default("REPASSE")
+  periodicidade String  @default("INCIDENTAL")
   destinoTipo  DestinoDistribuicao @map("destinoTipo")
   percentualBp Int                 @map("percentualBp")
   destinatario String?
