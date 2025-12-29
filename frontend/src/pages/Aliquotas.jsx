@@ -6,31 +6,21 @@ function onlyDigits(s) {
   return String(s || "").replace(/\D/g, "");
 }
 
-function sanitizePercentTyping(raw) {
-  // permite digitar: 12,34 ou 12.34 (sem brigar com o cursor)
-  const v = String(raw ?? "");
-
-  // mantém só dígitos e separadores
-  let cleaned = v.replace(/[^\d.,]/g, "");
-
-  // mantém somente o primeiro separador (se houver)
-  const firstSepIdx = cleaned.search(/[.,]/);
-  if (firstSepIdx !== -1) {
-    const before = cleaned.slice(0, firstSepIdx + 1);
-    const after = cleaned.slice(firstSepIdx + 1).replace(/[.,]/g, "");
-    cleaned = before + after;
-  }
-
-  // limita tamanho: até 3 dígitos inteiros e 2 decimais (sem forçar formatação)
-  const sep = cleaned.match(/[.,]/)?.[0] ?? null;
-  if (!sep) return cleaned.replace(/\D/g, "").slice(0, 3);
-
-  const [iRaw, dRaw = ""] = cleaned.split(sep);
-  const i = (iRaw || "").replace(/\D/g, "").slice(0, 3);
-  const d = (dRaw || "").replace(/\D/g, "").slice(0, 2);
-
-  return dRaw.length === 0 ? `${i}${sep}` : `${i}${sep}${d}`;
+function formatBpAsPercentString(bpInt) {
+  const bp = Math.max(0, Number(bpInt) || 0); // bp = centésimos de %
+  const s = (bp / 100).toFixed(2);
+  return s.replace(".", ",");
 }
+
+function inputToBpDigits(raw) {
+  // pega só dígitos; limita para caber em 0..100,00% => 0..10000 bp
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (!digits) return 0;
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(n, 10000);
+}
+
 
 function normalizePercentOnBlur(raw) {
   // normaliza para vírgula e remove vírgula final
@@ -324,11 +314,14 @@ export default function AliquotasPage() {
             <label className="block text-sm font-semibold text-slate-700 mb-1">Percentual (%)</label>
             <input
               value={form.percentual}
-              onChange={(e) => setForm((s) => ({ ...s, percentual: sanitizePercentTyping(e.target.value) }))}
-              onBlur={(e) => setForm((s) => ({ ...s, percentual: normalizePercentOnBlur(e.target.value) }))}
+              onChange={(e) => {
+                const bp = inputToBpDigits(e.target.value);          // ex: "123" => 123 bp
+                const str = formatBpAsPercentString(bp);            // => "1,23"
+                setForm((s) => ({ ...s, percentual: str }));
+              }}
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="12,34"
-              inputMode="decimal"
+              placeholder="0,00"
+              inputMode="numeric"
             />
 
           </div>
