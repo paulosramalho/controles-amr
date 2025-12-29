@@ -272,6 +272,102 @@ function toggleItens(modeloId) {
   }
 }
 
+async function addItem(modeloId) {
+  const ni = novoItem[modeloId] || {};
+  const ordem = Number(ni.ordem);
+  const percentualBp = percentToBp(ni.percentual);
+
+  if (!Number.isFinite(ordem) || ordem <= 0) return alert("Ordem inválida.");
+  if (!ni.destinoTipo) return alert("Informe o destino.");
+  if (!Number.isFinite(percentualBp) || percentualBp <= 0) return alert("Percentual inválido.");
+
+  try {
+    await apiFetch(`/modelo-distribuicao/${modeloId}/itens`, {
+      method: "POST",
+      body: {
+        ordem,
+        destinoTipo: ni.destinoTipo,
+        percentualBp,
+        destinatario: ni.destinatario ? String(ni.destinatario).trim() : null,
+      },
+    });
+
+    await loadItens(modeloId);
+
+    // limpa o form
+    setNovoItem((s) => ({
+      ...s,
+      [modeloId]: { ordem: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+    }));
+  } catch (e) {
+    alert(e?.message || "Falha ao incluir item.");
+  }
+}
+
+function startEditItem(it) {
+  setEditItem((s) => ({
+    ...s,
+    [it.id]: {
+      id: it.id,
+      modeloId: it.modeloId,
+      ordem: String(it.ordem ?? ""),
+      destinoTipo: String(it.destinoTipo ?? "SOCIO"),
+      percentual: bpToPercent(it.percentualBp),
+      destinatario: it.destinatario ?? "",
+    },
+  }));
+}
+
+function cancelEditItem(itemId) {
+  setEditItem((s) => {
+    const next = { ...s };
+    delete next[itemId];
+    return next;
+  });
+}
+
+async function saveEditItem(itemId) {
+  const e = editItem[itemId];
+  const ordem = Number(e.ordem);
+  const percentualBp = percentToBp(e.percentual);
+
+  if (!Number.isFinite(ordem) || ordem <= 0) return alert("Ordem inválida.");
+  if (!e.destinoTipo) return alert("Destino inválido.");
+  if (!Number.isFinite(percentualBp) || percentualBp <= 0) return alert("Percentual inválido.");
+
+  setSavingItem((s) => ({ ...s, [itemId]: true }));
+  try {
+    await apiFetch(`/modelo-distribuicao/itens/${itemId}`, {
+      method: "PUT",
+      body: {
+        ordem,
+        destinoTipo: e.destinoTipo,
+        percentualBp,
+        destinatario: e.destinatario ? String(e.destinatario).trim() : null,
+      },
+    });
+
+    await loadItens(e.modeloId);
+    cancelEditItem(itemId);
+  } catch (err) {
+    alert(err?.message || "Falha ao salvar item.");
+  } finally {
+    setSavingItem((s) => ({ ...s, [itemId]: false }));
+  }
+}
+
+async function deleteItem(modeloId, itemId) {
+  const ok = window.confirm("Excluir este item?");
+  if (!ok) return;
+
+  try {
+    await apiFetch(`/modelo-distribuicao/itens/${itemId}`, { method: "DELETE" });
+    await loadItens(modeloId);
+  } catch (err) {
+    alert(err?.message || "Falha ao excluir item.");
+  }
+}
+
 function origemLabel(v) {
   const s = String(v || "").trim().toUpperCase();
   if (!s) return "—";
@@ -402,7 +498,7 @@ function bpToPercent0(bp) {
         {/* Linha expandida dos itens */}
         {openItens[x.id] && (
           <tr>
-           <td colSpan={4} className="bg-slate-50">
+            <td colSpan={4} className="bg-slate-50">
               <div className="p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <div className="font-semibold text-slate-800">
@@ -419,60 +515,171 @@ function bpToPercent0(bp) {
                 ) : itensError[x.id] ? (
                   <div className="text-sm text-red-700">{itensError[x.id]}</div>
                 ) : (
-                  <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-  <thead className="bg-slate-100">
-    <tr>
-      <th className="px-3 py-2 text-left">Origem</th>
-      <th className="px-3 py-2 text-left">Tipo</th>
-      <th className="px-3 py-2 text-right">%</th>
-      <th className="px-3 py-2 text-left">Destino</th>
-    </tr>
-  </thead>
+                  <div className="space-y-3">
+                    {/* Adicionar item */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                        <input
+                          className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                          placeholder="Ordem"
+                          value={novoItem[x.id]?.ordem || ""}
+                          onChange={(e) =>
+                            setNovoItem((s) => ({
+                              ...s,
+                              [x.id]: { ...(s[x.id] || {}), ordem: e.target.value },
+                            }))
+                          }
+                        />
 
-  <tbody>
-    {[...(itens || [])]
-      .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
-      .map((it) => (
-        <tr key={it.id} className="border-t">
-          <td className="px-3 py-2">{origemLabel(x.origem)}</td>
-          <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
-          <td className="px-3 py-2 text-right">{bpToPercent0(it.percentualBp)}%</td>
-          <td className="px-3 py-2">{destinoLabel(it.destinoTipo)}</td>
-        </tr>
-      ))}
+                        <select
+                          className="md:col-span-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                          value={novoItem[x.id]?.destinoTipo || "SOCIO"}
+                          onChange={(e) =>
+                            setNovoItem((s) => ({
+                              ...s,
+                              [x.id]: { ...(s[x.id] || {}), destinoTipo: e.target.value },
+                            }))
+                          }
+                        >
+                          <option value="FUNDO_RESERVA">Fundo de Reserva</option>
+                          <option value="SOCIO">Sócio</option>
+                          <option value="ESCRITORIO">Escritório</option>
+                          <option value="INDICACAO">Indicação</option>
+                        </select>
 
-    {!itens?.length && (
-      <tr>
-        <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
-          Nenhum item cadastrado.
-        </td>
-      </tr>
-    )}
-  </tbody>
-</table>
+                        <input
+                          className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                          placeholder="Percentual (ex.: 30,00)"
+                          value={novoItem[x.id]?.percentual || ""}
+                          onChange={(e) =>
+                            setNovoItem((s) => ({
+                            ...s,
+                            [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
+                          }))
+                        }
+                      />
 
-                )}
-              </div>
-            </td>
-          </tr>
-        )}
-      </Fragment>
-    );
-  })}
+                      <input
+                        className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                        placeholder="Destinatário (opcional)"
+                        value={novoItem[x.id]?.destinatario || ""}
+                        onChange={(e) =>
+                          setNovoItem((s) => ({
+                          ...s,
+                          [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
+                        }))
+                      }
+                    />
 
-  {!filtered.length && (
-    <tr>
-      <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
-        Nenhum registro encontrado.
-      </td>
-    </tr>
-  )}
-</tbody>
+                    <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
+                      +
+                    </PrimaryButton>
+                  </div>
+                </div>
 
-            </table>
-          </div>
-        </div>
-      </div>
+                {/* Tabela de itens */}
+                <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Origem</th>
+                      <th className="px-3 py-2 text-left">Tipo</th>
+                      <th className="px-3 py-2 text-right">%</th>
+                      <th className="px-3 py-2 text-left">Destino</th>
+                      <th className="px-3 py-2 text-right">Ações</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {[...(itens || [])]
+                      .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+                      .map((it) => {
+                        const e = editItem[it.id];
+
+                        return (
+                          <tr key={it.id} className="border-t">
+                            <td className="px-3 py-2">{origemLabel(x.origem)}</td>
+                            <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
+
+                            {/* % */}
+                            <td className="px-3 py-2 text-right">
+                              {e ? (
+                                <input
+                                  className="w-24 text-right rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                  value={e.percentual}
+                                  onChange={(ev) =>
+                                    setEditItem((s) => ({
+                                      ...s,
+                                      [it.id]: { ...s[it.id], percentual: ev.target.value },
+                                    }))
+                                  }
+                                />
+                              ) : (
+                                `${bpToPercent0(it.percentualBp)}%`
+                              )}
+                            </td>
+
+                            {/* Destino */}
+                            <td className="px-3 py-2">
+                              {e ? (
+                                <select
+                                  className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                  value={e.destinoTipo}
+                                  onChange={(ev) =>
+                                    setEditItem((s) => ({
+                                      ...s,
+                                      [it.id]: { ...s[it.id], destinoTipo: ev.target.value },
+                                    }))
+                                  }
+                                >
+                                  <option value="FUNDO_RESERVA">Fundo de Reserva</option>
+                                  <option value="SOCIO">Sócio</option>
+                                  <option value="ESCRITORIO">Escritório</option>
+                                  <option value="INDICACAO">Indicação</option>
+                                </select>
+                              ) : (
+                                destinoLabel(it.destinoTipo)
+                              )}
+                            </td>
+
+                            {/* Ações */}
+                            <td className="px-3 py-2 text-right">
+                              {e ? (
+                                <div className="flex justify-end gap-2">
+                                  <Button type="button" onClick={() => saveEditItem(it.id)} disabled={!!savingItem[it.id]}>
+                                    Salvar
+                                  </Button>
+                                  <Button type="button" onClick={() => cancelEditItem(it.id)} disabled={!!savingItem[it.id]}>
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex justify-end gap-2">
+                                  <Button type="button" onClick={() => startEditItem(it)}>
+                                    Editar
+                                  </Button>
+                                  <DangerButton type="button" onClick={() => deleteItem(x.id, it.id)}>
+                                    Excluir
+                                  </DangerButton>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+
+                      {!itens?.length && (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                            Nenhum item cadastrado.
+                          </td>
+                        </tr>
+                      )
+                    </tbody>
+                  </table>
+                </div>
+              </Fragment>
+            );
+      })}
 
       <Modal
         open={modalOpen}
