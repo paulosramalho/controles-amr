@@ -349,7 +349,10 @@ function bpToPercent0(bp) {
         {/* Linha principal do modelo */}
         <tr>
           <td className="px-4 py-3 font-semibold text-slate-900">{x.cod}</td>
-          <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
+          <td className="px-4 py-3 text-slate-800">
+  {(origemLabel(x.origem) + " " + tipoLabel(x.periodicidade ?? x.tipo)).trim() || "—"}
+</td>
+
           <td className="px-4 py-3">
             {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
           </td>
@@ -383,15 +386,13 @@ function bpToPercent0(bp) {
               <div className="p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <div className="font-semibold text-slate-800">
-                    {origemLabel(x.origem)} {tipoLabel(x.periodicidade)}
+                    {origemLabel(x.origem)} {tipoLabel(x.periodicidade ?? x.tipo)}
                   </div>
 
                   <div className={`font-semibold ${somaOk ? "text-emerald-700" : "text-red-700"}`}>
                     Soma: {Math.round(soma / 100)}%
                   </div>
                 </div>
-
-        )}
 
                 {itensLoading[x.id] ? (
                   <div className="text-sm text-slate-500">Carregando itens…</div>
@@ -414,7 +415,7 @@ function bpToPercent0(bp) {
       .map((it) => (
         <tr key={it.id} className="border-t">
           <td className="px-3 py-2">{origemLabel(x.origem)}</td>
-          <td className="px-3 py-2">{tipoLabel(x.periodicidade)}</td>
+          <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
           <td className="px-3 py-2 text-right">{bpToPercent0(it.percentualBp)}%</td>
           <td className="px-3 py-2">{destinoLabel(it.destinoTipo)}</td>
         </tr>
