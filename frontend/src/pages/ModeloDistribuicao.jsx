@@ -126,6 +126,12 @@ export default function ModeloDistribuicao() {
   }
 
   function somaBp(itens) {
+    function clampPercentToRemaining(percentStr, remainingBp) {
+      const bp = percentToBp(percentStr);
+      if (!Number.isFinite(bp) || bp <= 0) return { bp: NaN, str: "" };
+      const clamped = Math.min(bp, Math.max(0, remainingBp));
+      return { bp: clamped, str: (clamped / 100).toFixed(2).replace(".", ",") };
+    }
     return (itens || []).reduce((a, i) => a + Number(i.percentualBp || 0), 0);
   }
 
@@ -267,7 +273,7 @@ function toggleItens(modeloId) {
     if (!itensByModelo[modeloId]) loadItens(modeloId);
     setNovoItem((s) => ({
       ...s,
-      [modeloId]: s[modeloId] || { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+      [modeloId]: s[modeloId] || { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "" },
     }));
   }
 }
@@ -276,39 +282,54 @@ async function addItem(modeloId) {
   const ni = novoItem[modeloId] || {};
 
   const itensLocal = itensByModelo[modeloId] || [];
+  const somaAtual = somaBp(itensLocal);
+  const restanteBp = Math.max(0, 10000 - somaAtual);
+
+  // ordem automática
   const maxOrd = itensLocal.reduce((m, it) => Math.max(m, Number(it.ordem || 0)), 0);
-  const ordem = maxOrd + 1; // ✅ automático
+  const ordem = maxOrd + 1;
 
-  const percentualBp = percentToBp(ni.percentual);
+  // regra: após o primeiro item, origem/tipo ficam obrigatórios e iguais ao 1º
+  const lockOrigemTipo = itensLocal.length > 0;
+  const origemFinal = lockOrigemTipo ? (itensLocal[0]?.origem || "") : (ni.origem || "");
+  const tipoFinal = lockOrigemTipo
+    ? ((itensLocal[0]?.periodicidade ?? itensLocal[0]?.tipo) || "")
+    : (ni.periodicidade || "");
 
-  if (!ni.origem) return alert("Informe a origem.");
-  if (!ni.periodicidade) return alert("Informe o tipo.");
+  if (!origemFinal) return alert("Informe a origem.");
+  if (!tipoFinal) return alert("Informe o tipo.");
   if (!ni.destinoTipo) return alert("Informe o destino.");
-  if (!Number.isFinite(percentualBp) || percentualBp <= 0) return alert("Percentual inválido.");
+
+  // percentual: não pode ultrapassar o restante; se passar, ajusta automaticamente
+  const { bp: percentualBpClamped } = clampPercentToRemaining(ni.percentual, restanteBp);
+  if (!Number.isFinite(percentualBpClamped) || percentualBpClamped <= 0) {
+    return alert("Percentual inválido.");
+  }
 
   try {
     await apiFetch(`/modelo-distribuicao/${modeloId}/itens`, {
       method: "POST",
       body: {
         ordem,
-        origem: String(ni.origem).trim().toUpperCase(),               // ✅ novo
-        periodicidade: String(ni.periodicidade).trim().toUpperCase(), // ✅ novo
+        origem: String(origemFinal).trim().toUpperCase(),
+        periodicidade: String(tipoFinal).trim().toUpperCase(),
         destinoTipo: ni.destinoTipo,
-        percentualBp,
-        destinatario: ni.destinatario ? String(ni.destinatario).trim() : null,
+        percentualBp: percentualBpClamped,
       },
     });
 
     await loadItens(modeloId);
 
+    // limpa o form (sem destinatário)
     setNovoItem((s) => ({
       ...s,
-      [modeloId]: { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+      [modeloId]: { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "" },
     }));
   } catch (e) {
     alert(e?.message || "Falha ao incluir item.");
   }
 }
+
 
 function startEditItem(it) {
   setEditItem((s) => ({
@@ -319,7 +340,6 @@ function startEditItem(it) {
       ordem: String(it.ordem ?? ""),
       destinoTipo: String(it.destinoTipo ?? "SOCIO"),
       percentual: bpToPercent(it.percentualBp),
-      destinatario: it.destinatario ?? "",
     },
   }));
 }
@@ -468,6 +488,10 @@ function bpToPercent0(bp) {
               {filtered.map((x) => {
                 const itensLocal = itensByModelo[x.id] || [];
                 const soma = somaBp(itensLocal);
+                const firstOrigem = itensLocal?.[0]?.origem || "";
+                const firstTipo = (itensLocal?.[0]?.periodicidade ?? itensLocal?.[0]?.tipo) || "";
+                const restanteBp = Math.max(0, 10000 - soma);
+                const lockOrigemTipo = itensLocal.length > 0;
                 const somaOk = soma === 10000;
  
                 return (
@@ -525,10 +549,14 @@ function bpToPercent0(bp) {
                               <div className="space-y-3">
                                 {/* Adicionar item */}
                                 <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <div className="mb-2 text-sm text-slate-600">
+                                    Restante para 100%: <span className="font-semibold">{(restanteBp / 100).toFixed(2)}%</span>
+                                  </div>
                                   <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                                     <select
-                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                      value={novoItem[x.id]?.origem || ""}
+                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                                      value={lockOrigemTipo ? firstOrigem : (novoItem[x.id]?.origem || "")}
+                                      disabled={lockOrigemTipo}
                                       onChange={(e) =>
                                         setNovoItem((s) => ({
                                           ...s,
@@ -543,8 +571,9 @@ function bpToPercent0(bp) {
                                     </select>
 
                                     <select
-                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                      value={novoItem[x.id]?.periodicidade || ""}
+                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100"
+                                      value={lockOrigemTipo ? firstTipo : (novoItem[x.id]?.periodicidade || "")}
+                                      disabled={lockOrigemTipo}
                                       onChange={(e) =>
                                         setNovoItem((s) => ({
                                           ...s,
@@ -581,27 +610,36 @@ function bpToPercent0(bp) {
                                       className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
                                       placeholder="Percentual (ex.: 30,00)"
                                       value={novoItem[x.id]?.percentual || ""}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        const { str } = clampPercentToRemaining(raw, restanteBp);
                                         setNovoItem((s) => ({
                                           ...s,
-                                          [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
-                                        }))
-                                      }
+                                          [x.id]: { ...(s[x.id] || {}), percentual: str || raw },
+                                        }));
+                                      }}
                                     />
 
-                                    <input
-                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                      placeholder="Destinatário (opcional)"
-                                      value={novoItem[x.id]?.destinatario || ""}
-                                      onChange={(e) =>
-                                        setNovoItem((s) => ({
-                                          ...s,
-                                          [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
-                                        }))
-                                      }
-                                    />
+                                    const origemForCheck = lockOrigemTipo ? firstOrigem : (novoItem[x.id]?.origem || "");
+                                    const tipoForCheck = lockOrigemTipo ? firstTipo : (novoItem[x.id]?.periodicidade || "");
+                                    const destinoForCheck = novoItem[x.id]?.destinoTipo || "";
+                                    const { bp: bpCheck } = clampPercentToRemaining(novoItem[x.id]?.percentual, restanteBp);
 
-                                    <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
+                                    const canAdd =
+                                      restanteBp > 0 &&
+                                      !!origemForCheck &&
+                                      !!tipoForCheck &&
+                                      !!destinoForCheck &&
+                                      Number.isFinite(bpCheck) &&
+                                      bpCheck > 0;
+
+                                    <PrimaryButton
+                                      className="md:col-span-1"
+                                      type="button"
+                                      onClick={() => addItem(x.id)}
+                                      disabled={!canAdd}
+                                      title={restanteBp === 0 ? "Total já está em 100%" : ""}
+                                    >
                                       +
                                     </PrimaryButton>
 
