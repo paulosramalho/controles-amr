@@ -282,13 +282,17 @@ function origemLabel(v) {
 function tipoLabel(v) {
   const s = String(v || "").trim().toUpperCase();
   if (!s) return "—";
+
   if (s === "INCIDENTAL") return "Incidental";
   if (s === "MENSAL") return "Mensal";
+  if (s === "MENSAL_RECORRENTE") return "Mensal/Recorrente"; // ✅ AQUI
   if (s === "SEMANAL") return "Semanal";
   if (s === "SEMESTRAL") return "Semestral";
   if (s === "ANUAL") return "Anual";
-  return s.charAt(0) + s.slice(1).toLowerCase();
+
+  return s.replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase());
 }
+
 
 function destinoLabel(v) {
   switch (String(v || "").toUpperCase()) {
