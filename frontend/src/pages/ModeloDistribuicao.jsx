@@ -447,33 +447,34 @@ function bpToPercent0(bp) {
           </div>
         </div>
 
-          <div className="overflow-auto rounded-2xl border border-slate-200">
-            <table className="min-w-[900px] w-full text-sm">
-              <thead className="bg-white text-slate-700 border-b border-slate-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">Código</th>
-                  <th className="text-left px-4 py-3 font-semibold">Descrição</th>
-                  <th className="text-left px-4 py-3 font-semibold">Status</th>
-                  <th className="text-right px-4 py-3 font-semibold">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {filtered.map((x) => {
-                  const itens = itensByModelo[x.id] || [];
-                  const soma = somaBp(itens);
-                  const somaOk = soma === 10000;
+        <div className="overflow-auto rounded-2xl border border-slate-200">
+          <table className="min-w-[900px] w-full text-sm">
+            <thead className="bg-white text-slate-700 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold">Código</th>
+                <th className="text-left px-4 py-3 font-semibold">Descrição</th>
+                <th className="text-left px-4 py-3 font-semibold">Status</th>
+                <th className="text-right px-4 py-3 font-semibold">Ações</th>
+              </tr>
+            </thead>
 
-                  return (
-                    <Fragment key={x.id}>
-                      {/* Linha principal do modelo */}
-                      <tr>
-                        <td className="px-4 py-3 font-semibold text-slate-900">{x.codigo ?? x.cod}</td>
-                        <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
-                        <td className="px-4 py-3">
-                          {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2 items-center">
+            <tbody className="divide-y divide-slate-200 bg-white">
+              {filtered.map((x) => {
+                const itensLocal = itensByModelo[x.id] || [];
+                const soma = somaBp(itensLocal);
+                const somaOk = soma === 10000;
+ 
+                return (
+                  <Fragment key={x.id}>
+                    {/* Linha principal do modelo */}
+                    <tr>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{x.codigo ?? x.cod}</td>
+                      <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
+                      <td className="px-4 py-3">
+                        {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2 items-center">
                           <button
                             type="button"
                             onClick={() => toggleItens(x.id)}
@@ -495,7 +496,7 @@ function bpToPercent0(bp) {
                       </td>
                     </tr>
 
-                    {/* Linha expandida dos itens */}
+                    {/* Expandido */}
                     {openItens[x.id] && (
                       <tr>
                         <td colSpan={4} className="bg-slate-50">
@@ -512,7 +513,7 @@ function bpToPercent0(bp) {
 
                             {itensLoading[x.id] ? (
                               <div className="text-sm text-slate-500">Carregando itens…</div>
-                              ) : itensError[x.id] ? (
+                            ) : itensError[x.id] ? (
                               <div className="text-sm text-red-700">{itensError[x.id]}</div>
                             ) : (
                               <div className="space-y-3">
@@ -553,134 +554,154 @@ function bpToPercent0(bp) {
                                       value={novoItem[x.id]?.percentual || ""}
                                       onChange={(e) =>
                                         setNovoItem((s) => ({
-                                          ...s,
-                                          [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
-                                        }))
-                                      }
-                                    />
-    
-                                    <input
-                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                      placeholder="Destinatário (opcional)"
-                                      value={novoItem[x.id]?.destinatario || ""}
-                                      onChange={(e) =>
-                                        setNovoItem((s) => ({
-                                          ...s,
-                                          [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
-                                        }))
-                                      }
-                                    />
+                                        ...s,
+                                        [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
+                                      }))
+                                    }
+                                  />
 
-                                    <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
-                                      +
-                                    </PrimaryButton>
-                                  </div>
-                                </div>
+                                  <input
+                                    className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                    placeholder="Destinatário (opcional)"
+                                    value={novoItem[x.id]?.destinatario || ""}
+                                    onChange={(e) =>
+                                      setNovoItem((s) => ({
+                                      ...s,
+                                      [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
+                                    }))
+                                  }
+                                />
 
-                                {/* Tabela de itens */}
-                               <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-                                 <thead className="bg-slate-100">
-                                   <tr>
-                                     <th className="px-3 py-2 text-left">Origem</th>
-                                     <th className="px-3 py-2 text-left">Tipo</th>
-                                     <th className="px-3 py-2 text-right">%</th>
-                                     <th className="px-3 py-2 text-left">Destino</th>
-                                     <th className="px-3 py-2 text-right">Ações</th>
-                                   </tr>
-                                 </thead>
+                                <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
+                                  +
+                                </PrimaryButton>
+                              </div>
+                            </div>
+ 
+                            {/* Tabela de itens */}
+                            <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                              <thead className="bg-slate-100">
+                                <tr>
+                                  <th className="px-3 py-2 text-left">Origem</th>
+                                  <th className="px-3 py-2 text-left">Tipo</th>
+                                  <th className="px-3 py-2 text-right">%</th>
+                                  <th className="px-3 py-2 text-left">Destino</th>
+                                  <th className="px-3 py-2 text-right">Ações</th>
+                                </tr>
+                              </thead>
 
-              <tbody>
-              {[...(itens || [])]
-    .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
-    .map((it) => {
-      const e = editItem[it.id];
+                              <tbody>
+                                {[...(itensLocal || [])]
+                                  .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+                                  .map((it) => {
+                                    const e = editItem[it.id];
 
-      return (
-        <tr key={it.id} className="border-t">
-          <td className="px-3 py-2">{origemLabel(x.origem)}</td>
-          <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
+                                    return (
+                                      <tr key={it.id} className="border-t">
+                                        <td className="px-3 py-2">{origemLabel(x.origem)}</td>
+                                        <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
 
-          {/* % */}
-          <td className="px-3 py-2 text-right">
-            {e ? (
-              <input
-                className="w-24 text-right rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                value={e.percentual}
-                onChange={(ev) =>
-                  setEditItem((s) => ({
-                    ...s,
-                    [it.id]: { ...s[it.id], percentual: ev.target.value },
-                  }))
-                }
-              />
-            ) : (
-              `${bpToPercent0(it.percentualBp)}%`
-            )}
-          </td>
+                                        <td className="px-3 py-2 text-right">
+                                          {e ? (
+                                            <input
+                                              className="w-24 text-right rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                              value={e.percentual}
+                                              onChange={(ev) =>
+                                                setEditItem((s) => ({
+                                                  ...s,
+                                                  [it.id]: { ...s[it.id], percentual: ev.target.value },
+                                                }))
+                                              }
+                                            />
+                                          ) : (
+                                            `${bpToPercent0(it.percentualBp)}%`
+                                          )}
+                                        </td>
 
-          {/* Destino */}
-          <td className="px-3 py-2">
-            {e ? (
-              <select
-                className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                value={e.destinoTipo}
-                onChange={(ev) =>
-                  setEditItem((s) => ({
-                    ...s,
-                    [it.id]: { ...s[it.id], destinoTipo: ev.target.value },
-                  }))
-                }
-              >
-                <option value="FUNDO_RESERVA">Fundo de Reserva</option>
-                <option value="SOCIO">Sócio</option>
-                <option value="ESCRITORIO">Escritório</option>
-                <option value="INDICACAO">Indicação</option>
-              </select>
-            ) : (
-              destinoLabel(it.destinoTipo)
-            )}
-          </td>
+                                        <td className="px-3 py-2">
+                                          {e ? (
+                                            <select
+                                              className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                              value={e.destinoTipo}
+                                              onChange={(ev) =>
+                                                setEditItem((s) => ({
+                                                  ...s,
+                                                  [it.id]: { ...s[it.id], destinoTipo: ev.target.value },
+                                                }))
+                                              }
+                                            >
+                                              <option value="FUNDO_RESERVA">Fundo de Reserva</option>
+                                              <option value="SOCIO">Sócio</option>
+                                              <option value="ESCRITORIO">Escritório</option>
+                                              <option value="INDICACAO">Indicação</option>
+                                            </select>
+                                          ) : (
+                                            destinoLabel(it.destinoTipo)
+                                          )}
+                                        </td>
 
-          {/* Ações */}
-          <td className="px-3 py-2 text-right">
-            {e ? (
-              <div className="flex justify-end gap-2">
-                <Button type="button" onClick={() => saveEditItem(it.id)} disabled={!!savingItem[it.id]}>
-                  Salvar
-                </Button>
-                <Button type="button" onClick={() => cancelEditItem(it.id)} disabled={!!savingItem[it.id]}>
-                  Cancelar
-                </Button>
-              </div>
-            ) : (
-              <div className="flex justify-end gap-2">
-                <Button type="button" onClick={() => startEditItem(it)}>
-                  Editar
-                </Button>
-                <DangerButton type="button" onClick={() => deleteItem(x.id, it.id)}>
-                  Excluir
-                </DangerButton>
-              </div>
-            )}
-          </td>
-        </tr>
-      );
-    })}
+                                        <td className="px-3 py-2 text-right">
+                                          {e ? (
+                                            <div className="flex justify-end gap-2">
+                                              <Button
+                                                type="button"
+                                                onClick={() => saveEditItem(it.id)}
+                                                disabled={!!savingItem[it.id]}
+                                              >
+                                                Salvar
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={() => cancelEditItem(it.id)}
+                                                disabled={!!savingItem[it.id]}
+                                              >
+                                                Cancelar
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex justify-end gap-2">
+                                              <Button type="button" onClick={() => startEditItem(it)}>
+                                                Editar
+                                              </Button>
+                                              <DangerButton type="button" onClick={() => deleteItem(x.id, it.id)}>
+                                                Excluir
+                                              </DangerButton>
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
 
-  {!itens?.length && (
-    <tr>
-      <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
-        Nenhum item cadastrado.
-      </td>
-    </tr>
-  )}
-</tbody>
-
-                  </table>
-                </div>
+                                {!itensLocal?.length && (
+                                  <tr>
+                                    <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                                      Nenhum item cadastrado.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             );
-      })}
+          })}
+
+          {!filtered.length && (
+            <tr>
+              <td className="px-4 py-8 text-center text-slate-500" colSpan={4}>
+                Nenhum registro encontrado.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
 
       <Modal
         open={modalOpen}
