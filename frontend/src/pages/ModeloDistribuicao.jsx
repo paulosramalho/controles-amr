@@ -548,7 +548,7 @@ function bpToPercent0(bp) {
                                       <option value="INDICACAO">Indicação</option>
                                     </select>
 
-                                    <input 
+                                    <input
                                       className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
                                       placeholder="Percentual (ex.: 30,00)"
                                       value={novoItem[x.id]?.percentual || ""}
@@ -575,6 +575,7 @@ function bpToPercent0(bp) {
                                     <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
                                       +
                                     </PrimaryButton>
+
                                   </div>
                                 </div>
 
@@ -709,25 +710,25 @@ function bpToPercent0(bp) {
 
 <Modal
   open={modalOpen}
-  title={editing ? `Editar Modelo (${editing.cod})` : "Novo Modelo de Distribuição"}
+  title={editing ? `Editar Modelo (${editing.cod ?? editing.codigo ?? editing.cod})` : "Novo Modelo de Distribuição"}
   onClose={() => setModalOpen(false)}
-  >
-    {error ? (
-      <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-        {error}
-      </div>
-    ) : null}
+>
+  {error ? (
+    <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+      {error}
+    </div>
+  ) : null}
 
-    <div className="space-y-3">
-      <div>
-        <label className="block text-sm font-semibold text-slate-800 mb-1">Código *</label>
-        <input
-          value={form.cod}
-          onChange={(e) => setForm((s) => ({ ...s, cod: e.target.value }))}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-          placeholder="Ex.: MD-001"
-        />
-      </div>
+  <div className="space-y-3">
+    <div>
+      <label className="block text-sm font-semibold text-slate-800 mb-1">Código *</label>
+      <input
+        value={form.cod}
+        onChange={(e) => setForm((s) => ({ ...s, cod: e.target.value }))}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+        placeholder="Ex.: MD-001"
+      />
+    </div>
 
     <div>
       <label className="block text-sm font-semibold text-slate-800 mb-1">Descrição</label>
@@ -758,5 +759,6 @@ function bpToPercent0(bp) {
     </div>
   </div>
 </Modal>
+</div>
 );
 }
