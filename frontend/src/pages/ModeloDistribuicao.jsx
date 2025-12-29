@@ -90,7 +90,13 @@ export default function ModeloDistribuicao() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null); // item ou null
-  const [form, setForm] = useState({ cod: "", descricao: "", ativo: true });
+  const [form, setForm] = useState({
+  cod: "",
+  descricao: "",
+  ativo: true,
+  origem: "REPASSE",
+  periodicidade: "INCIDENTAL",
+});
 
   // controle de expansão
   const [openItens, setOpenItens] = useState({}); // { [modeloId]: true }
@@ -152,21 +158,35 @@ export default function ModeloDistribuicao() {
   }, [itens, q]);
 
   function openCreate() {
-    setEditing(null);
-    const [form, setForm] = useState({ codigo: "", descricao: "", ativo: true, origem: "REPASSE", periodicidade: "INCIDENTAL" });
-    setModalOpen(true);
-  }
+  setEditing(null);
+  setForm({
+    cod: "",
+    descricao: "",
+    ativo: true,
+    origem: "REPASSE",
+    periodicidade: "INCIDENTAL",
+  });
+  setModalOpen(true);
+}
 
-  function openEdit(item) {
-    setEditing(item);
-    const [form, setForm] = useState({ codigo: "", descricao: "", ativo: true, origem: "REPASSE", periodicidade: "INCIDENTAL" });
-    setModalOpen(true);
-  }
+function openEdit(item) {
+  setEditing(item);
+  setForm({
+    cod: item.codigo ?? item.cod ?? "",
+    descricao: item.descricao ?? "",
+    ativo: item.ativo !== false,
+    origem: item.origem ?? "REPASSE",
+    periodicidade: item.periodicidade ?? item.tipo ?? "INCIDENTAL",
+  });
+  setModalOpen(true);
+}
 
   async function save() {
     setError("");
     const cod = String(form.cod || "").trim();
     const descricao = String(form.descricao || "").trim();
+    const origem = String(form.origem || "REPASSE").trim().toUpperCase();
+    const periodicidade = String(form.periodicidade || "INCIDENTAL").trim().toUpperCase();
 
     if (!cod) return setError("Informe o código.");
     if (cod.length > 50) return setError("Código muito longo (máx. 50).");
@@ -176,12 +196,12 @@ export default function ModeloDistribuicao() {
       if (editing?.id) {
         await apiFetch(`/modelo-distribuicao/${editing.id}`, {
           method: "PUT",
-          body: { cod, descricao, ativo: !!form.ativo },
+          body: { cod, descricao, ativo: !!form.ativo, origem, periodicidade },
         });
       } else {
         await apiFetch(`/modelo-distribuicao`, {
           method: "POST",
-          body: { cod, descricao, ativo: !!form.ativo },
+          body: { cod, descricao, ativo: !!form.ativo, origem, periodicidade },
         });
       }
       setModalOpen(false);
