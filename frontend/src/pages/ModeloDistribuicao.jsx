@@ -464,7 +464,7 @@ function bpToPercent0(bp) {
         <div className="p-5 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="text-xl font-semibold text-slate-900">Modelos de Distribuição</div>
-            <div className="text-sm text-slate-600">Cadastro para uso interno (Configurações).</div>
+            // <div className="text-sm text-slate-600">Cadastro para uso interno (Configurações).</div>
           </div>
           <div className="flex items-center gap-2">
             <PrimaryButton type="button" onClick={openCreate}>
