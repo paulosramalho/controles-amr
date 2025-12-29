@@ -695,7 +695,7 @@ async function cancelarParcela() {
       />
       <button
         type="button"
-        onClick={() => load()}}
+        onClick={() => load()}
         className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
         disabled={loading}
         title="Atualizar"
