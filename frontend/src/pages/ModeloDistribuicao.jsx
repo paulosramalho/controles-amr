@@ -548,35 +548,36 @@ function bpToPercent0(bp) {
                                       <option value="INDICACAO">Indicação</option>
                                     </select>
 
-                                    <input
+                                    <input 
                                       className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
                                       placeholder="Percentual (ex.: 30,00)"
                                       value={novoItem[x.id]?.percentual || ""}
                                       onChange={(e) =>
                                         setNovoItem((s) => ({
-                                        ...s,
-                                        [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
-                                      }))
-                                    }
-                                  />
+                                          ...s,
+                                          [x.id]: { ...(s[x.id] || {}), percentual: e.target.value },
+                                        }))
+                                      }
+                                    />
 
-                                  <input
-                                    className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                    placeholder="Destinatário (opcional)"
-                                    value={novoItem[x.id]?.destinatario || ""}
-                                    onChange={(e) =>
-                                      setNovoItem((s) => ({
-                                      ...s,
-                                      [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
-                                    }))
-                                  }
-                                />
+                                    <input
+                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                      placeholder="Destinatário (opcional)"
+                                      value={novoItem[x.id]?.destinatario || ""}
+                                      onChange={(e) =>
+                                        setNovoItem((s) => ({
+                                          ...s,
+                                          [x.id]: { ...(s[x.id] || {}), destinatario: e.target.value },
+                                        }))
+                                      }
+                                    />
 
-                                <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
-                                  +
-                                </PrimaryButton>
-                              </div>
-                            </div>
+                                    <PrimaryButton className="md:col-span-1" type="button" onClick={() => addItem(x.id)}>
+                                      +
+                                    </PrimaryButton>
+                                  </div>
+                                </div>
+
  
                             {/* Tabela de itens */}
                             <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
