@@ -6,14 +6,50 @@ function onlyDigits(s) {
   return String(s || "").replace(/\D/g, "");
 }
 
-function sanitizePercentInput(raw) {
+function sanitizePercentTyping(raw) {
+  // permite digitar: 12,34 ou 12.34 (sem brigar com o cursor)
   const v = String(raw ?? "");
-  const cleaned = v.replace(/[^\d.,]/g, "");
-  const parts = cleaned.split(/[.,]/);
-  const intPart = (parts[0] || "").slice(0, 3);
-  const decPart = parts.slice(1).join("").slice(0, 2);
-  if (!decPart) return intPart;
-  return `${intPart},${decPart}`;
+
+  // mantém só dígitos e separadores
+  let cleaned = v.replace(/[^\d.,]/g, "");
+
+  // mantém somente o primeiro separador (se houver)
+  const firstSepIdx = cleaned.search(/[.,]/);
+  if (firstSepIdx !== -1) {
+    const before = cleaned.slice(0, firstSepIdx + 1);
+    const after = cleaned.slice(firstSepIdx + 1).replace(/[.,]/g, "");
+    cleaned = before + after;
+  }
+
+  // limita tamanho: até 3 dígitos inteiros e 2 decimais (sem forçar formatação)
+  const sep = cleaned.match(/[.,]/)?.[0] ?? null;
+  if (!sep) return cleaned.replace(/\D/g, "").slice(0, 3);
+
+  const [iRaw, dRaw = ""] = cleaned.split(sep);
+  const i = (iRaw || "").replace(/\D/g, "").slice(0, 3);
+  const d = (dRaw || "").replace(/\D/g, "").slice(0, 2);
+
+  return dRaw.length === 0 ? `${i}${sep}` : `${i}${sep}${d}`;
+}
+
+function normalizePercentOnBlur(raw) {
+  // normaliza para vírgula e remove vírgula final
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+
+  let s = v.replace(/[^\d.,]/g, "");
+  s = s.replace(".", ",");
+
+  // se terminou com separador, remove
+  if (s.endsWith(",") || s.endsWith(".")) s = s.slice(0, -1);
+
+  // se tem decimal, limita 2 casas
+  const parts = s.split(",");
+  const i = (parts[0] || "").replace(/\D/g, "").slice(0, 3);
+  const d = (parts[1] || "").replace(/\D/g, "").slice(0, 2);
+
+  if (!d) return i;
+  return `${i},${d}`;
 }
 
 function percentToBp(str) {
@@ -288,11 +324,13 @@ export default function AliquotasPage() {
             <label className="block text-sm font-semibold text-slate-700 mb-1">Percentual (%)</label>
             <input
               value={form.percentual}
-              onChange={(e) => setForm((s) => ({ ...s, percentual: sanitizePercentInput(e.target.value) }))}
+              onChange={(e) => setForm((s) => ({ ...s, percentual: sanitizePercentTyping(e.target.value) }))}
+              onBlur={(e) => setForm((s) => ({ ...s, percentual: normalizePercentOnBlur(e.target.value) }))}
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
               placeholder="12,34"
               inputMode="decimal"
             />
+
           </div>
         </div>
 
