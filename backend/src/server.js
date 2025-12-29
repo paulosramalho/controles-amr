@@ -676,7 +676,6 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
 });
 
 // Modelo de Distribuição (admin-only)
-// Modelo de Distribuição (admin-only)
 app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
   try {
     const rows = await prisma.modeloDistribuicao.findMany({
@@ -914,6 +913,85 @@ app.delete("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, 
   } catch (err) {
     console.error("[modelo-distribuicao][itens][DELETE]", err);
     res.status(500).json({ message: "Erro ao excluir item do modelo." });
+  }
+});
+
+// ---------------- Alíquotas (admin-only) ----------------
+app.get("/api/aliquotas", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rows = await prisma.aliquota.findMany({
+      orderBy: [{ ano: "desc" }, { mes: "desc" }],
+    });
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Erro ao listar alíquotas." });
+  }
+});
+
+app.post("/api/aliquotas", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { mes, ano, percentualBp } = req.body || {};
+    const m = Number(mes);
+    const a = Number(ano);
+    const p = Number(percentualBp);
+
+    if (!Number.isFinite(m) || m < 1 || m > 12) return res.status(400).json({ message: "Mês inválido." });
+    if (!Number.isFinite(a) || a < 1900 || a > 2100) return res.status(400).json({ message: "Ano inválido." });
+    if (!Number.isFinite(p) || p < 0 || p > 10000) return res.status(400).json({ message: "Percentual inválido." });
+
+    const row = await prisma.aliquota.create({
+      data: { mes: m, ano: a, percentualBp: p },
+    });
+    res.json(row);
+  } catch (e) {
+    console.error(e);
+    // unique mes/ano
+    if (String(e?.code) === "P2002") {
+      return res.status(409).json({ message: "Já existe alíquota para este mês/ano." });
+    }
+    res.status(500).json({ message: "Erro ao criar alíquota." });
+  }
+});
+
+app.put("/api/aliquotas/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    const { mes, ano, percentualBp } = req.body || {};
+    const m = Number(mes);
+    const a = Number(ano);
+    const p = Number(percentualBp);
+
+    if (!Number.isFinite(m) || m < 1 || m > 12) return res.status(400).json({ message: "Mês inválido." });
+    if (!Number.isFinite(a) || a < 1900 || a > 2100) return res.status(400).json({ message: "Ano inválido." });
+    if (!Number.isFinite(p) || p < 0 || p > 10000) return res.status(400).json({ message: "Percentual inválido." });
+
+    const row = await prisma.aliquota.update({
+      where: { id },
+      data: { mes: m, ano: a, percentualBp: p },
+    });
+    res.json(row);
+  } catch (e) {
+    console.error(e);
+    if (String(e?.code) === "P2002") {
+      return res.status(409).json({ message: "Já existe alíquota para este mês/ano." });
+    }
+    res.status(500).json({ message: "Erro ao atualizar alíquota." });
+  }
+});
+
+app.delete("/api/aliquotas/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "ID inválido." });
+
+    await prisma.aliquota.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Erro ao excluir alíquota." });
   }
 });
 

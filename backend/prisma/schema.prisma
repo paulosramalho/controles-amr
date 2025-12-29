@@ -270,6 +270,19 @@ model ModeloDistribuicao__old {
   @@index([cod], map: "ModeloDistribuicao_cod_idx")
 }
 
+model Aliquota {
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  mes          Int
+  ano          Int
+  percentualBp Int      @map("percentualBp")
+
+  @@unique([mes, ano])
+  @@map("Aliquota")
+}
+
 enum FormaPagamentoContrato {
   AVISTA
   ENTRADA_PARCELAS
