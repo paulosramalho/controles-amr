@@ -349,10 +349,7 @@ function bpToPercent0(bp) {
         {/* Linha principal do modelo */}
         <tr>
           <td className="px-4 py-3 font-semibold text-slate-900">{x.cod}</td>
-          <td className="px-4 py-3 text-slate-800">
-  {(origemLabel(x.origem) + " " + tipoLabel(x.periodicidade ?? x.tipo)).trim() || "—"}
-</td>
-
+          <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
           <td className="px-4 py-3">
             {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
           </td>
