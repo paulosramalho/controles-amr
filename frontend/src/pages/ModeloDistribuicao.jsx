@@ -145,7 +145,7 @@ export default function ModeloDistribuicao() {
     const term = q.trim().toLowerCase();
     if (!term) return itens;
     return itens.filter((x) => {
-      const cod = String(x.cod || "").toLowerCase();
+      const cod = String(x.codigo ?? x.cod ?? "").toLowerCase();
       const desc = String(x.descricao || "").toLowerCase();
       return cod.includes(term) || desc.includes(term);
     });
@@ -153,17 +153,13 @@ export default function ModeloDistribuicao() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ cod: "", descricao: "", ativo: true });
+    const [form, setForm] = useState({ codigo: "", descricao: "", ativo: true, origem: "REPASSE", periodicidade: "INCIDENTAL" });
     setModalOpen(true);
   }
 
   function openEdit(item) {
     setEditing(item);
-    setForm({
-      cod: item.cod ?? "",
-      descricao: item.descricao ?? "",
-      ativo: !!item.ativo,
-    });
+    const [form, setForm] = useState({ codigo: "", descricao: "", ativo: true, origem: "REPASSE", periodicidade: "INCIDENTAL" });
     setModalOpen(true);
   }
 
@@ -348,7 +344,7 @@ function bpToPercent0(bp) {
       <Fragment key={x.id}>
         {/* Linha principal do modelo */}
         <tr>
-          <td className="px-4 py-3 font-semibold text-slate-900">{x.cod}</td>
+          <td className="px-4 py-3 font-semibold text-slate-900">{x.codigo ?? x.cod}</td>
           <td className="px-4 py-3 text-slate-800">{x.descricao || "—"}</td>
           <td className="px-4 py-3">
             {x.ativo ? <Badge tone="green">Ativo</Badge> : <Badge tone="slate">Inativo</Badge>}
