@@ -323,12 +323,8 @@ function bpToPercent0(bp) {
             <PrimaryButton type="button" onClick={openCreate}>
               + Novo
             </PrimaryButton>
-            <Button type="button" onClick={load} disabled={loading}>
-              Atualizar
-            </Button>
           </div>
         </div>
-
         <div className="p-5 space-y-3">
           {error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
@@ -343,10 +339,17 @@ function bpToPercent0(bp) {
               placeholder="Buscar por código ou descrição…"
               className="w-full md:max-w-md rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
             />
-            <div className="text-sm text-slate-600">
+
+            <div className="flex items-center gap-2 justify-end">
+              <div className="text-sm text-slate-600">
               {loading ? "Carregando…" : `${filtered.length} item(ns)`}
             </div>
+
+            <Button type="button" onClick={load} disabled={loading}>
+              Atualizar
+            </Button>
           </div>
+        </div>
 
           <div className="overflow-auto rounded-2xl border border-slate-200">
             <table className="min-w-[900px] w-full text-sm">
