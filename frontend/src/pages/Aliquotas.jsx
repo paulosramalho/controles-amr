@@ -212,6 +212,9 @@ export default function AliquotasPage() {
                 + Novo
               </PrimaryButton>
             </div>
+          <div className="text-sm text-slate-600">
+            Cadastro mensal para uso em Repasses.
+          </div>
           <div className="flex flex-col md:flex-row md:items-center gap-3">
             <input
               value={q}
