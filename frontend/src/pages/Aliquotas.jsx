@@ -204,18 +204,17 @@ export default function AliquotasPage() {
 
   return (
     <div className="p-6 space-y-4">
-<div className="text-sm text-slate-600">
-            Cadastro mensal para uso em Repasses.
-          </div>
-      <div className="flex items-center justify-between">
-        <div className="text-xl font-semibold text-slate-900">Alíquotas</div>
-        <PrimaryButton type="button" onClick={openCreate}>
-          + Novo
-        </PrimaryButton>
-      </div>
-
+      
       <div className="rounded-2xl border border-slate-200 bg-white">
-        <div className="p-5 space-y-3">          
+        <div className="p-5 space-y-3">
+          <div className="text-sm text-slate-600">
+            Alíquotas
+          </div>
+          <div className="flex items-center justify-between">
+            <PrimaryButton type="button" onClick={openCreate}>
+              + Novo
+            </PrimaryButton>
+          </div>          
           <div className="flex flex-col md:flex-row md:items-center gap-3">
             <input
               value={q}
