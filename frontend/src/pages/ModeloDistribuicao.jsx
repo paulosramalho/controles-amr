@@ -479,14 +479,13 @@ function bpToPercent0(bp) {
             </div>
           ) : null}
 
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar por código ou descrição…"
-              className="w-full md:max-w-lg rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+              className="w-full md:flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
             />
-
             <div className="flex items-center gap-2 justify-end">
               <div className="text-sm text-slate-600">
               {loading ? "Carregando…" : `${filtered.length} item(ns)`}
