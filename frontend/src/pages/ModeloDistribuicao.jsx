@@ -125,6 +125,22 @@ export default function ModeloDistribuicao() {
     return (Number(bp) / 100).toFixed(2);
   }
 
+function sanitizePercentInput(raw) {
+  const v = String(raw ?? "");
+
+  // mantém só dígitos e separadores
+  const cleaned = v.replace(/[^\d.,]/g, "");
+
+  // separa por , ou .
+  const parts = cleaned.split(/[.,]/);
+
+  const intPart = (parts[0] || "").slice(0, 3); // até 999
+  const decPart = parts.slice(1).join("").slice(0, 2); // 2 casas
+
+  if (!decPart) return intPart;
+  return `${intPart},${decPart}`;
+}
+
   function clampPercentToRemaining(percentStr, remainingBp) {
     const bp = percentToBp(percentStr);
     if (!Number.isFinite(bp) || bp <= 0) return { bp: NaN, str: "" };   
@@ -355,12 +371,21 @@ function cancelEditItem(itemId) {
 
 async function saveEditItem(itemId) {
   const e = editItem[itemId];
-  const ordem = Number(e.ordem);
-  const percentualBp = percentToBp(e.percentual);
+  if (!e) return;
 
+  const ordem = Number(e.ordem);
   if (!Number.isFinite(ordem) || ordem <= 0) return alert("Ordem inválida.");
-  if (!e.destinoTipo) return alert("Destino inválido.");
-  if (!Number.isFinite(percentualBp) || percentualBp <= 0) return alert("Percentual inválido.");
+  if (!e.destinoTipo) return alert("Informe o destino.");
+
+  // restante para edição = 100% - soma(dos outros itens)
+  const itensLocal = itensByModelo[e.modeloId] || [];
+  const somaSemEste = somaBp(itensLocal.filter((z) => z.id !== itemId));
+  const restanteEditBp = Math.max(0, 10000 - somaSemEste);
+
+  const { bp: percentualBpClamped } = clampPercentToRemaining(e.percentual, restanteEditBp);
+  if (!Number.isFinite(percentualBpClamped) || percentualBpClamped <= 0) {
+    return alert("Percentual inválido.");
+  }
 
   setSavingItem((s) => ({ ...s, [itemId]: true }));
   try {
@@ -369,9 +394,10 @@ async function saveEditItem(itemId) {
       body: {
         ordem,
         destinoTipo: e.destinoTipo,
-        percentualBp,
+        percentualBp: percentualBpClamped, // clamp aplicado
       },
     });
+
     await loadItens(e.modeloId);
     cancelEditItem(itemId);
   } catch (err) {
@@ -624,12 +650,25 @@ function bpToPercent0(bp) {
                                       placeholder="Percentual (ex.: 30,00)"
                                       value={novoItem[x.id]?.percentual || ""}
                                       onChange={(e) => {
-                                        const raw = e.target.value;
-                                        const { str } = clampPercentToRemaining(raw, restanteBp);
+                                        const next = sanitizePercentInput(e.target.value);
                                         setNovoItem((s) => ({
                                           ...s,
-                                          [x.id]: { ...(s[x.id] || {}), percentual: str || raw },
+                                          [x.id]: { ...(s[x.id] || {}), percentual: next },
                                         }));
+                                      }}
+                                      onBlur={() => {
+                                        const itensLocalNow = itensByModelo[x.id] || [];
+                                        const restanteNow = Math.max(0, 10000 - somaBp(itensLocalNow));
+
+                                        const { bp, str } = clampPercentToRemaining(novoItem[x.id]?.percentual, restanteNow);
+
+                                        // só formata se for um número válido
+                                        if (Number.isFinite(bp) && bp > 0) {
+                                          setNovoItem((s) => ({
+                                            ...s,
+                                            [x.id]: { ...(s[x.id] || {}), percentual: str },
+                                          }));
+                                        }
                                       }}
                                     />                                    
 
@@ -678,9 +717,22 @@ function bpToPercent0(bp) {
                                               onChange={(ev) =>
                                                 setEditItem((s) => ({
                                                   ...s,
-                                                  [it.id]: { ...s[it.id], percentual: ev.target.value },
+                                                  [it.id]: { ...s[it.id], percentual: sanitizePercentInput(ev.target.value) },
                                                 }))
                                               }
+                                              onBlur={() => {
+                                                const itensLocalNow = itensByModelo[x.id] || [];
+                                                const somaSemEste = somaBp(itensLocalNow.filter((z) => z.id !== it.id));
+                                                const restanteEditBp = Math.max(0, 10000 - somaSemEste);
+
+                                                const { bp, str } = clampPercentToRemaining(editItem[it.id]?.percentual, restanteEditBp);
+                                                if (Number.isFinite(bp) && bp > 0) {
+                                                  setEditItem((s) => ({
+                                                    ...s,
+                                                    [it.id]: { ...s[it.id], percentual: str },
+                                                  }));
+                                                }
+                                              }}
                                             />
                                           ) : (
                                             `${bpToPercent0(it.percentualBp)}%`
