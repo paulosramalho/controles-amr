@@ -256,6 +256,41 @@ function toggleItens(modeloId) {
   }
 }
 
+function origemLabel(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (!s) return "—";
+  if (s === "REPASSE") return "Escritório";
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+function tipoLabel(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (!s) return "—";
+  if (s === "INCIDENTAL") return "Incidental";
+  if (s === "MENSAL") return "Mensal";
+  if (s === "SEMANAL") return "Semanal";
+  if (s === "SEMESTRAL") return "Semestral";
+  if (s === "ANUAL") return "Anual";
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+function destinoLabel(v) {
+  switch (String(v || "").toUpperCase()) {
+    case "FUNDO_RESERVA": return "Fundo de Reserva";
+    case "SOCIO": return "Sócio";
+    case "ESCRITORIO": return "Escritório";
+    case "INDICACAO": return "Indicação";
+    default: return String(v || "—");
+  }
+}
+
+// bp -> % sem casas decimais
+function bpToPercent0(bp) {
+  const n = Number(bp);
+  if (!Number.isFinite(n)) return "0";
+  return String(Math.round(n / 100)); // 1500 -> "15"
+}
+
   return (
     <div className="p-6 space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white">
@@ -344,22 +379,19 @@ function toggleItens(modeloId) {
         {/* Linha expandida dos itens */}
         {openItens[x.id] && (
           <tr>
-            <td colSpan={4} className="bg-slate-50">
+           <td colSpan={4} className="bg-slate-50">
               <div className="p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <div className="font-semibold text-slate-800">
-                    Itens do modelo <span className="font-mono">{x.cod}</span>
+                    {origemLabel(x.origem)} {tipoLabel(x.periodicidade)}
                   </div>
+
                   <div className={`font-semibold ${somaOk ? "text-emerald-700" : "text-red-700"}`}>
-                    Soma: {(soma / 100).toFixed(2)}%
+                    Soma: {Math.round(soma / 100)}%
                   </div>
                 </div>
 
-                {!somaOk && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                    A soma dos percentuais deve ser exatamente <b>100%</b>.
-                  </div>
-                )}
+        )}
 
                 {itensLoading[x.id] ? (
                   <div className="text-sm text-slate-500">Carregando itens…</div>
@@ -367,33 +399,37 @@ function toggleItens(modeloId) {
                   <div className="text-sm text-red-700">{itensError[x.id]}</div>
                 ) : (
                   <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-                    <thead className="bg-slate-100">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Ordem</th>
-                        <th className="px-3 py-2 text-left">Destino</th>
-                        <th className="px-3 py-2 text-right">%</th>
-                        <th className="px-3 py-2 text-left">Destinatário</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {itens.map((it) => (
-                        <tr key={it.id} className="border-t">
-                          <td className="px-3 py-2">{it.ordem}</td>
-                          <td className="px-3 py-2">{it.destinoTipo}</td>
-                          <td className="px-3 py-2 text-right">{bpToPercent(it.percentualBp)}%</td>
-                          <td className="px-3 py-2">{it.destinatario || "—"}</td>
-                        </tr>
-                      ))}
+  <thead className="bg-slate-100">
+    <tr>
+      <th className="px-3 py-2 text-left">Origem</th>
+      <th className="px-3 py-2 text-left">Tipo</th>
+      <th className="px-3 py-2 text-right">%</th>
+      <th className="px-3 py-2 text-left">Destino</th>
+    </tr>
+  </thead>
 
-                      {!itens.length && (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
-                            Nenhum item cadastrado.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+  <tbody>
+    {[...(itens || [])]
+      .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+      .map((it) => (
+        <tr key={it.id} className="border-t">
+          <td className="px-3 py-2">{origemLabel(x.origem)}</td>
+          <td className="px-3 py-2">{tipoLabel(x.periodicidade)}</td>
+          <td className="px-3 py-2 text-right">{bpToPercent0(it.percentualBp)}%</td>
+          <td className="px-3 py-2">{destinoLabel(it.destinoTipo)}</td>
+        </tr>
+      ))}
+
+    {!itens?.length && (
+      <tr>
+        <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
+          Nenhum item cadastrado.
+        </td>
+      </tr>
+    )}
+  </tbody>
+</table>
+
                 )}
               </div>
             </td>
