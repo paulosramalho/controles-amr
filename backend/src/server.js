@@ -676,20 +676,33 @@ app.patch("/api/advogados/:id/status", requireAuth, requireAdmin, async (req, re
 });
 
 // Modelo de Distribuição (admin-only)
+// Modelo de Distribuição (admin-only)
 app.get("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res) => {
   try {
     const rows = await prisma.modeloDistribuicao.findMany({
       orderBy: { codigo: "asc" },
-      select: { id: true, codigo: true, descricao: true, ativo: true },
+      select: {
+        id: true,
+        codigo: true,
+        descricao: true,
+        ativo: true,
+        origem: true,          // ✅ add
+        periodicidade: true,   // ✅ add
+      },
     });
 
-    // compat com o front (cod/descricao/ativo)
-    res.json(rows.map(r => ({
-      id: r.id,
-      cod: r.codigo,
-      descricao: r.descricao,
-      ativo: r.ativo,
-    })));
+    // compat com o front
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        cod: r.codigo,
+        codigo: r.codigo,            // ✅ opcional (ajuda consistência)
+        descricao: r.descricao,
+        ativo: r.ativo,
+        origem: r.origem,            // ✅ add
+        periodicidade: r.periodicidade, // ✅ add
+      }))
+    );
   } catch (err) {
     console.error("[modelo-distribuicao][GET]", err);
     res.status(500).json({ message: "Erro ao listar modelos de distribuição." });
@@ -718,10 +731,14 @@ app.post("/api/modelo-distribuicao", requireAuth, requireAdmin, async (req, res)
         periodicidade: per,
         origem: origem ? String(origem).trim() : "REPASSE",
       },
-      select: { id: true, codigo: true, descricao: true, ativo: true },
+      select: { id:true, codigo:true, descricao:true, ativo:true, origem:true, periodicidade:true },
     });
 
-    res.json({ id: row.id, cod: row.codigo, descricao: row.descricao, ativo: row.ativo });
+    res.json({
+  id: row.id, cod: row.codigo, codigo: row.codigo,
+  descricao: row.descricao, ativo: row.ativo,
+  origem: row.origem, periodicidade: row.periodicidade
+});
   } catch (err) {
     console.error("[modelo-distribuicao][POST]", err);
     res.status(500).json({ message: "Erro ao criar modelo de distribuição." });
@@ -745,10 +762,14 @@ app.put("/api/modelo-distribuicao/:id", requireAuth, requireAdmin, async (req, r
     const row = await prisma.modeloDistribuicao.update({
       where: { id },
       data,
-      select: { id: true, codigo: true, descricao: true, ativo: true },
+      select: { id:true, codigo:true, descricao:true, ativo:true, origem:true, periodicidade:true },
     });
 
-    res.json({ id: row.id, cod: row.codigo, descricao: row.descricao, ativo: row.ativo });
+    res.json({
+  id: row.id, cod: row.codigo, codigo: row.codigo,
+  descricao: row.descricao, ativo: row.ativo,
+  origem: row.origem, periodicidade: row.periodicidade
+});
   } catch (err) {
     console.error("[modelo-distribuicao][PUT]", err);
     res.status(500).json({ message: "Erro ao atualizar modelo de distribuição." });
