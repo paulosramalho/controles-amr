@@ -321,8 +321,10 @@ export default function PagamentosPage({ user }) {
   setLoading(true);
   try {
     const qq = String(qValue || "").trim();
-    const query = qq ? `?q=${encodeURIComponent(qq)}` : "";
+    const ts = Date.now();
+    const query = qq ? `?q=${encodeURIComponent(qq)}&ts=${ts}` : `?ts=${ts}`;
     const data = await apiFetch(`/contratos${query}`);
+
     setRows(Array.isArray(data) ? data : []);
   } catch (e) {
     setError(e?.message || "Falha ao carregar contratos.");
