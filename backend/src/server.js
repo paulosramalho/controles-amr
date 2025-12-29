@@ -1737,31 +1737,31 @@ app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     const q = (req.query.q || "").toString().trim();
 const qDigits = onlyDigits(q);
 
-// Busca ids de clientes pelo nome (robusto)
-let clienteIdsPorNome = [];
+// 1) Descobre clientes pelo nome (não-relacional, blindado)
+let clienteIds = [];
 if (q) {
-  const clientesMatch = await prisma.cliente.findMany({
+  const clientes = await prisma.cliente.findMany({
     where: { nomeRazaoSocial: { contains: q, mode: "insensitive" } },
     select: { id: true },
     take: 200,
   });
-  clienteIdsPorNome = clientesMatch.map(c => c.id);
+  clienteIds = clientes.map((c) => c.id);
 }
 
 const where = q
   ? {
       OR: [
+        // Contrato
         { numeroContrato: { contains: q, mode: "insensitive" } },
 
-        // busca por CPF/CNPJ (com máscara ou sem)
+        // CPF/CNPJ (com máscara ou não)
         { cliente: { cpfCnpj: { contains: qDigits } } },
 
-        // ✅ busca por nome do cliente via IN (garante que funciona)
-        ...(clienteIdsPorNome.length ? [{ clienteId: { in: clienteIdsPorNome } }] : []),
+        // ✅ Cliente por ID (garante busca por nome)
+        ...(clienteIds.length ? [{ clienteId: { in: clienteIds } }] : []),
       ],
     }
   : undefined;
-
 
     const contratos = await prisma.contratoPagamento.findMany({
       where,
