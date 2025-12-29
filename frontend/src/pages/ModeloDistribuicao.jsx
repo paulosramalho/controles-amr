@@ -267,17 +267,22 @@ function toggleItens(modeloId) {
     if (!itensByModelo[modeloId]) loadItens(modeloId);
     setNovoItem((s) => ({
       ...s,
-      [modeloId]: s[modeloId] || { ordem: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+      [modeloId]: s[modeloId] || { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
     }));
   }
 }
 
 async function addItem(modeloId) {
   const ni = novoItem[modeloId] || {};
-  const ordem = Number(ni.ordem);
+
+  const itensLocal = itensByModelo[modeloId] || [];
+  const maxOrd = itensLocal.reduce((m, it) => Math.max(m, Number(it.ordem || 0)), 0);
+  const ordem = maxOrd + 1; // ✅ automático
+
   const percentualBp = percentToBp(ni.percentual);
 
-  if (!Number.isFinite(ordem) || ordem <= 0) return alert("Ordem inválida.");
+  if (!ni.origem) return alert("Informe a origem.");
+  if (!ni.periodicidade) return alert("Informe o tipo.");
   if (!ni.destinoTipo) return alert("Informe o destino.");
   if (!Number.isFinite(percentualBp) || percentualBp <= 0) return alert("Percentual inválido.");
 
@@ -286,6 +291,8 @@ async function addItem(modeloId) {
       method: "POST",
       body: {
         ordem,
+        origem: String(ni.origem).trim().toUpperCase(),               // ✅ novo
+        periodicidade: String(ni.periodicidade).trim().toUpperCase(), // ✅ novo
         destinoTipo: ni.destinoTipo,
         percentualBp,
         destinatario: ni.destinatario ? String(ni.destinatario).trim() : null,
@@ -294,10 +301,9 @@ async function addItem(modeloId) {
 
     await loadItens(modeloId);
 
-    // limpa o form
     setNovoItem((s) => ({
       ...s,
-      [modeloId]: { ordem: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
+      [modeloId]: { origem: "", periodicidade: "", destinoTipo: "SOCIO", percentual: "", destinatario: "" },
     }));
   } catch (e) {
     alert(e?.message || "Falha ao incluir item.");
@@ -503,7 +509,7 @@ function bpToPercent0(bp) {
                           <div className="p-4 space-y-3">
                             <div className="flex justify-between items-center">
                               <div className="font-semibold text-slate-800">
-                                {origemLabel(x.origem)} {tipoLabel(x.periodicidade ?? x.tipo)}
+                                {x.descricao || "—"}
                               </div>
 
                               <div className={`font-semibold ${somaOk ? "text-emerald-700" : "text-red-700"}`}>
@@ -520,17 +526,40 @@ function bpToPercent0(bp) {
                                 {/* Adicionar item */}
                                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                                   <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                                    <input
-                                      className="md:col-span-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                                      placeholder="Ordem"
-                                      value={novoItem[x.id]?.ordem || ""}
+                                    <select
+                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                      value={novoItem[x.id]?.origem || ""}
                                       onChange={(e) =>
                                         setNovoItem((s) => ({
                                           ...s,
-                                          [x.id]: { ...(s[x.id] || {}), ordem: e.target.value },
+                                          [x.id]: { ...(s[x.id] || {}), origem: e.target.value },
                                         }))
                                       }
-                                    />
+                                    >
+                                      <option value="">Origem (selecionar)</option>
+                                      <option value="REPASSE">Escritório</option>
+                                      <option value="SOCIO">Sócio</option>
+                                      <option value="INDICACAO">Indicação</option>
+                                    </select>
+
+                                    <select
+                                      className="md:col-span-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                                      value={novoItem[x.id]?.periodicidade || ""}
+                                      onChange={(e) =>
+                                        setNovoItem((s) => ({
+                                          ...s,
+                                          [x.id]: { ...(s[x.id] || {}), periodicidade: e.target.value },
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Tipo (selecionar)</option>
+                                      <option value="INCIDENTAL">Incidental</option>
+                                      <option value="MENSAL">Mensal</option>
+                                      <option value="MENSAL_RECORRENTE">Mensal/Recorrente</option>
+                                      <option value="SEMANAL">Semanal</option>
+                                      <option value="SEMESTRAL">Semestral</option>
+                                      <option value="ANUAL">Anual</option>
+                                    </select>
 
                                     <select
                                       className="md:col-span-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
@@ -600,8 +629,8 @@ function bpToPercent0(bp) {
 
                                     return (
                                       <tr key={it.id} className="border-t">
-                                        <td className="px-3 py-2">{origemLabel(x.origem)}</td>
-                                        <td className="px-3 py-2">{tipoLabel(x.periodicidade ?? x.tipo)}</td>
+                                        <td className="px-3 py-2">{origemLabel(it.origem)}</td>
+                                        <td className="px-3 py-2">{tipoLabel(it.periodicidade ?? it.tipo)}</td>
 
                                         <td className="px-3 py-2 text-right">
                                           {e ? (
