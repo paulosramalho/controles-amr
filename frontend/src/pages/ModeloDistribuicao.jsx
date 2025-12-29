@@ -702,58 +702,60 @@ function bpToPercent0(bp) {
         </tbody>
       </table>
     </div>
+    
+  </div>
+</div>
 
-      <Modal
-        open={modalOpen}
-        title={editing ? `Editar Modelo (${editing.cod})` : "Novo Modelo de Distribuição"}
-        onClose={() => setModalOpen(false)}
-      >
-        {error ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            {error}
-          </div>
-        ) : null}
+<Modal
+  open={modalOpen}
+  title={editing ? `Editar Modelo (${editing.cod})` : "Novo Modelo de Distribuição"}
+  onClose={() => setModalOpen(false)}
+  >
+    {error ? (
+      <div className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+        {error}
+      </div>
+    ) : null}
 
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Código *</label>
-            <input
-              value={form.cod}
-              onChange={(e) => setForm((s) => ({ ...s, cod: e.target.value }))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Ex.: MD-001"
-            />
-          </div>
+    <div className="space-y-3">
+      <div>
+        <label className="block text-sm font-semibold text-slate-800 mb-1">Código *</label>
+        <input
+          value={form.cod}
+          onChange={(e) => setForm((s) => ({ ...s, cod: e.target.value }))}
+          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+          placeholder="Ex.: MD-001"
+        />
+      </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-800 mb-1">Descrição</label>
-            <input
-              value={form.descricao}
-              onChange={(e) => setForm((s) => ({ ...s, descricao: e.target.value }))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-              placeholder="Descrição do modelo…"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-slate-800">
-            <input
-              type="checkbox"
-              checked={!!form.ativo}
-              onChange={(e) => setForm((s) => ({ ...s, ativo: e.target.checked }))}
-            />
-            Ativo
-          </label>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <PrimaryButton type="button" onClick={save} disabled={loading}>
-              Salvar
-            </PrimaryButton>
-          </div>
-        </div>
-      </Modal>
+    <div>
+      <label className="block text-sm font-semibold text-slate-800 mb-1">Descrição</label>
+      <input
+        value={form.descricao}
+        onChange={(e) => setForm((s) => ({ ...s, descricao: e.target.value }))}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+        placeholder="Descrição do modelo…"
+      />
     </div>
-  );
+
+    <label className="flex items-center gap-2 text-sm text-slate-800">
+      <input
+        type="checkbox"
+        checked={!!form.ativo}
+        onChange={(e) => setForm((s) => ({ ...s, ativo: e.target.checked }))}
+      />
+      Ativo
+    </label>
+
+    <div className="flex justify-end gap-2 pt-2">
+      <Button type="button" onClick={() => setModalOpen(false)}>
+        Cancelar
+      </Button>
+      <PrimaryButton type="button" onClick={save} disabled={loading}>
+        Salvar
+      </PrimaryButton>
+    </div>
+  </div>
+</Modal>
+);
 }
