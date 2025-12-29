@@ -827,6 +827,110 @@ app.delete("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, 
   }
 });
 
+// Itens do Modelo de Distribuição (admin-only)
+
+// listar itens de um modelo
+app.get("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const modeloId = Number(req.params.id);
+    if (!Number.isFinite(modeloId)) return res.status(400).json({ message: "ID inválido." });
+
+    const itens = await prisma.modeloDistribuicaoItem.findMany({
+      where: { modeloId },
+      orderBy: { ordem: "asc" },
+    });
+
+    res.json(itens);
+  } catch (err) {
+    console.error("[modelo-distribuicao][itens][GET]", err);
+    res.status(500).json({ message: "Erro ao listar itens do modelo." });
+  }
+});
+
+// criar item
+app.post("/api/modelo-distribuicao/:id/itens", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const modeloId = Number(req.params.id);
+    if (!Number.isFinite(modeloId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    const o = Number(ordem);
+    const p = Number(percentualBp);
+
+    if (!Number.isFinite(o) || o <= 0) return res.status(400).json({ message: "Ordem inválida." });
+    if (!destinoTipo) return res.status(400).json({ message: "Informe o destino." });
+    if (!Number.isFinite(p) || p <= 0) return res.status(400).json({ message: "Percentual inválido." });
+
+    const row = await prisma.modeloDistribuicaoItem.create({
+      data: {
+        modeloId,
+        ordem: o,
+        destinoTipo,
+        percentualBp: p,
+        destinatario: destinatario ? String(destinatario).trim() : null,
+      },
+    });
+
+    res.json(row);
+  } catch (err) {
+    console.error("[modelo-distribuicao][itens][POST]", err);
+    // unique (modeloId, ordem)
+    if (err?.code === "P2002") {
+      return res.status(400).json({ message: "Já existe um item com essa ordem neste modelo." });
+    }
+    res.status(500).json({ message: "Erro ao criar item do modelo." });
+  }
+});
+
+// atualizar item
+app.put("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.itemId);
+    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
+
+    const { ordem, destinoTipo, percentualBp, destinatario } = req.body || {};
+    const data = {};
+
+    if (ordem !== undefined) {
+      const o = Number(ordem);
+      if (!Number.isFinite(o) || o <= 0) return res.status(400).json({ message: "Ordem inválida." });
+      data.ordem = o;
+    }
+    if (destinoTipo !== undefined) data.destinoTipo = destinoTipo;
+
+    if (percentualBp !== undefined) {
+      const p = Number(percentualBp);
+      if (!Number.isFinite(p) || p <= 0) return res.status(400).json({ message: "Percentual inválido." });
+      data.percentualBp = p;
+    }
+
+    if (destinatario !== undefined) data.destinatario = destinatario ? String(destinatario).trim() : null;
+
+    const row = await prisma.modeloDistribuicaoItem.update({ where: { id: itemId }, data });
+    res.json(row);
+  } catch (err) {
+    console.error("[modelo-distribuicao][itens][PUT]", err);
+    if (err?.code === "P2002") {
+      return res.status(400).json({ message: "Já existe um item com essa ordem neste modelo." });
+    }
+    res.status(500).json({ message: "Erro ao atualizar item do modelo." });
+  }
+});
+
+// excluir item
+app.delete("/api/modelo-distribuicao/itens/:itemId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.itemId);
+    if (!Number.isFinite(itemId)) return res.status(400).json({ message: "ID inválido." });
+
+    await prisma.modeloDistribuicaoItem.delete({ where: { id: itemId } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[modelo-distribuicao][itens][DELETE]", err);
+    res.status(500).json({ message: "Erro ao excluir item do modelo." });
+  }
+});
+
 /* =========================
    AUTH — ROTAS
 ========================= */
