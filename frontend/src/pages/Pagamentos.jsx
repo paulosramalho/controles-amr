@@ -316,15 +316,12 @@ export default function PagamentosPage({ user }) {
   const [cancelParcela, setCancelParcela] = useState(null);
   const [cancelMotivo, setCancelMotivo] = useState("");
 
-  async function load(qValue = "") {
+  async function load() {
   setError("");
   setLoading(true);
   try {
-    const qq = String(qValue || "").trim();
     const ts = Date.now();
-    const query = qq ? `?q=${encodeURIComponent(qq)}&ts=${ts}` : `?ts=${ts}`;
-    const data = await apiFetch(`/contratos${query}`);
-
+    const data = await apiFetch(`/contratos?ts=${ts}`);
     setRows(Array.isArray(data) ? data : []);
   } catch (e) {
     setError(e?.message || "Falha ao carregar contratos.");
@@ -347,14 +344,14 @@ export default function PagamentosPage({ user }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-  const t = setTimeout(() => {
-    load(q);
-  }, 300); // debounce 300ms
+ // useEffect(() => {
+ // const t = setTimeout(() => {
+ //   load(q);
+ // }, 300); // debounce 300ms
 
-  return () => clearTimeout(t);
+//  return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+//  }, [q]);
 
   useEffect(() => {
   if (!isAdmin) return;
@@ -664,7 +661,24 @@ async function cancelarParcela() {
     }
   }
 
-  const filtered = useMemo(() => rows, [rows]);
+  const filtered = useMemo(() => {
+  const qq = String(q || "").trim().toLowerCase();
+  if (!qq) return rows;
+
+  const qDigits = onlyDigits(qq);
+
+  return (rows || []).filter((c) => {
+    const numero = String(c?.numeroContrato || "").toLowerCase();
+    const nome = String(c?.cliente?.nomeRazaoSocial || "").toLowerCase();
+    const cpf = onlyDigits(c?.cliente?.cpfCnpj || "");
+    return (
+      numero.includes(qq) ||
+      nome.includes(qq) ||
+      (qDigits && cpf.includes(qDigits))
+    );
+  });
+}, [rows, q]);
+
 
   const parcelasDoContrato = selectedContrato?.parcelas || [];
   const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
@@ -681,7 +695,7 @@ async function cancelarParcela() {
       />
       <button
         type="button"
-        onClick={load}
+        onClick={() => load()}}
         className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
         disabled={loading}
         title="Atualizar"
