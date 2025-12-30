@@ -319,9 +319,9 @@ model Usuario {
   RetificacaoParcela    RetificacaoParcela[]
   advogado              Advogado?             @relation(fields: [advogadoId], references: [id])
 
-  repassesFechados       RepasseCompetencia[] @relation("RepasseFechadoPor")
-  repassesConfirmados    RepasseLinha[]       @relation("RepasseConfirmadoPor")
-  repassesAjustesCriados RepasseAjuste[]      @relation("RepasseAjusteCriadoPor")
+  repassesFechados    RepasseCompetencia[] @relation("RepasseFechadoPor")
+  repassesConfirmados RepasseLinha[]       @relation("RepasseConfirmadoPor")
+  repassesAjustes     RepasseAjuste[]      @relation("RepasseAjusteCriadoPor")
 
   @@index([ativo])
   @@index([role])
@@ -389,7 +389,7 @@ model ModeloDistribuicao {
   ativo         Boolean                  @default(true)
   itens         ModeloDistribuicaoItem[]
 
-  contratosPadrao  ContratoPagamento[] @relation("ContratoModeloDistribuicao")
+  contratosDefault ContratoPagamento[] @relation("ContratoModeloDistribuicao")
   parcelasOverride ParcelaContrato[]   @relation("ParcelaModeloDistribuicao")
 
   @@map("ModeloDistribuicao")
