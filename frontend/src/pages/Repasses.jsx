@@ -22,7 +22,7 @@ export default function RepassesPage({ user }) {
     setLoading(true);
     setErr("");
     try {
-      const res = await apiFetch(`/api/repasses/previa?ano=${ano}&mes=${mes}`);
+      const res = await apiFetch(`/repasses/previa?ano=${ano}&mes=${mes}`);
       setData(res);
     } catch (e) {
       setErr(e?.message || "Erro ao carregar prévia.");
