@@ -995,6 +995,235 @@ app.delete("/api/aliquotas/:id", requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+// =========================
+// REPASSES — PRÉVIA (MVP)
+// =========================
+function monthRangeUTC(year, month1to12) {
+  // intervalo [start, end) em UTC
+  const start = new Date(Date.UTC(year, month1to12 - 1, 1, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month1to12, 1, 0, 0, 0));
+  return { start, end };
+}
+
+function prevMonth(year, month1to12) {
+  if (month1to12 === 1) return { year: year - 1, month: 12 };
+  return { year, month: month1to12 - 1 };
+}
+
+function toCents(decimalVal) {
+  if (decimalVal == null) return 0;
+  const n = Number(decimalVal);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+function fromCents(cents) {
+  return (cents || 0) / 100;
+}
+
+function bpToRate(bp) {
+  // 3000 bp = 30,00% => 0.30
+  return (bp || 0) / 10000;
+}
+
+app.get("/api/repasses/previa", requireAuth, async (req, res) => {
+  try {
+    const ano = Number(req.query.ano);
+    const mes = Number(req.query.mes); // competência (M+1)
+    if (!Number.isFinite(ano) || !Number.isFinite(mes) || mes < 1 || mes > 12) {
+      return res.status(400).json({ message: "Parâmetros inválidos. Use ?ano=YYYY&mes=1..12 (competência)." });
+    }
+
+    // M = mês anterior ao da competência (M+1)
+    const { year: anoPag, month: mesPag } = prevMonth(ano, mes);
+    const { start, end } = monthRangeUTC(anoPag, mesPag);
+
+    // Alíquota da competência (ou última)
+    const aliquotaExata = await prisma.aliquota.findUnique({
+      where: { mes_ano: { mes, ano } },
+    });
+
+    const aliquotaUsada = aliquotaExata
+      ? aliquotaExata
+      : await prisma.aliquota.findFirst({
+          where: {
+            OR: [{ ano: { lt: ano } }, { ano: ano, mes: { lte: mes } }],
+          },
+          orderBy: [{ ano: "desc" }, { mes: "desc" }],
+        });
+
+    if (!aliquotaUsada) {
+      return res.status(400).json({ message: "Nenhuma alíquota cadastrada ainda. Cadastre ao menos uma alíquota." });
+    }
+
+    const aliquotaBp = aliquotaUsada.percentualBp;
+
+    // Parcelas recebidas no mês M
+    const parcelas = await prisma.parcelaContrato.findMany({
+      where: {
+        dataRecebimento: { gte: start, lt: end },
+        valorRecebido: { not: null },
+        canceladaEm: null,
+        contrato: { ativo: true },
+      },
+      include: {
+        contrato: {
+          include: { cliente: true },
+        },
+        splitsAdvogados: {
+          include: { advogado: true },
+        },
+        modeloDistribuicao: {
+          include: { itens: true },
+        },
+      },
+      orderBy: [{ dataRecebimento: "asc" }, { id: "asc" }],
+    });
+
+    // Pegar modelos do contrato (quando não houver override na parcela)
+    const contratoIdsSemModeloNaParcela = parcelas
+      .filter((p) => !p.modeloDistribuicaoId)
+      .map((p) => p.contratoId);
+
+    const contratosComModelo = contratoIdsSemModeloNaParcela.length
+      ? await prisma.contratoPagamento.findMany({
+          where: { id: { in: [...new Set(contratoIdsSemModeloNaParcela)] } },
+          select: { id: true, modeloDistribuicaoId: true },
+        })
+      : [];
+
+    const contratoModeloMap = new Map(contratosComModelo.map((c) => [c.id, c.modeloDistribuicaoId]));
+
+    // Carregar modelos necessários (itens) em batch
+    const modeloIds = new Set();
+    for (const p of parcelas) {
+      const mid = p.modeloDistribuicaoId || contratoModeloMap.get(p.contratoId) || null;
+      if (mid) modeloIds.add(mid);
+    }
+
+    const modelos = modeloIds.size
+      ? await prisma.modeloDistribuicao.findMany({
+          where: { id: { in: [...modeloIds] }, ativo: true },
+          include: { itens: true },
+        })
+      : [];
+
+    const modeloMap = new Map(modelos.map((m) => [m.id, m]));
+
+    // Montar linhas
+    const linhas = parcelas.map((p) => {
+      const valorBrutoCent = toCents(p.valorRecebido);
+      const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
+      const liquidoCent = valorBrutoCent - impostoCent;
+
+      const modeloId = p.modeloDistribuicaoId || contratoModeloMap.get(p.contratoId) || null;
+      const modelo = modeloId ? modeloMap.get(modeloId) : null;
+
+      // Itens do modelo (bp sobre o líquido)
+      let frBp = 0;
+      let escBp = 0;
+      let socioBp = 0;
+
+      if (modelo?.itens?.length) {
+        for (const it of modelo.itens) {
+          if (it.destinoTipo === "FUNDO_RESERVA") frBp += it.percentualBp;
+          if (it.destinoTipo === "ESCRITORIO") escBp += it.percentualBp;
+          if (it.destinoTipo === "SOCIO") socioBp += it.percentualBp;
+        }
+      }
+
+      const fundoReservaCent = Math.round(liquidoCent * bpToRate(frBp));
+      const escritorioCent = Math.round(liquidoCent * bpToRate(escBp));
+      const socioTotalCent = Math.round(liquidoCent * bpToRate(socioBp));
+
+      // Splits dos advogados (bp sobre o LÍQUIDO) — validação: soma <= socioBp
+      const advs = (p.splitsAdvogados || []).map((s) => ({
+        advogadoId: s.advogadoId,
+        nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
+        percentualBp: s.percentualBp,
+        valorCentavos: Math.round(liquidoCent * bpToRate(s.percentualBp)),
+      }));
+
+      const somaSplitsBp = advs.reduce((acc, a) => acc + (a.percentualBp || 0), 0);
+      const splitOk = somaSplitsBp <= socioBp;
+
+      return {
+        parcelaId: p.id,
+        contratoId: p.contratoId,
+        numeroContrato: p.contrato?.numeroContrato,
+        clienteId: p.contrato?.cliente?.id,
+        clienteNome: p.contrato?.cliente?.nomeRazaoSocial,
+
+        dataRecebimento: p.dataRecebimento,
+        valorBruto: fromCents(valorBrutoCent),
+        aliquotaBp,
+        imposto: fromCents(impostoCent),
+        liquido: fromCents(liquidoCent),
+
+        modeloDistribuicaoId: modeloId,
+        modeloCodigo: modelo?.codigo || null,
+        modeloDescricao: modelo?.descricao || null,
+
+        fundoReserva: fromCents(fundoReservaCent),
+        escritorio: fromCents(escritorioCent),
+        socioTotal: fromCents(socioTotalCent),
+
+        advogados: advs.map((a) => ({
+          advogadoId: a.advogadoId,
+          nome: a.nome,
+          percentualBp: a.percentualBp,
+          valor: fromCents(a.valorCentavos),
+        })),
+
+        // flags para UI
+        pendencias: {
+          modeloAusente: !modeloId,
+          splitAusenteComSocio: socioBp > 0 && advs.length === 0,
+          splitExcedido: !splitOk,
+        },
+      };
+    });
+
+    // totais
+    const totals = linhas.reduce(
+      (acc, l) => {
+        acc.valor += l.valorBruto;
+        acc.imposto += l.imposto;
+        acc.liquido += l.liquido;
+        acc.escritorio += l.escritorio;
+        acc.fundoReserva += l.fundoReserva;
+        acc.socioTotal += l.socioTotal;
+
+        for (const a of l.advogados || []) {
+          acc.advMap.set(a.advogadoId, (acc.advMap.get(a.advogadoId) || 0) + a.valor);
+        }
+        return acc;
+      },
+      { valor: 0, imposto: 0, liquido: 0, escritorio: 0, fundoReserva: 0, socioTotal: 0, advMap: new Map() }
+    );
+
+    const advTotais = [...totals.advMap.entries()].map(([advogadoId, valor]) => ({ advogadoId, valor }));
+
+    return res.json({
+      competencia: { ano, mes },
+      pagamentosConsiderados: { ano: anoPag, mes: mesPag },
+      aliquotaUsada: { ano: aliquotaUsada.ano, mes: aliquotaUsada.mes, percentualBp: aliquotaBp },
+      linhas,
+      totais: {
+        valor: totals.valor,
+        imposto: totals.imposto,
+        liquido: totals.liquido,
+        escritorio: totals.escritorio,
+        fundoReserva: totals.fundoReserva,
+        socioTotal: totals.socioTotal,
+        advogados: advTotais,
+      },
+    });
+  } catch (err) {
+    console.error("Erro em /api/repasses/previa:", err);
+    return res.status(500).json({ message: "Erro ao gerar prévia de repasses." });
+  }
+});
+
 /* =========================
    AUTH — ROTAS
 ========================= */
