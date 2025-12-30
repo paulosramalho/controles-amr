@@ -1224,6 +1224,194 @@ app.get("/api/repasses/previa", requireAuth, async (req, res) => {
   }
 });
 
+// =========================
+// REPASSES — PRÉVIA (M+1)
+// =========================
+function startOfMonthUTC(ano, mes1a12) {
+  return new Date(Date.UTC(ano, mes1a12 - 1, 1, 0, 0, 0, 0));
+}
+function startOfNextMonthUTC(ano, mes1a12) {
+  return new Date(Date.UTC(ano, mes1a12, 1, 0, 0, 0, 0));
+}
+function toNumber(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return v;
+  return Number(v.toString());
+}
+
+app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ano = Number(req.query.ano);
+    const mes = Number(req.query.mes); // competência (M+1)
+    if (!ano || !mes || mes < 1 || mes > 12) {
+      return res.status(400).json({ message: "Parâmetros inválidos. Use ano e mes (1-12)." });
+    }
+
+    // pagamentos considerados = mês anterior (M)
+    let anoPag = ano;
+    let mesPag = mes - 1;
+    if (mesPag === 0) { mesPag = 12; anoPag = ano - 1; }
+
+    // janela do mês considerado (M) baseada em dataRecebimento
+    const ini = startOfMonthUTC(anoPag, mesPag);
+    const fim = startOfNextMonthUTC(anoPag, mesPag);
+
+    // alíquota usada = competência (M+1), senão a última cadastrada
+    let aliq = await prisma.aliquota.findUnique({
+      where: { mes_ano: { mes, ano } }, // exige @@unique([mes, ano]) com nome mes_ano (ou ajuste)
+    });
+
+    if (!aliq) {
+      aliq = await prisma.aliquota.findFirst({
+        orderBy: [{ ano: "desc" }, { mes: "desc" }],
+      });
+    }
+
+    const aliquotaBp = aliq?.percentualBp ?? 0; // basis points
+    const aliquota = aliquotaBp / 10000;
+
+    // parcelas recebidas no mês considerado (M)
+    const parcelas = await prisma.parcelaContrato.findMany({
+      where: {
+        status: "RECEBIDA",
+        dataRecebimento: { gte: ini, lt: fim },
+      },
+      include: {
+        contrato: { include: { cliente: true } },
+        modeloDistribuicao: { include: { itens: { orderBy: { ordem: "asc" } } } }, // override
+        splitsAdvogados: { include: { advogado: true } },
+      },
+      orderBy: [{ dataRecebimento: "asc" }, { id: "asc" }],
+    });
+
+    // cache de modelos (quando vem do contrato e não da parcela)
+    const modeloCache = new Map();
+    async function getModeloById(id) {
+      if (!id) return null;
+      if (modeloCache.has(id)) return modeloCache.get(id);
+      const m = await prisma.modeloDistribuicao.findUnique({
+        where: { id },
+        include: { itens: { orderBy: { ordem: "asc" } } },
+      });
+      modeloCache.set(id, m);
+      return m;
+    }
+
+    const linhas = [];
+    const tot = {
+      valor: 0,
+      imposto: 0,
+      liquido: 0,
+      escritorio: 0,
+      fundoReserva: 0,
+      advMap: new Map(), // advogadoId -> { advogadoId, nome, valor }
+    };
+
+    for (const p of parcelas) {
+      const contrato = p.contrato;
+      const cliente = contrato?.cliente;
+
+      const valorBruto = toNumber(p.valorRecebido ?? p.valorPrevisto ?? 0);
+      const imposto = valorBruto * aliquota;
+      const liquido = valorBruto - imposto;
+
+      // modelo: parcela override > contrato default
+      let modelo = null;
+      if (p.modeloDistribuicaoId) modelo = p.modeloDistribuicao;
+      if (!modelo && contrato?.modeloDistribuicaoId) modelo = await getModeloById(contrato.modeloDistribuicaoId);
+
+      const pendencias = {
+        modeloAusente: !modelo,
+        splitAusenteComSocio: false,
+        splitExcedido: false,
+      };
+
+      let fundoReserva = 0;
+      let escritorio = 0;
+      let socioBp = 0;
+
+      if (modelo?.itens?.length) {
+        for (const it of modelo.itens) {
+          const perc = (it.percentualBp ?? 0) / 10000;
+          if (it.destinoTipo === "FUNDO_RESERVA") fundoReserva += liquido * perc;
+          if (it.destinoTipo === "ESCRITORIO") escritorio += liquido * perc;
+          if (it.destinoTipo === "SOCIO") socioBp += (it.percentualBp ?? 0);
+        }
+      }
+
+      const socioTotal = liquido * (socioBp / 10000);
+
+      // splits do sócio por parcela
+      const advogados = [];
+      const somaSplitsBp = (p.splitsAdvogados || []).reduce((acc, s) => acc + (s.percentualBp ?? 0), 0);
+
+      if (socioBp > 0 && (!p.splitsAdvogados || p.splitsAdvogados.length === 0)) {
+        pendencias.splitAusenteComSocio = true;
+      }
+      if (somaSplitsBp > socioBp) {
+        pendencias.splitExcedido = true;
+      }
+
+      for (const s of (p.splitsAdvogados || [])) {
+        const aBp = s.percentualBp ?? 0;
+        const aVal = liquido * (aBp / 10000);
+        advogados.push({
+          advogadoId: s.advogadoId,
+          nome: s.advogado?.nome ?? `#${s.advogadoId}`,
+          valor: aVal,
+        });
+
+        // totals
+        const cur = tot.advMap.get(s.advogadoId) || { advogadoId: s.advogadoId, nome: s.advogado?.nome ?? `#${s.advogadoId}`, valor: 0 };
+        cur.valor += aVal;
+        tot.advMap.set(s.advogadoId, cur);
+      }
+
+      linhas.push({
+        parcelaId: p.id,
+        contratoId: contrato?.id,
+        numeroContrato: contrato?.numeroContrato,
+        clienteId: cliente?.id,
+        clienteNome: cliente?.nomeRazaoSocial,
+        valorBruto,
+        aliquotaBp,
+        imposto,
+        liquido,
+        advogados,
+        escritorio,
+        fundoReserva,
+        pendencias,
+      });
+
+      // totals
+      tot.valor += valorBruto;
+      tot.imposto += imposto;
+      tot.liquido += liquido;
+      tot.escritorio += escritorio;
+      tot.fundoReserva += fundoReserva;
+    }
+
+    const totais = {
+      valor: tot.valor,
+      imposto: tot.imposto,
+      liquido: tot.liquido,
+      escritorio: tot.escritorio,
+      fundoReserva: tot.fundoReserva,
+      advogados: [...tot.advMap.values()].sort((a, b) => a.nome.localeCompare(b.nome)),
+    };
+
+    return res.json({
+      aliquotaUsada: aliq ? { mes: aliq.mes, ano: aliq.ano, percentualBp: aliq.percentualBp } : { mes: null, ano: null, percentualBp: 0 },
+      pagamentosConsiderados: { mes: mesPag, ano: anoPag },
+      linhas,
+      totais,
+    });
+  } catch (err) {
+    console.error("Erro prévia repasses:", err);
+    return res.status(500).json({ message: err?.message || "Erro ao gerar prévia." });
+  }
+});
+
 /* =========================
    AUTH — ROTAS
 ========================= */
