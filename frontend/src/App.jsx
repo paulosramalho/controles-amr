@@ -4,12 +4,13 @@ import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-d
 import logoSrc from "./assets/logo.png";
 import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
 
-import AdvogadosPage from "./pages/Advogados";
+import ContratoPage from "./pages/Contrato";
 import PagamentosPage from "./pages/Pagamentos";
+import RepassesPage from "./pages/Repasses";
+import AdvogadosPage from "./pages/Advogados";
+import ClientesPage from "./pages/Clientes";
 import UsuariosPage from "./pages/Usuarios";
 import ModeloDistribuicaoPage from "./pages/ModeloDistribuicao";
-import ClientesPage from "./pages/Clientes";
-import ContratoPage from "./pages/Contrato";
 import AliquotasPage from "./pages/Aliquotas";
 
 /* ---------------- clock ---------------- */
@@ -268,9 +269,10 @@ function Shell({ user, onLogout }) {
       <main className="ml-64 h-screen overflow-y-auto">
         <Routes>
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
-          <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
-          <Route path="/repasses" element={<Placeholder title="Repasses" />} />
+
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
+          <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
+          <Route path="/repasses" element={<RepassesPage user={user} />} />
           
           <Route path="/livro-caixa/lancamentos" element={<Placeholder title="Livro Caixa — Lançamentos" />} />
           <Route path="/livro-caixa/visualizacao" element={<Placeholder title="Livro Caixa — Visualização" />} />
@@ -279,10 +281,7 @@ function Shell({ user, onLogout }) {
           <Route path="/advogados" element={<AdvogadosPage user={user} />} />
           <Route path="/clientes" element={<ClientesPage user={user} />} />
           <Route path="/usuarios" element={<UsuariosPage user={user} />} />
-
-          {/* ✅ CORRIGIDO */}
           <Route path="/modelo-distribuicao" element={<ModeloDistribuicaoPage user={user} />} />
-
           <Route path="/aliquotas" element={<AliquotasPage user={user} />} />
 
           <Route path="/historico" element={<Placeholder title="Histórico" />} />
