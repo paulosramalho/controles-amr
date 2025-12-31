@@ -340,7 +340,7 @@ function repasseUpdateSplit(index, patch) {
 }
 
 async function repasseRefreshContrato() {
-  const updated = await apiFetch(`/api/contratos/${contrato.id}`);
+  const updated = await apiFetch(`/contratos/${contrato.id}`);
   // ajuste para o seu setter real:
   setContrato(updated);
 }
@@ -385,7 +385,7 @@ async function salvarRepasseConfig() {
         : [],
     };
 
-    await apiFetch(`/api/contratos/${contrato.id}/repasse-config`, {
+    await apiFetch(`/contratos/${contrato.id}/repasse-config`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
