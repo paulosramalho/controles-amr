@@ -1067,7 +1067,16 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
       },
       include: {
         contrato: {
-          include: { cliente: true },
+          include: {
+            cliente: true,
+            repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
+            repasseSplits: {
+              include: { advogado: { select: { id: true, nome: true } } },
+              orderBy: { id: "asc" },
+            },
+            // garante que temos esses flags no objeto contrato
+            // (se seu schema já retorna por padrão, ok — mas aqui fica explícito)
+          },
         },
         splitsAdvogados: {
           include: { advogado: true },
@@ -1079,19 +1088,24 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
       orderBy: [{ dataRecebimento: "asc" }, { id: "asc" }],
     });
 
-    // Pegar modelos do contrato (quando não houver override na parcela)
-    const contratoIdsSemModeloNaParcela = parcelas
-      .filter((p) => !p.modeloDistribuicaoId)
-      .map((p) => p.contratoId);
+    // Pegar configs do contrato (para pendências/cálculo quando não houver override na parcela)
+    const contratoIds = [...new Set(parcelas.map((p) => p.contratoId))];
 
-    const contratosComModelo = contratoIdsSemModeloNaParcela.length
+    const contratosCfg = contratoIds.length
       ? await prisma.contratoPagamento.findMany({
-          where: { id: { in: [...new Set(contratoIdsSemModeloNaParcela)] } },
-          select: { id: true, modeloDistribuicaoId: true },
-        })
-      : [];
+        where: { id: { in: contratoIds } },
+        select: {
+          id: true,
+          modeloDistribuicaoId: true,
+          usaSplitSocio: true,
+          repasseAdvogadoPrincipalId: true,
+        },
+      })
+    : [];
 
-    const contratoModeloMap = new Map(contratosComModelo.map((c) => [c.id, c.modeloDistribuicaoId]));
+    const contratoModeloMap = new Map(contratosCfg.map((c) => [c.id, c.modeloDistribuicaoId]));
+    const contratoUsaSplitMap = new Map(contratosCfg.map((c) => [c.id, !!c.usaSplitSocio]));
+    const contratoAdvPrincipalMap = new Map(contratosCfg.map((c) => [c.id, c.repasseAdvogadoPrincipalId || null]));
 
     // Carregar modelos necessários (itens) em batch
     const modeloIds = new Set();
@@ -1135,16 +1149,47 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
       const escritorioCent = Math.round(liquidoCent * bpToRate(escBp));
       const socioTotalCent = Math.round(liquidoCent * bpToRate(socioBp));
 
-      // Splits dos advogados (bp sobre o LÍQUIDO) — validação: soma <= socioBp
-      const advs = (p.splitsAdvogados || []).map((s) => ({
-        advogadoId: s.advogadoId,
-        nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
-        percentualBp: s.percentualBp,
-        valorCentavos: Math.round(liquidoCent * bpToRate(s.percentualBp)),
-      }));
+      // Splits dos advogados (bp sobre o LÍQUIDO)
+      // Prioridade:
+      // 1) split por PARCELA (p.splitsAdvogados) se existir
+      // 2) senão, usar config do CONTRATO (repasseAdvogadoPrincipal / repasseSplits)
+      let advs = [];
+
+      const splitsParcela = Array.isArray(p.splitsAdvogados) ? p.splitsAdvogados : [];
+      const contrato = p.contrato || {};
+      const usaSplitContrato = Boolean(contrato.usaSplitSocio);
+
+      if (splitsParcela.length > 0) {
+        advs = splitsParcela.map((s) => ({
+          advogadoId: s.advogadoId,
+          nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
+          percentualBp: s.percentualBp,
+          valorCentavos: Math.round(liquidoCent * bpToRate(s.percentualBp)),
+        }));
+      } else {
+        // ✅ Sem split na parcela → aplica regra do contrato
+        if (!usaSplitContrato && contrato.repasseAdvogadoPrincipal?.id) {
+          // sem split: Advogado Principal recebe 100% do bloco SOCIO do modelo
+          advs = [
+            {
+              advogadoId: contrato.repasseAdvogadoPrincipal.id,
+              nome: contrato.repasseAdvogadoPrincipal.nome,
+              percentualBp: socioBp || 0,
+              valorCentavos: socioTotalCent,
+            },
+          ];
+        } else if (usaSplitContrato && Array.isArray(contrato.repasseSplits) && contrato.repasseSplits.length > 0) {
+          advs = contrato.repasseSplits.map((s) => ({
+            advogadoId: s.advogadoId,
+            nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
+            percentualBp: s.percentualBp,
+            valorCentavos: Math.round(liquidoCent * bpToRate(s.percentualBp)),
+          }));
+        }
+      }
 
       const somaSplitsBp = advs.reduce((acc, a) => acc + (a.percentualBp || 0), 0);
-      const splitOk = somaSplitsBp <= socioBp;
+      const splitOk = somaSplitsBp <= (socioBp || 0);
 
       return {
         parcelaId: p.id,
@@ -1177,7 +1222,17 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         // flags para UI
         pendencias: {
           modeloAusente: !modeloId,
-          splitAusenteComSocio: socioBp > 0 && advs.length === 0,
+          // Split só é pendência quando:
+          // - há SOCIO no modelo
+          // - e (usa split no contrato OU não há advogado principal)
+          // - e não conseguimos montar advs
+          splitAusenteComSocio:
+            (socioBp > 0) &&
+            (
+              (Boolean(p.contrato?.usaSplitSocio) === true) ||
+              (!p.contrato?.repasseAdvogadoPrincipal?.id)
+            ) &&
+            advs.length === 0,
           splitExcedido: !splitOk,
         },
       };
