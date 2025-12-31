@@ -537,25 +537,8 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [paiId, filhoId]);
 
-// =========================
-// REPASSE (Card do Contrato)
-// =========================
-const [modelosDistribuicao, setModelosDistribuicao] = React.useState([]);
-const [advogadosDisponiveis, setAdvogadosDisponiveis] = React.useState([]);
-
-const [repasseModeloId, setRepasseModeloId] = React.useState(null);
-const [repasseUsaSplit, setRepasseUsaSplit] = React.useState(false);
-const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = React.useState(null);
-
-// splits: [{ advogadoId: number, percentualBp: number }]
-const [repasseSplits, setRepasseSplits] = React.useState([]);
-
-const [repasseSaving, setRepasseSaving] = React.useState(false);
-const [repasseError, setRepasseError] = React.useState(null);
-const [repasseOk, setRepasseOk] = React.useState(null);
-
 // Carrega modelos + advogados (admin-only)
-React.useEffect(() => {
+useEffect(() => {
   (async () => {
     try {
       const m = await apiFetch("/modelo-distribuicao");
@@ -574,7 +557,7 @@ React.useEffect(() => {
 }, []);
 
 // Quando o contrato carregar/atualizar, popula o card
-React.useEffect(() => {
+useEffect(() => {
   if (!contrato) return;
 
   setRepasseModeloId(contrato.modeloDistribuicaoId ?? null);
