@@ -17,8 +17,8 @@ model Cliente {
   telefone        String?
   observacoes     String?
   ativo           Boolean             @default(true)
-  ordens          OrdemPagamento[]
   contratos       ContratoPagamento[]
+  ordens          OrdemPagamento[]
 
   @@index([ativo])
   @@index([nomeRazaoSocial])
@@ -60,9 +60,384 @@ model Pagamento {
   @@index([dataPagamento])
 }
 
-// =========================
-// NOVO — PAGAMENTOS (CONTRATOS + PARCELAS)
-// =========================
+model ContratoPagamento {
+  id                  Int                    @id @default(autoincrement())
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  numeroContrato      String                 @unique @db.VarChar(60)
+  clienteId           Int
+  valorTotal          Decimal                @db.Decimal(12, 2)
+  formaPagamento      FormaPagamentoContrato
+  observacoes         String?
+  ativo               Boolean                @default(true)
+  contratoOrigemId    Int?
+  renegociadoEm       DateTime?
+  renegociadoParaId   Int?
+  renegociadoPorId    Int?
+  cliente             Cliente                @relation(fields: [clienteId], references: [id])
+  contratoOrigem      ContratoPagamento?     @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
+  derivados           ContratoPagamento[]    @relation("ContratoOrigem")
+  renegociadoPara     ContratoPagamento?     @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
+  renegociadosDele    ContratoPagamento[]    @relation("ContratoRenegociadoPara")
+  renegociadoPor      Usuario?               @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
+  parcelas            ParcelaContrato[]
+  RetificacaoContrato RetificacaoContrato[]
+
+  // Modelo de distribuição (default do contrato)
+  modeloDistribuicaoId Int?
+  modeloDistribuicao   ModeloDistribuicao? @relation("ContratoModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
+
+  // Splits e repasses derivados
+  repasseLinhas RepasseLinha[]
+
+  @@index([clienteId])
+  @@index([formaPagamento])
+  @@index([ativo])
+  @@index([contratoOrigemId])
+  @@index([renegociadoParaId])
+}
+
+model ParcelaContrato {
+  id                 Int                  @id @default(autoincrement())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  contratoId         Int
+  numero             Int
+  vencimento         DateTime
+  valorPrevisto      Decimal              @db.Decimal(12, 2)
+  status             StatusParcela        @default(PREVISTA)
+  dataRecebimento    DateTime?
+  valorRecebido      Decimal?             @db.Decimal(12, 2)
+  meioRecebimento    MeioRecebimento?
+  observacoes        String?
+  canceladaEm        DateTime?
+  canceladaPorId     Int?
+  cancelamentoMotivo String?
+  canceladaPor       Usuario?             @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  contrato           ContratoPagamento    @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  movimentos         ParcelaMovimento[]
+  RetificacaoParcela RetificacaoParcela[]
+
+  // Override do modelo no lançamento (parcela recebida)
+  modeloDistribuicaoId Int?
+  modeloDistribuicao   ModeloDistribuicao? @relation("ParcelaModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
+
+  // Splits do sócio por parcela (lançamento)
+  splitsAdvogados ParcelaSplitAdvogado[]
+
+  // Linhas de repasse (quando confirmar/congelar)
+  repasseLinhas RepasseLinha[]
+
+  @@unique([contratoId, numero])
+  @@index([vencimento])
+  @@index([status])
+}
+
+model ParcelaSplitAdvogado {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcelaId    Int
+  advogadoId   Int
+  percentualBp Int // % sobre o LÍQUIDO em basis points (ex.: 1500 = 15,00%)
+
+  parcela  ParcelaContrato @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+  advogado Advogado        @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelaId, advogadoId])
+  @@index([parcelaId])
+  @@map("ParcelaSplitAdvogado")
+}
+
+model RepasseCompetencia {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ano Int
+  mes Int
+
+  // aberto/fechado (se quiser)
+  fechadoEm    DateTime?
+  fechadoPorId Int?
+  fechadoPor   Usuario?  @relation("RepasseFechadoPor", fields: [fechadoPorId], references: [id])
+
+  linhas RepasseLinha[]
+
+  @@unique([ano, mes])
+  @@index([ano, mes])
+  @@map("RepasseCompetencia")
+}
+
+model RepasseLinha {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  competenciaId Int
+  contratoId    Int
+  parcelaId     Int
+
+  // snapshot do cálculo no momento da confirmação
+  valorBrutoCentavos Int
+  aliquotaUsadaBp    Int
+  impostoCentavos    Int
+  liquidoCentavos    Int
+
+  escritorioCentavos   Int
+  fundoReservaCentavos Int
+  socioTotalCentavos   Int
+
+  confirmadoEm    DateTime?
+  confirmadoPorId Int?
+  confirmadoPor   Usuario?  @relation("RepasseConfirmadoPor", fields: [confirmadoPorId], references: [id])
+
+  competencia RepasseCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  contrato    ContratoPagamento  @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  parcela     ParcelaContrato    @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  advogados RepasseLinhaAdvogado[]
+  ajustes   RepasseAjuste[]
+
+  @@unique([competenciaId, parcelaId])
+  @@index([competenciaId])
+  @@index([contratoId])
+  @@index([parcelaId])
+  @@map("RepasseLinha")
+}
+
+model RepasseLinhaAdvogado {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  repasseLinhaId Int
+  advogadoId     Int
+
+  percentualBp  Int
+  valorCentavos Int
+
+  repasseLinha RepasseLinha @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
+  advogado     Advogado     @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+
+  @@unique([repasseLinhaId, advogadoId])
+  @@index([repasseLinhaId])
+  @@map("RepasseLinhaAdvogado")
+}
+
+model RepasseAjuste {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  repasseLinhaId Int
+  destinoTipo    DestinoRepasse
+  destinoId      Int? // advogadoId quando destinoTipo=ADVOGADO; null para ESC/FR
+
+  valorOriginalCentavos Int
+  valorNovoCentavos     Int
+  diferencaCentavos     Int
+
+  motivo      String?
+  criadoPorId Int
+  criadoPor   Usuario @relation("RepasseAjusteCriadoPor", fields: [criadoPorId], references: [id])
+
+  repasseLinha RepasseLinha @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
+
+  @@index([repasseLinhaId])
+  @@index([destinoTipo, destinoId])
+  @@map("RepasseAjuste")
+}
+
+model SaldoDestinatario {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  destinoTipo DestinoRepasse
+  destinoId   Int? // advogadoId quando ADVOGADO; null para ESC/FR
+
+  saldoCentavos Int @default(0)
+
+  @@unique([destinoTipo, destinoId])
+  @@index([destinoTipo, destinoId])
+  @@map("SaldoDestinatario")
+}
+
+model ParcelaMovimento {
+  id                    Int                  @id @default(autoincrement())
+  createdAt             DateTime             @default(now())
+  parcelaId             Int
+  tipo                  TipoMovimentoParcela
+  valor                 Decimal              @db.Decimal(12, 2)
+  dataMovimento         DateTime
+  meio                  MeioRecebimento?
+  motivo                String
+  criadoPorId           Int?
+  referenciaMovimentoId Int?
+  criadoPor             Usuario?             @relation("MovimentoCriadoPor", fields: [criadoPorId], references: [id])
+  parcela               ParcelaContrato      @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+  referenciaMovimento   ParcelaMovimento?    @relation("MovimentoReferencia", fields: [referenciaMovimentoId], references: [id])
+  referenciados         ParcelaMovimento[]   @relation("MovimentoReferencia")
+
+  @@index([parcelaId])
+  @@index([tipo])
+  @@index([dataMovimento])
+  @@index([criadoPorId])
+}
+
+model Repasse {
+  id               Int             @id @default(autoincrement())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  valor            Decimal?
+  competenciaAno   Int?
+  competenciaMes   Int?
+  ordemPagamentoId Int?
+  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
+
+  @@index([competenciaAno, competenciaMes])
+}
+
+model Usuario {
+  id                    Int                   @id @default(autoincrement())
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  nome                  String
+  email                 String                @unique
+  senhaHash             String
+  ativo                 Boolean               @default(true)
+  /// Vínculo 1:1 opcional com Advogado (FASE 1)
+  advogadoId            Int?                  @unique
+  role                  UserRole              @default(USER)
+  cpf                   String?               @unique
+  telefone              String?
+  tipoUsuario           TipoUsuario           @default(USUARIO)
+  contratosRenegociados ContratoPagamento[]   @relation("ContratoRenegociadoPor")
+  parcelasCanceladas    ParcelaContrato[]     @relation("ParcelaCanceladaPor")
+  movimentosParcela     ParcelaMovimento[]    @relation("MovimentoCriadoPor")
+  RetificacaoContrato   RetificacaoContrato[]
+  RetificacaoParcela    RetificacaoParcela[]
+  advogado              Advogado?             @relation(fields: [advogadoId], references: [id])
+
+  repassesFechados       RepasseCompetencia[] @relation("RepasseFechadoPor")
+  repassesConfirmados    RepasseLinha[]       @relation("RepasseConfirmadoPor")
+  repassesAjustesCriados RepasseAjuste[]      @relation("RepasseAjusteCriadoPor")
+
+  @@index([ativo])
+  @@index([role])
+  @@index([tipoUsuario])
+}
+
+model Advogado {
+  id                   Int                    @id @default(autoincrement())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  nome                 String
+  cpf                  String                 @unique
+  email                String
+  telefone             String
+  ativo                Boolean                @default(true)
+  oab                  String                 @unique
+  chavePix             String?                @db.VarChar(255)
+  usuario              Usuario?
+  ParcelaSplitAdvogado ParcelaSplitAdvogado[]
+  RepasseLinhaAdvogado RepasseLinhaAdvogado[]
+
+  @@index([ativo])
+}
+
+model RetificacaoContrato {
+  id             Int               @id @default(autoincrement())
+  contratoId     Int
+  motivo         String
+  alteracoes     Json
+  snapshotAntes  Json?
+  snapshotDepois Json?
+  criadoPorId    Int?
+  criadoEm       DateTime          @default(now())
+  contrato       ContratoPagamento @relation(fields: [contratoId], references: [id])
+  criadoPor      Usuario?          @relation(fields: [criadoPorId], references: [id])
+
+  @@index([contratoId])
+  @@index([criadoPorId])
+}
+
+model RetificacaoParcela {
+  id             Int             @id @default(autoincrement())
+  parcelaId      Int
+  motivo         String
+  alteracoes     Json
+  snapshotAntes  Json?
+  snapshotDepois Json?
+  criadoPorId    Int?
+  criadoEm       DateTime        @default(now())
+  criadoPor      Usuario?        @relation(fields: [criadoPorId], references: [id])
+  parcela        ParcelaContrato @relation(fields: [parcelaId], references: [id])
+
+  @@index([parcelaId])
+  @@index([criadoPorId])
+}
+
+model ModeloDistribuicao {
+  id            Int                      @id(map: "ModeloDistribuicao_pkey1") @default(autoincrement())
+  createdAt     DateTime                 @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime                 @default(now()) @updatedAt @db.Timestamp(6)
+  codigo        String                   @unique
+  origem        String                   @default("REPASSE")
+  descricao     String
+  periodicidade String
+  ativo         Boolean                  @default(true)
+  itens         ModeloDistribuicaoItem[]
+
+  contratosPadrao  ContratoPagamento[] @relation("ContratoModeloDistribuicao")
+  parcelasOverride ParcelaContrato[]   @relation("ParcelaModeloDistribuicao")
+
+  @@map("ModeloDistribuicao")
+}
+
+model ModeloDistribuicaoItem {
+  id            Int                 @id @default(autoincrement())
+  createdAt     DateTime            @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime            @default(now()) @updatedAt @db.Timestamp(6)
+  modeloId      Int                 @map("modeloId")
+  ordem         Int
+  origem        String              @default("REPASSE")
+  periodicidade String              @default("INCIDENTAL")
+  destinoTipo   DestinoDistribuicao @map("destinoTipo")
+  percentualBp  Int                 @map("percentualBp")
+  destinatario  String?
+  modelo        ModeloDistribuicao  @relation(fields: [modeloId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([modeloId, ordem])
+  @@map("ModeloDistribuicaoItem")
+}
+
+model ModeloDistribuicao__old {
+  id           Int      @id(map: "ModeloDistribuicao_pkey") @default(autoincrement())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  codigo       String?
+  origem       String?
+  tipo         String?
+  percentual   Decimal?
+  destinatario String?
+  cod          String?  @unique(map: "ModeloDistribuicao_cod_key")
+
+  @@index([cod], map: "ModeloDistribuicao_cod_idx")
+}
+
+model Aliquota {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  mes          Int
+  ano          Int
+  percentualBp Int @map("percentualBp")
+
+  @@unique([mes, ano])
+  @@map("Aliquota")
+}
 
 enum FormaPagamentoContrato {
   AVISTA
@@ -85,144 +460,11 @@ enum MeioRecebimento {
   OUTRO
 }
 
-model ContratoPagamento {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Número do contrato (global, único)
-  numeroContrato String @unique @db.VarChar(60)
-
-  clienteId Int
-  cliente   Cliente @relation(fields: [clienteId], references: [id])
-
-  valorTotal     Decimal                @db.Decimal(12, 2)
-  formaPagamento FormaPagamentoContrato
-
-  observacoes String? @db.Text
-  ativo       Boolean @default(true)
-
-  parcelas ParcelaContrato[]
-
-  // 👇 6.3 — renegociação (pai/filho)
-  contratoOrigemId Int?
-  contratoOrigem   ContratoPagamento?  @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
-  derivados        ContratoPagamento[] @relation("ContratoOrigem")
-
-  renegociadoParaId Int?
-  renegociadoPara   ContratoPagamento?  @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
-  renegociadosDele  ContratoPagamento[] @relation("ContratoRenegociadoPara")
-
-  renegociadoEm    DateTime?
-  renegociadoPorId Int?
-  renegociadoPor   Usuario?  @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
-
-  @@index([clienteId])
-  @@index([formaPagamento])
-  @@index([ativo])
-  @@index([contratoOrigemId])
-  @@index([renegociadoParaId])
-}
-
-model ParcelaContrato {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  contratoId Int
-  contrato   ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-
-  numero        Int // 1..N (ordem)
-  vencimento    DateTime
-  valorPrevisto Decimal  @db.Decimal(12, 2)
-
-  status StatusParcela @default(PREVISTA)
-
-  dataRecebimento DateTime?
-  valorRecebido   Decimal?         @db.Decimal(12, 2)
-  meioRecebimento MeioRecebimento?
-
-  observacoes String? @db.Text
-
-  // trilha de cancelamento
-  canceladaEm        DateTime?
-  canceladaPorId     Int?
-  cancelamentoMotivo String?   @db.Text
-  canceladaPor       Usuario?  @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
-
-  @@unique([contratoId, numero])
-  @@index([vencimento])
-  @@index([status])
-}
-
-model Repasse {
-  id               Int             @id @default(autoincrement())
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  valor            Decimal?
-  competenciaAno   Int?
-  competenciaMes   Int?
-  ordemPagamentoId Int?
-  ordemPagamento   OrdemPagamento? @relation(fields: [ordemPagamentoId], references: [id])
-
-  @@index([competenciaAno, competenciaMes])
-}
-
-model Usuario {
-  id          Int         @id @default(autoincrement())
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  nome        String
-  email       String      @unique
-  senhaHash   String
-  ativo       Boolean     @default(true)
-  /// Vínculo 1:1 opcional com Advogado (FASE 1)
-  advogadoId  Int?        @unique
-  role        UserRole    @default(USER)
-  cpf         String?     @unique
-  telefone    String?
-  tipoUsuario TipoUsuario @default(USUARIO)
-  advogado    Advogado?   @relation(fields: [advogadoId], references: [id])
-
-  parcelasCanceladas ParcelaContrato[] @relation("ParcelaCanceladaPor")
-
-  contratosRenegociados ContratoPagamento[] @relation("ContratoRenegociadoPor")
-
-  @@index([ativo])
-  @@index([role])
-  @@index([tipoUsuario])
-}
-
-model Advogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  nome      String
-  cpf       String   @unique
-  email     String
-  telefone  String
-  ativo     Boolean  @default(true)
-  oab       String   @unique
-  chavePix  String?  @db.VarChar(255)
-  usuario   Usuario?
-
-  @@index([ativo])
-}
-
-model ModeloDistribuicao {
-  id           Int      @id @default(autoincrement())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  /// Legado: NÃO REMOVER / NÃO ALTERAR TIPO NESTA FASE
-  codigo       String?
-  origem       String?
-  tipo         String?
-  percentual   Decimal?
-  destinatario String?
-  /// Novo (FASE 1) — ainda opcional para não quebrar 22 registros existentes
-  cod          String?  @unique
-
-  @@index([cod])
+enum TipoMovimentoParcela {
+  AJUSTE
+  ESTORNO
+  TRANSFERENCIA_SAIDA
+  TRANSFERENCIA_ENTRADA
 }
 
 enum UserRole {
@@ -263,4 +505,21 @@ enum TipoUsuario {
   ADVOGADO
   USUARIO
   ESTAGIARIO
+}
+
+enum DestinoDistribuicao {
+  FUNDO_RESERVA
+  SOCIO
+  ESCRITORIO
+  INDICACAO
+
+  @@map("DestinoDistribuicao")
+}
+
+enum DestinoRepasse {
+  ADVOGADO
+  ESCRITORIO
+  FUNDO_RESERVA
+
+  @@map("DestinoRepasse")
 }

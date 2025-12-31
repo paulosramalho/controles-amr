@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import Can from "../components/Can";
 
 /* ---------------- helpers ---------------- */
 function toDateOnly(d) {
@@ -13,6 +14,21 @@ function toDateOnly(d) {
     if (!parsed) return null;
     parsed.setHours(0, 0, 0, 0);
     return parsed;
+  }
+
+  // Se vier "YYYY-MM-DD" (ou DateTime começando assim), trate como data-only local.
+  // Isso evita o bug D-1 quando o backend manda 00:00:00Z.
+  if (typeof d === "string") {
+    const mISO = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (mISO) {
+      const yyyy = Number(mISO[1]);
+      const mm = Number(mISO[2]);
+      const dd = Number(mISO[3]);
+      const local = new Date(yyyy, mm - 1, dd);
+      if (!Number.isFinite(local.getTime())) return null;
+      local.setHours(0, 0, 0, 0);
+      return local;
+    }
   }
 
   // Caso geral (Date, ISO etc.)
@@ -32,6 +48,7 @@ function isParcelaAtrasada(p) {
 
   if (!hoje || !venc) return false;
 
+  // Atrasado somente se vencimento já passou (vencimento == hoje NÃO é atrasado)
   return venc < hoje;
 }
 
@@ -254,6 +271,8 @@ export default function PagamentosPage({ user }) {
   const [openNovo, setOpenNovo] = useState(false);
   const [modalError, setModalError] = useState("");
 
+  const [renegociarId, setRenegociarId] = useState(null);
+
   // modal parcelas
   const [openParcelas, setOpenParcelas] = useState(false);
   const [selectedContrato, setSelectedContrato] = useState(null);
@@ -286,6 +305,7 @@ export default function PagamentosPage({ user }) {
   const [confirming, setConfirming] = useState(false);
   const [confOpen, setConfOpen] = useState(false);
   const [confParcela, setConfParcela] = useState(null);
+  const [confErrMsg, setConfErrMsg] = useState("");
   const [confData, setConfData] = useState("");
   const [confMeio, setConfMeio] = useState("PIX");
   const [confValorDigits, setConfValorDigits] = useState("");
@@ -297,18 +317,18 @@ export default function PagamentosPage({ user }) {
   const [cancelMotivo, setCancelMotivo] = useState("");
 
   async function load() {
-    setError("");
-    setLoading(true);
-    try {
-      const query = q ? `?q=${encodeURIComponent(q)}` : "";
-      const data = await apiFetch(`/contratos${query}`);
-      setRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e?.message || "Falha ao carregar contratos.");
-    } finally {
-      setLoading(false);
-    }
+  setError("");
+  setLoading(true);
+  try {
+    const ts = Date.now();
+    const data = await apiFetch(`/contratos?ts=${ts}`);
+    setRows(Array.isArray(data) ? data : []);
+  } catch (e) {
+    setError(e?.message || "Falha ao carregar contratos.");
+  } finally {
+    setLoading(false);
   }
+}
 
   async function loadClientes() {
     try {
@@ -320,46 +340,101 @@ export default function PagamentosPage({ user }) {
   }
 
   useEffect(() => {
-    if (!isAdmin) return;
-    load();
-  }, [isAdmin]); // eslint-disable-line
+  load("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+ // useEffect(() => {
+ // const t = setTimeout(() => {
+ //   load(q);
+ // }, 300); // debounce 300ms
+
+//  return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+//  }, [q]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+  if (!isAdmin) return;
 
-    const params = new URLSearchParams(location.search || "");
-    const id = params.get("renegociar");
-    if (!id) return;
-    if (renegProcessando) return;
+  const params = new URLSearchParams(location.search || "");
 
-    (async () => {
-      setError("");
-      setRenegProcessando(true);
-      try {
-        const resp = await apiFetch(`/contratos/${id}/renegociar`, { method: "POST" });
+  const id = params.get("renegociar");
+  if (!id) return;
 
-        const novoId =
-          resp?.contratoNovo?.id ??
-          resp?.contratoNovoId ??
-          resp?.id;
+  // ✅ novo
+  if (!Array.isArray(rows) || rows.length === 0) return;
 
-        // limpa query param (pra não repetir ao voltar)
-        navigate("/pagamentos", { replace: true });
+  (async () => {
+    setError("");
+    try {
+      // 1) carrega o contrato pai
+      const pai = await apiFetch(`/contratos/${id}`);
 
-        await load();
+      // 2) calcula saldo pendente = soma das PREVISTAS
+      const parcelas = Array.isArray(pai?.parcelas) ? pai.parcelas : [];
+      const pendente = parcelas
+        .filter((p) => p.status === "PREVISTA")
+        .reduce((acc, p) => acc + Number(p?.valorPrevisto || 0), 0);
 
-        if (novoId) {
-          navigate(`/contratos/${novoId}`);
-        }
-      } catch (e) {
-        navigate("/pagamentos", { replace: true });
-        setError(e?.message || "Falha ao renegociar saldo.");
-      } finally {
-        setRenegProcessando(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, location.search]);
+      // 3) sugere novo número (mantém o padrão raiz-Rn)
+      const base = String(pai?.numeroContrato || "").trim() || String(id);
+      const m = base.match(/^(.*?)(-R(\d+))?$/i);
+      const root = m ? m[1] : base;
+
+      let nextR = 1;
+
+// calcula pelo que já existe na lista (mais robusto que depender da cadeia)
+try {
+  const re = new RegExp(`^${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-R(\\d+)$`, "i");
+  let maxR = 0;
+
+  for (const r of rows || []) {
+    const num = String(r?.numeroContrato || "").trim();
+    const mm = num.match(re);
+    if (mm) {
+      const n = Number(mm[1]);
+      if (Number.isFinite(n)) maxR = Math.max(maxR, n);
+    }
+  }
+
+  nextR = maxR > 0 ? maxR + 1 : 1;
+} catch {
+  nextR = 1;
+}
+
+      const novoNumero = `${root}-R${nextR}`;
+
+      // 4) abre modal com campos pré-preenchidos
+      resetNovo();
+      setRenegociarId(Number(id));
+      setNumeroContrato(novoNumero);
+
+      // cliente do contrato pai (prioriza clienteId, senão cliente.id)
+      const cid = pai?.clienteId ?? pai?.cliente?.id ?? "";
+      setClienteId(cid ? String(cid) : "");
+
+      // mantém observações atuais do pai e adiciona a linha de renegociação (sem duplicar)
+      const baseObs = String(pai?.observacoes || "").trim();
+      const linhaReneg = `Renegociação: Este contrato será criado a partir do saldo pendente do contrato ${pai?.numeroContrato || id}. Cliente, número e valor total são calculados automaticamente.`;
+      setObservacoes(baseObs ? `${baseObs}\n\n${linhaReneg}` : linhaReneg);
+
+      // pendente vem em number (reais) -> converter para dígitos centavos (máscara)
+      const cents = Math.round((Number(pendente) || 0) * 100);
+      setValorTotalDigits(String(cents));
+
+      setModalError("");
+      setOpenNovo(true);
+      await loadClientes();
+
+      // 5) limpa o query param pra não reabrir
+      navigate("/pagamentos", { replace: true });
+    } catch (e) {
+      navigate("/pagamentos", { replace: true });
+      setError(e?.message || "Falha ao preparar renegociação.");
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isAdmin, location.search, rows]);
 
   useEffect(() => {
     if (!openParcelas || !selectedContrato) return;
@@ -477,7 +552,13 @@ export default function PagamentosPage({ user }) {
         };
       }
 
-      await apiFetch("/contratos", { method: "POST", body: payload });
+      if (renegociarId) {
+        await apiFetch(`/contratos/${renegociarId}/renegociar`, { method: "POST", body: payload });
+        setRenegociarId(null);
+      } else {
+        await apiFetch("/contratos", { method: "POST", body: payload });
+      }
+
       setOpenNovo(false);
       await load();
     } catch (e) {
@@ -491,7 +572,9 @@ export default function PagamentosPage({ user }) {
     setConfParcela(parcela);
     setConfData(toDDMMYYYY(new Date()));
     setConfMeio("PIX");
-    setConfValorDigits("");
+    const cents = Math.round(Number(parcela?.valorPrevisto || 0) * 100);
+    setConfValorDigits(String(Math.max(0, cents)));
+    setConfErrMsg(""); // 👈 limpar erro do modal
     setConfOpen(true);
   }
 
@@ -535,22 +618,32 @@ async function cancelarParcela() {
 
     // ✅ Garantir consistência da lista e do contrato selecionado
     await load();
-  } catch (e) {
-    setError(e?.message || "Falha ao cancelar parcela.");
-  } finally {
-    setCanceling(false);
-  }
-}
+    } catch (e) {
+        setError(e?.message || "Falha ao cancelar parcela.");
+        } finally {
+        setCanceling(false);
+        }
+      }
 
   async function confirmarRecebimento() {
     if (!confParcela) return;
     if (!parseDateDDMMYYYY(confData)) {
-      setError("Data de recebimento inválida (DD/MM/AAAA).");
+      setConfErrMsg("Data de recebimento inválida (DD/MM/AAAA).");
       return;
     }
 
-    setError("");
+    // ✅ trava: valor recebido não pode ser diferente do previsto
+    const previstoCents = Math.round(Number(confParcela?.valorPrevisto || 0) * 100);
+    const recebidoCents = Number(onlyDigits(confValorDigits) || "0");
+
+    if (onlyDigits(confValorDigits) && recebidoCents !== previstoCents) {
+      setConfErrMsg("O valor recebido deve ser exatamente igual ao valor previsto da parcela.");
+      return;
+    }
+
+    setConfErrMsg("");
     setConfirming(true);
+
     try {
       const body = {
         dataRecebimento: confData,
@@ -562,13 +655,30 @@ async function cancelarParcela() {
       setConfOpen(false);
       await load();
     } catch (e) {
-      setError(e?.message || "Falha ao confirmar recebimento.");
+      setConfErrMsg(e?.message || "Falha ao confirmar recebimento.");
     } finally {
       setConfirming(false);
     }
   }
 
-  const filtered = useMemo(() => rows, [rows]);
+  const filtered = useMemo(() => {
+  const qq = String(q || "").trim().toLowerCase();
+  if (!qq) return rows;
+
+  const qDigits = onlyDigits(qq);
+
+  return (rows || []).filter((c) => {
+    const numero = String(c?.numeroContrato || "").toLowerCase();
+    const nome = String(c?.cliente?.nomeRazaoSocial || "").toLowerCase();
+    const cpf = onlyDigits(c?.cliente?.cpfCnpj || "");
+    return (
+      numero.includes(qq) ||
+      nome.includes(qq) ||
+      (qDigits && cpf.includes(qDigits))
+    );
+  });
+}, [rows, q]);
+
 
   const parcelasDoContrato = selectedContrato?.parcelas || [];
   const totalPrevisto = parcelasDoContrato.reduce((sum, p) => sum + Number(p?.valorPrevisto || 0), 0);
@@ -578,32 +688,22 @@ async function cancelarParcela() {
   const searchRow = (
     <div className="flex items-center gap-3">
       <input
-        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-        placeholder="Buscar por contrato, cliente, CPF/CNPJ…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        placeholder="Buscar por contrato, cliente, CPF/CNPJ…"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"  
       />
       <button
         type="button"
-        onClick={load}
+        onClick={() => load()}
         className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
         disabled={loading}
+        title="Atualizar"
       >
         Atualizar
       </button>
     </div>
   );
-
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xl font-semibold text-slate-900">Pagamentos</div>
-          <div className="mt-2 text-sm text-slate-600">Acesso restrito a administradores.</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-6">
@@ -674,9 +774,13 @@ async function cancelarParcela() {
                 return (
                   <tr key={c.id} className="bg-white">
                     <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                      <Link to={`/contratos/${c.id}`} className="hover:underline" title="Ver contrato (somente leitura)">
-                        {c.numeroContrato}
-                      </Link>
+                      {isAdmin ? (
+                        <Link to={`/contratos/${c.id}`} className="hover:underline" title="Abrir contrato">
+                          {c.numeroContrato}
+                        </Link>
+                      ) : (
+                        <span title="Contrato (admin-only)">{c.numeroContrato}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-800">{c?.cliente?.nomeRazaoSocial || "—"}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">R$ {formatBRLFromDecimal(c.valorTotal)}</td>
@@ -703,14 +807,16 @@ async function cancelarParcela() {
                         >
                           Parcelas
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleContrato(c)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                          disabled={loading}
-                        >
-                          {c?.ativo ? "Inativar" : "Ativar"}
-                        </button>
+                        <Can when={isAdmin && st !== "QUITADO" && st !== "RENEGOCIADO"}>
+                          <button
+                            type="button"
+                            onClick={() => toggleContrato(c)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                            disabled={loading}
+                          >
+                            {c?.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -742,11 +848,6 @@ async function cancelarParcela() {
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
               disabled={loading}
             >
-        {modalError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {modalError}
-          </div>
-        )}
               Cancelar
             </button>
             <button
@@ -760,8 +861,18 @@ async function cancelarParcela() {
           </div>
         }
       >
+        {modalError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {modalError}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select label="Cliente" value={clienteId} onChange={setClienteId} disabled={loading}>
+          <Select
+            label="Cliente"
+            value={clienteId}
+            onChange={setClienteId}
+            disabled={loading || !!renegociarId}
+          >
             <option value="">Selecione…</option>
             {clientes.map((c) => (
               <option key={c.id} value={String(c.id)}>
@@ -775,7 +886,7 @@ async function cancelarParcela() {
             value={numeroContrato}
             onChange={setNumeroContrato}
             placeholder="Ex.: 20250904001A"
-            disabled={loading}
+            disabled={loading || !!renegociarId}
           />
 
           <label className="block">
@@ -786,7 +897,7 @@ async function cancelarParcela() {
                 value={maskBRLFromDigits(valorTotalDigits)}
                 onChange={(e) => setValorTotalDigits(onlyDigits(e.target.value))}
                 placeholder="0,00"
-                disabled={loading}
+                disabled={loading || !!renegociarId}
                 inputMode="numeric"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
@@ -1021,8 +1132,8 @@ async function cancelarParcela() {
       {/* ---------- Modal: Confirmar recebimento ---------- */}
       <Modal
         open={confOpen}
-        title={confParcela ? `Receber Parcela — Parcela #${confParcela.numero}` : "Receber Parcela"}
-        onClose={() => setConfOpen(false)}
+        title={confParcela ? `Receber Parcela — Parcela ${confParcela.numero}` : "Receber Parcela"}
+        onClose={() => { setConfOpen(false); setConfErrMsg(""); }}
         footer={
           <div className="flex items-center justify-end gap-2">
             <button
@@ -1057,21 +1168,28 @@ async function cancelarParcela() {
           </Select>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Valor recebido (opcional)</div>
-            <div className="mt-1 relative">
-              <input
-                className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-50"
-                value={maskBRLFromDigits(confValorDigits)}
-                onChange={(e) => setConfValorDigits(onlyDigits(e.target.value))}
-                placeholder="(vazio = valor previsto)"
-                disabled={confirming}
-                inputMode="numeric"
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</div>
-            </div>
-            <div className="mt-1 text-xs text-slate-500">Se deixar vazio, o sistema confirma pelo valor previsto.</div>
+            <div className="text-sm font-medium text-slate-700">Valor recebido (R$)</div>
+
+            <input
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+              value={Number(confParcela?.valorPrevisto || 0).toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              })}
+              disabled
+            />
+
+            <div className="mt-1 text-xs text-slate-500">
+              Valor fixo (igual ao previsto). Para receber valor diferente, use <strong>Retificar Parcela</strong> no Contrato (Admin).
+            </div> 
           </label>
+
         </div>
+        {confErrMsg && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {confErrMsg}
+          </div>
+        )}
       </Modal>
 <Modal
         open={cancelOpen}
@@ -1081,7 +1199,7 @@ async function cancelarParcela() {
         <div className="space-y-4">
           <div className="text-sm text-slate-700">
             Você está cancelando a parcela{" "}
-            <span className="font-semibold">#{cancelParcela?.numero}</span>. Informe o
+            <span className="font-semibold">{cancelParcela?.numero}</span>. Informe o
             motivo (obrigatório).
           </div>
 

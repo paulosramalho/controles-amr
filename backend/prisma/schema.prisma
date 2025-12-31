@@ -61,47 +61,34 @@ model Pagamento {
 }
 
 model ContratoPagamento {
-  id                  Int                    @id @default(autoincrement())
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
-  numeroContrato      String                 @unique @db.VarChar(60)
-  clienteId           Int
-  valorTotal          Decimal                @db.Decimal(12, 2)
-  formaPagamento      FormaPagamentoContrato
-  observacoes         String?
-  ativo               Boolean                @default(true)
-  contratoOrigemId    Int?
-  renegociadoEm       DateTime?
-  renegociadoParaId   Int?
-  renegociadoPorId    Int?
-  cliente             Cliente                @relation(fields: [clienteId], references: [id])
-  contratoOrigem      ContratoPagamento?     @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
-  derivados           ContratoPagamento[]    @relation("ContratoOrigem")
-  renegociadoPara     ContratoPagamento?     @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
-  renegociadosDele    ContratoPagamento[]    @relation("ContratoRenegociadoPara")
-  renegociadoPor      Usuario?               @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
-  parcelas            ParcelaContrato[]
-  RetificacaoContrato RetificacaoContrato[]
-
-  // Modelo de distribuição (default do contrato)
-  modeloDistribuicaoId Int?
-  modeloDistribuicao   ModeloDistribuicao? @relation("ContratoModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
-
-  // Splits e repasses derivados
-  repasseLinhas RepasseLinha[]
-
-  // ✅ já existe no seu schema:
-  // modeloDistribuicaoId Int?
-  // modeloDistribuicao   ModeloDistribuicao? @relation("ContratoModeloDistribuicao", ...)
-
-  usaSplitSocio Boolean @default(false)
-
-  // (C) advogado único quando split OFF
+  id                         Int                            @id @default(autoincrement())
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
+  numeroContrato             String                         @unique @db.VarChar(60)
+  clienteId                  Int
+  valorTotal                 Decimal                        @db.Decimal(12, 2)
+  formaPagamento             FormaPagamentoContrato
+  observacoes                String?
+  ativo                      Boolean                        @default(true)
+  contratoOrigemId           Int?
+  renegociadoEm              DateTime?
+  renegociadoParaId          Int?
+  renegociadoPorId           Int?
+  modeloDistribuicaoId       Int?
   repasseAdvogadoPrincipalId Int?
-  repasseAdvogadoPrincipal   Advogado? @relation("ContratoRepasseAdvogadoPrincipal", fields: [repasseAdvogadoPrincipalId], references: [id])
-
-  // split quando ON
-  repasseSplits ContratoRepasseSplitAdvogado[]
+  usaSplitSocio              Boolean                        @default(false)
+  cliente                    Cliente                        @relation(fields: [clienteId], references: [id])
+  contratoOrigem             ContratoPagamento?             @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
+  derivados                  ContratoPagamento[]            @relation("ContratoOrigem")
+  modeloDistribuicao         ModeloDistribuicao?            @relation("ContratoModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
+  renegociadoPara            ContratoPagamento?             @relation("ContratoRenegociadoPara", fields: [renegociadoParaId], references: [id])
+  renegociadosDele           ContratoPagamento[]            @relation("ContratoRenegociadoPara")
+  renegociadoPor             Usuario?                       @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
+  repasseAdvogadoPrincipal   Advogado?                      @relation("ContratoRepasseAdvogadoPrincipal", fields: [repasseAdvogadoPrincipalId], references: [id])
+  repasseSplits              ContratoRepasseSplitAdvogado[]
+  parcelas                   ParcelaContrato[]
+  repasseLinhas              RepasseLinha[]
+  RetificacaoContrato        RetificacaoContrato[]
 
   @@index([repasseAdvogadoPrincipalId])
   @@index([clienteId])
@@ -112,35 +99,29 @@ model ContratoPagamento {
 }
 
 model ParcelaContrato {
-  id                 Int                  @id @default(autoincrement())
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  contratoId         Int
-  numero             Int
-  vencimento         DateTime
-  valorPrevisto      Decimal              @db.Decimal(12, 2)
-  status             StatusParcela        @default(PREVISTA)
-  dataRecebimento    DateTime?
-  valorRecebido      Decimal?             @db.Decimal(12, 2)
-  meioRecebimento    MeioRecebimento?
-  observacoes        String?
-  canceladaEm        DateTime?
-  canceladaPorId     Int?
-  cancelamentoMotivo String?
-  canceladaPor       Usuario?             @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
-  contrato           ContratoPagamento    @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-  movimentos         ParcelaMovimento[]
-  RetificacaoParcela RetificacaoParcela[]
-
-  // Override do modelo no lançamento (parcela recebida)
+  id                   Int                    @id @default(autoincrement())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  contratoId           Int
+  numero               Int
+  vencimento           DateTime
+  valorPrevisto        Decimal                @db.Decimal(12, 2)
+  status               StatusParcela          @default(PREVISTA)
+  dataRecebimento      DateTime?
+  valorRecebido        Decimal?               @db.Decimal(12, 2)
+  meioRecebimento      MeioRecebimento?
+  observacoes          String?
+  canceladaEm          DateTime?
+  canceladaPorId       Int?
+  cancelamentoMotivo   String?
   modeloDistribuicaoId Int?
-  modeloDistribuicao   ModeloDistribuicao? @relation("ParcelaModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
-
-  // Splits do sócio por parcela (lançamento)
-  splitsAdvogados ParcelaSplitAdvogado[]
-
-  // Linhas de repasse (quando confirmar/congelar)
-  repasseLinhas RepasseLinha[]
+  canceladaPor         Usuario?               @relation("ParcelaCanceladaPor", fields: [canceladaPorId], references: [id])
+  contrato             ContratoPagamento      @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  modeloDistribuicao   ModeloDistribuicao?    @relation("ParcelaModeloDistribuicao", fields: [modeloDistribuicaoId], references: [id])
+  movimentos           ParcelaMovimento[]
+  splitsAdvogados      ParcelaSplitAdvogado[]
+  repasseLinhas        RepasseLinha[]
+  RetificacaoParcela   RetificacaoParcela[]
 
   @@unique([contratoId, numero])
   @@index([vencimento])
@@ -148,16 +129,14 @@ model ParcelaContrato {
 }
 
 model ParcelaSplitAdvogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id           Int             @id @default(autoincrement())
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   parcelaId    Int
   advogadoId   Int
-  percentualBp Int // % sobre o LÍQUIDO em basis points (ex.: 1500 = 15,00%)
-
-  parcela  ParcelaContrato @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
-  advogado Advogado        @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  percentualBp Int
+  advogado     Advogado        @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  parcela      ParcelaContrato @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
 
   @@unique([parcelaId, advogadoId])
   @@index([parcelaId])
@@ -165,19 +144,15 @@ model ParcelaSplitAdvogado {
 }
 
 model RepasseCompetencia {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  ano Int
-  mes Int
-
-  // aberto/fechado (se quiser)
+  id           Int            @id @default(autoincrement())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  ano          Int
+  mes          Int
   fechadoEm    DateTime?
   fechadoPorId Int?
-  fechadoPor   Usuario?  @relation("RepasseFechadoPor", fields: [fechadoPorId], references: [id])
-
-  linhas RepasseLinha[]
+  fechadoPor   Usuario?       @relation("RepasseFechadoPor", fields: [fechadoPorId], references: [id])
+  linhas       RepasseLinha[]
 
   @@unique([ano, mes])
   @@index([ano, mes])
@@ -185,34 +160,27 @@ model RepasseCompetencia {
 }
 
 model RepasseLinha {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  competenciaId Int
-  contratoId    Int
-  parcelaId     Int
-
-  // snapshot do cálculo no momento da confirmação
-  valorBrutoCentavos Int
-  aliquotaUsadaBp    Int
-  impostoCentavos    Int
-  liquidoCentavos    Int
-
+  id                   Int                    @id @default(autoincrement())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  competenciaId        Int
+  contratoId           Int
+  parcelaId            Int
+  valorBrutoCentavos   Int
+  aliquotaUsadaBp      Int
+  impostoCentavos      Int
+  liquidoCentavos      Int
   escritorioCentavos   Int
   fundoReservaCentavos Int
   socioTotalCentavos   Int
-
-  confirmadoEm    DateTime?
-  confirmadoPorId Int?
-  confirmadoPor   Usuario?  @relation("RepasseConfirmadoPor", fields: [confirmadoPorId], references: [id])
-
-  competencia RepasseCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
-  contrato    ContratoPagamento  @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-  parcela     ParcelaContrato    @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
-
-  advogados RepasseLinhaAdvogado[]
-  ajustes   RepasseAjuste[]
+  confirmadoEm         DateTime?
+  confirmadoPorId      Int?
+  ajustes              RepasseAjuste[]
+  competencia          RepasseCompetencia     @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  confirmadoPor        Usuario?               @relation("RepasseConfirmadoPor", fields: [confirmadoPorId], references: [id])
+  contrato             ContratoPagamento      @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  parcela              ParcelaContrato        @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+  advogados            RepasseLinhaAdvogado[]
 
   @@unique([competenciaId, parcelaId])
   @@index([competenciaId])
@@ -222,17 +190,14 @@ model RepasseLinha {
 }
 
 model RepasseLinhaAdvogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-
+  id             Int          @id @default(autoincrement())
+  createdAt      DateTime     @default(now())
   repasseLinhaId Int
   advogadoId     Int
-
-  percentualBp  Int
-  valorCentavos Int
-
-  repasseLinha RepasseLinha @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
-  advogado     Advogado     @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  percentualBp   Int
+  valorCentavos  Int
+  advogado       Advogado     @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  repasseLinha   RepasseLinha @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
 
   @@unique([repasseLinhaId, advogadoId])
   @@index([repasseLinhaId])
@@ -240,22 +205,18 @@ model RepasseLinhaAdvogado {
 }
 
 model RepasseAjuste {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-
-  repasseLinhaId Int
-  destinoTipo    DestinoRepasse
-  destinoId      Int? // advogadoId quando destinoTipo=ADVOGADO; null para ESC/FR
-
+  id                    Int            @id @default(autoincrement())
+  createdAt             DateTime       @default(now())
+  repasseLinhaId        Int
+  destinoTipo           DestinoRepasse
+  destinoId             Int?
   valorOriginalCentavos Int
   valorNovoCentavos     Int
   diferencaCentavos     Int
-
-  motivo      String?
-  criadoPorId Int
-  criadoPor   Usuario @relation("RepasseAjusteCriadoPor", fields: [criadoPorId], references: [id])
-
-  repasseLinha RepasseLinha @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
+  motivo                String?
+  criadoPorId           Int
+  criadoPor             Usuario        @relation("RepasseAjusteCriadoPor", fields: [criadoPorId], references: [id])
+  repasseLinha          RepasseLinha   @relation(fields: [repasseLinhaId], references: [id], onDelete: Cascade)
 
   @@index([repasseLinhaId])
   @@index([destinoTipo, destinoId])
@@ -263,14 +224,12 @@ model RepasseAjuste {
 }
 
 model SaldoDestinatario {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  destinoTipo DestinoRepasse
-  destinoId   Int? // advogadoId quando ADVOGADO; null para ESC/FR
-
-  saldoCentavos Int @default(0)
+  id            Int            @id @default(autoincrement())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  destinoTipo   DestinoRepasse
+  destinoId     Int?
+  saldoCentavos Int            @default(0)
 
   @@unique([destinoTipo, destinoId])
   @@index([destinoTipo, destinoId])
@@ -329,13 +288,12 @@ model Usuario {
   contratosRenegociados ContratoPagamento[]   @relation("ContratoRenegociadoPor")
   parcelasCanceladas    ParcelaContrato[]     @relation("ParcelaCanceladaPor")
   movimentosParcela     ParcelaMovimento[]    @relation("MovimentoCriadoPor")
+  repassesAjustes       RepasseAjuste[]       @relation("RepasseAjusteCriadoPor")
+  repassesFechados      RepasseCompetencia[]  @relation("RepasseFechadoPor")
+  repassesConfirmados   RepasseLinha[]        @relation("RepasseConfirmadoPor")
   RetificacaoContrato   RetificacaoContrato[]
   RetificacaoParcela    RetificacaoParcela[]
   advogado              Advogado?             @relation(fields: [advogadoId], references: [id])
-
-  repassesFechados    RepasseCompetencia[] @relation("RepasseFechadoPor")
-  repassesConfirmados RepasseLinha[]       @relation("RepasseConfirmadoPor")
-  repassesAjustes     RepasseAjuste[]      @relation("RepasseAjusteCriadoPor")
 
   @@index([ativo])
   @@index([role])
@@ -353,11 +311,11 @@ model Advogado {
   ativo                         Boolean                        @default(true)
   oab                           String                         @unique
   chavePix                      String?                        @db.VarChar(255)
-  usuario                       Usuario?
+  contratosComoPrincipalRepasse ContratoPagamento[]            @relation("ContratoRepasseAdvogadoPrincipal")
+  ContratoRepasseSplitAdvogado  ContratoRepasseSplitAdvogado[]
   ParcelaSplitAdvogado          ParcelaSplitAdvogado[]
   RepasseLinhaAdvogado          RepasseLinhaAdvogado[]
-  ContratoRepasseSplitAdvogado  ContratoRepasseSplitAdvogado[]
-  contratosComoPrincipalRepasse ContratoPagamento[]            @relation("ContratoRepasseAdvogadoPrincipal")
+  usuario                       Usuario?
 
   @@index([ativo])
 }
@@ -395,18 +353,17 @@ model RetificacaoParcela {
 }
 
 model ModeloDistribuicao {
-  id            Int                      @id(map: "ModeloDistribuicao_pkey1") @default(autoincrement())
-  createdAt     DateTime                 @default(now()) @db.Timestamp(6)
-  updatedAt     DateTime                 @default(now()) @updatedAt @db.Timestamp(6)
-  codigo        String                   @unique
-  origem        String                   @default("REPASSE")
-  descricao     String
-  periodicidade String
-  ativo         Boolean                  @default(true)
-  itens         ModeloDistribuicaoItem[]
-
-  contratosDefault ContratoPagamento[] @relation("ContratoModeloDistribuicao")
-  parcelasOverride ParcelaContrato[]   @relation("ParcelaModeloDistribuicao")
+  id               Int                      @id(map: "ModeloDistribuicao_pkey1") @default(autoincrement())
+  createdAt        DateTime                 @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime                 @default(now()) @updatedAt @db.Timestamp(6)
+  codigo           String                   @unique
+  origem           String                   @default("REPASSE")
+  descricao        String
+  periodicidade    String
+  ativo            Boolean                  @default(true)
+  contratosDefault ContratoPagamento[]      @relation("ContratoModeloDistribuicao")
+  itens            ModeloDistribuicaoItem[]
+  parcelasOverride ParcelaContrato[]        @relation("ParcelaModeloDistribuicao")
 
   @@map("ModeloDistribuicao")
 }
@@ -417,11 +374,11 @@ model ModeloDistribuicaoItem {
   updatedAt     DateTime            @default(now()) @updatedAt @db.Timestamp(6)
   modeloId      Int                 @map("modeloId")
   ordem         Int
-  origem        String              @default("REPASSE")
-  periodicidade String              @default("INCIDENTAL")
   destinoTipo   DestinoDistribuicao @map("destinoTipo")
   percentualBp  Int                 @map("percentualBp")
   destinatario  String?
+  origem        String              @default("REPASSE")
+  periodicidade String              @default("INCIDENTAL")
   modelo        ModeloDistribuicao  @relation(fields: [modeloId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([modeloId, ordem])
@@ -443,30 +400,26 @@ model ModeloDistribuicao__old {
 }
 
 model Aliquota {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now()) @db.Timestamp(6)
-  updatedAt DateTime @default(now()) @updatedAt @db.Timestamp(6)
-
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamp(6)
   mes          Int
   ano          Int
-  percentualBp Int @map("percentualBp")
+  percentualBp Int      @map("percentualBp")
 
   @@unique([mes, ano])
   @@map("Aliquota")
 }
 
 model ContratoRepasseSplitAdvogado {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now()) @db.Timestamp(6)
-  updatedAt DateTime @updatedAt @db.Timestamp(6)
-
-  contratoId Int
-  advogadoId Int
-
-  percentualBp Int // basis points. Ex: 1000 = 10,00%
-
-  contrato ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-  advogado Advogado          @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  id           Int               @id @default(autoincrement())
+  createdAt    DateTime          @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime          @updatedAt @db.Timestamp(6)
+  contratoId   Int
+  advogadoId   Int
+  percentualBp Int
+  advogado     Advogado          @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+  contrato     ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
 
   @@unique([contratoId, advogadoId])
   @@index([contratoId])

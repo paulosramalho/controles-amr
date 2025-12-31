@@ -407,12 +407,18 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: (origin, cb) => {
+    origin: (origin, callback => {
       // requests sem origin (ex.: healthcheck/curl) passam
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(null, false);
+      if (allowedOrigins.includes(origin)) {
+        return calacklb(null, true);
+      }
+      
+      // ❗ IMPORTANTE: não retornar false silenciosamente
+      return callback(new Error("Not allowed by CORS: " + origin));
     },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
