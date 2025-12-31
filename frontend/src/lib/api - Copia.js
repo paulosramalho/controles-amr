@@ -34,11 +34,6 @@ export function getUser() {
 export async function apiFetch(path, options = {}) {
   const token = getToken();
 
-  // 🔥 stringify SOMENTE se o body for objeto INCLUIDO PARA SALVAR REPASSE. ESSA E MAIS TRÊS LINHAS.
-  if (options.body && typeof options.body === "object") {
-    options.body = JSON.stringify(options.body);
-  }
-
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -46,8 +41,7 @@ export async function apiFetch(path, options = {}) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-  //  body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    body: options.body !== undefined ? options.body : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
   const text = await res.text();
