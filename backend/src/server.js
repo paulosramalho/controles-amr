@@ -407,18 +407,12 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: (origin, cb) => {
       // requests sem origin (ex.: healthcheck/curl) passam
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return calacklb(null, true);
-      }
-      
-      // ❗ IMPORTANTE: não retornar false silenciosamente
-      return callback(new Error("Not allowed by CORS: " + origin));
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(null, false);
     },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
@@ -3410,8 +3404,9 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
         repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
         repasseSplits: {
           include: { advogado: { select: { id: true, nome: true } } },
-          orderBy: { id: "asc" },
-        },
+        orderBy: { id: "asc" },
+       },
+
       },
     });
 
