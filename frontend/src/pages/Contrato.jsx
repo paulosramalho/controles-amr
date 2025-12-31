@@ -255,6 +255,76 @@ function percentStringToBp(s) {
   return Math.round(n * 100); // 10.00 => 1000
 }
 
+/* =========================
+   Page
+========================= */
+export default function ContratoPage({ user }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [contrato, setContrato] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errMsg, setErrMsg] = useState("");
+  
+  const [paiNumeroReal, setPaiNumeroReal] = useState("");
+  const [filhoNumeroReal, setFilhoNumeroReal] = useState("");
+
+  const [renegChain, setRenegChain] = useState([]); // [{ id, numero }]
+  const [ultimoFilhoId, setUltimoFilhoId] = useState(null);
+  const [ultimoFilhoNumero, setUltimoFilhoNumero] = useState("");
+
+  const [prevLink, setPrevLink] = useState(null); // { id, numero }
+  const [nextLink, setNextLink] = useState(null); // { id, numero }
+
+  // Receber
+  const [receberOpen, setReceberOpen] = useState(false);
+  const [receberParcela, setReceberParcela] = useState(null);
+  const [recValorDigits, setRecValorDigits] = useState("");
+  const [recData, setRecData] = useState("");
+  const [recDataISO, setRecDataISO] = useState("");
+  const [recMeio, setRecMeio] = useState("PIX");
+  const [recSenha, setRecSenha] = useState("");
+
+  // Retificar
+  const [retOpen, setRetOpen] = useState(false);
+  const [retParcela, setRetParcela] = useState(null);
+  const [retValorDigits, setRetValorDigits] = useState("");
+  const [retVenc, setRetVenc] = useState("");
+  const [retMotivo, setRetMotivo] = useState("");
+  const [retSenha, setRetSenha] = useState("");
+  const [ratear, setRatear] = useState(true);
+  const [manualOutros, setManualOutros] = useState({}); // {parcelaId: digits}
+  const [retErrMsg, setRetErrMsg] = useState("");
+
+  /* =========================
+        REPASSE (states)
+  ========================= */
+  const [modelosDistribuicao, setModelosDistribuicao] = useState([]);
+  const [advogadosDisponiveis, setAdvogadosDisponiveis] = useState([]);
+
+  const [repasseModeloId, setRepasseModeloId] = useState(null);
+  const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
+  const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
+
+  // splits: [{ advogadoId, percentualBp }]
+  const [repasseSplits, setRepasseSplits] = useState([]);
+
+  const [repasseSaving, setRepasseSaving] = useState(false);
+  const [repasseError, setRepasseError] = useState(null);
+  const [repasseOk, setRepasseOk] = useState(null);
+
+  async function load() {
+    try {
+      setLoading(true);
+      setErrMsg("");
+      const data = await apiFetch(`/contratos/${id}`);
+      setContrato(data);
+    } catch (e) {
+      setErrMsg(e?.message || "Erro ao carregar contrato.");
+    } finally {
+      setLoading(false);
+    }
+  }
 function repasseAddSplitRow() {
   setRepasseSplits((prev) => [...prev, { advogadoId: "", percentualBp: 0 }]);
 }
@@ -329,78 +399,6 @@ async function salvarRepasseConfig() {
     setRepasseSaving(false);
   }
 }
-
-/* =========================
-   Page
-========================= */
-export default function ContratoPage({ user }) {
-  const { id } = useParams();
-  const navigate = useNavigate();
-
-  const [contrato, setContrato] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [errMsg, setErrMsg] = useState("");
-  
-  const [paiNumeroReal, setPaiNumeroReal] = useState("");
-  const [filhoNumeroReal, setFilhoNumeroReal] = useState("");
-
-  const [renegChain, setRenegChain] = useState([]); // [{ id, numero }]
-  const [ultimoFilhoId, setUltimoFilhoId] = useState(null);
-  const [ultimoFilhoNumero, setUltimoFilhoNumero] = useState("");
-
-  const [prevLink, setPrevLink] = useState(null); // { id, numero }
-  const [nextLink, setNextLink] = useState(null); // { id, numero }
-
-  // Receber
-  const [receberOpen, setReceberOpen] = useState(false);
-  const [receberParcela, setReceberParcela] = useState(null);
-  const [recValorDigits, setRecValorDigits] = useState("");
-  const [recData, setRecData] = useState("");
-  const [recDataISO, setRecDataISO] = useState("");
-  const [recMeio, setRecMeio] = useState("PIX");
-  const [recSenha, setRecSenha] = useState("");
-
-  // Retificar
-  const [retOpen, setRetOpen] = useState(false);
-  const [retParcela, setRetParcela] = useState(null);
-  const [retValorDigits, setRetValorDigits] = useState("");
-  const [retVenc, setRetVenc] = useState("");
-  const [retMotivo, setRetMotivo] = useState("");
-  const [retSenha, setRetSenha] = useState("");
-  const [ratear, setRatear] = useState(true);
-  const [manualOutros, setManualOutros] = useState({}); // {parcelaId: digits}
-  const [retErrMsg, setRetErrMsg] = useState("");
-
-  /* =========================
-        REPASSE (states)
-  ========================= */
-  const [modelosDistribuicao, setModelosDistribuicao] = useState([]);
-  const [advogadosDisponiveis, setAdvogadosDisponiveis] = useState([]);
-
-  const [repasseModeloId, setRepasseModeloId] = useState(null);
-  const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
-  const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
-
-  // splits: [{ advogadoId, percentualBp }]
-  const [repasseSplits, setRepasseSplits] = useState([]);
-
-  const [repasseSaving, setRepasseSaving] = useState(false);
-  const [repasseError, setRepasseError] = useState(null);
-  const [repasseOk, setRepasseOk] = useState(null);
-
-  async function load() {
-    try {
-      setLoading(true);
-      setErrMsg("");
-      const data = await apiFetch(`/contratos/${id}`);
-      setContrato(data);
-    } catch (e) {
-      setErrMsg(e?.message || "Erro ao carregar contrato.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // vínculos pai/filho (renegociações)
   const paiId = 
      contrato?.renegociadoDeId ??
