@@ -407,9 +407,9 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: (origin, callback => {
+    origin: (origin, callback) => {
       // requests sem origin (ex.: healthcheck/curl) passam
-      if (!origin) return cb(null, true);
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
         return calacklb(null, true);
       }
