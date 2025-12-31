@@ -90,6 +90,20 @@ model ContratoPagamento {
   // Splits e repasses derivados
   repasseLinhas RepasseLinha[]
 
+  // ✅ já existe no seu schema:
+  // modeloDistribuicaoId Int?
+  // modeloDistribuicao   ModeloDistribuicao? @relation("ContratoModeloDistribuicao", ...)
+
+  usaSplitSocio Boolean @default(false)
+
+  // (C) advogado único quando split OFF
+  repasseAdvogadoPrincipalId Int?
+  repasseAdvogadoPrincipal   Advogado? @relation("ContratoRepasseAdvogadoPrincipal", fields: [repasseAdvogadoPrincipalId], references: [id])
+
+  // split quando ON
+  repasseSplits ContratoRepasseSplitAdvogado[]
+
+  @@index([repasseAdvogadoPrincipalId])
   @@index([clienteId])
   @@index([formaPagamento])
   @@index([ativo])
@@ -329,19 +343,21 @@ model Usuario {
 }
 
 model Advogado {
-  id                   Int                    @id @default(autoincrement())
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  nome                 String
-  cpf                  String                 @unique
-  email                String
-  telefone             String
-  ativo                Boolean                @default(true)
-  oab                  String                 @unique
-  chavePix             String?                @db.VarChar(255)
-  usuario              Usuario?
-  ParcelaSplitAdvogado ParcelaSplitAdvogado[]
-  RepasseLinhaAdvogado RepasseLinhaAdvogado[]
+  id                            Int                            @id @default(autoincrement())
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  nome                          String
+  cpf                           String                         @unique
+  email                         String
+  telefone                      String
+  ativo                         Boolean                        @default(true)
+  oab                           String                         @unique
+  chavePix                      String?                        @db.VarChar(255)
+  usuario                       Usuario?
+  ParcelaSplitAdvogado          ParcelaSplitAdvogado[]
+  RepasseLinhaAdvogado          RepasseLinhaAdvogado[]
+  ContratoRepasseSplitAdvogado  ContratoRepasseSplitAdvogado[]
+  contratosComoPrincipalRepasse ContratoPagamento[]            @relation("ContratoRepasseAdvogadoPrincipal")
 
   @@index([ativo])
 }
@@ -437,6 +453,24 @@ model Aliquota {
 
   @@unique([mes, ano])
   @@map("Aliquota")
+}
+
+model ContratoRepasseSplitAdvogado {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @db.Timestamp(6)
+
+  contratoId Int
+  advogadoId Int
+
+  percentualBp Int // basis points. Ex: 1000 = 10,00%
+
+  contrato ContratoPagamento @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  advogado Advogado          @relation(fields: [advogadoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, advogadoId])
+  @@index([contratoId])
+  @@map("ContratoRepasseSplitAdvogado")
 }
 
 enum FormaPagamentoContrato {
