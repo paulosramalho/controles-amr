@@ -242,6 +242,94 @@ function Card({ title, right, children }) {
   );
 }
 
+function bpToPercentString(bp) {
+  const v = Number(bp || 0) / 100;
+  // 1000 bp => "10,00"
+  return v.toFixed(2).replace(".", ",");
+}
+
+function percentStringToBp(s) {
+  const raw = String(s ?? "").trim().replace(/\./g, "").replace(",", ".");
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100); // 10.00 => 1000
+}
+
+function repasseAddSplitRow() {
+  setRepasseSplits((prev) => [...prev, { advogadoId: "", percentualBp: 0 }]);
+}
+
+function repasseRemoveSplitRow(index) {
+  setRepasseSplits((prev) => prev.filter((_, i) => i !== index));
+}
+
+function repasseUpdateSplit(index, patch) {
+  setRepasseSplits((prev) =>
+    prev.map((row, i) => (i === index ? { ...row, ...patch } : row))
+  );
+}
+
+async function repasseRefreshContrato() {
+  const updated = await apiFetch(`/api/contratos/${contrato.id}`);
+  // ajuste para o seu setter real:
+  setContrato(updated);
+}
+
+async function salvarRepasseConfig() {
+  setRepasseSaving(true);
+  setRepasseError(null);
+  setRepasseOk(null);
+
+  try {
+    // validações de UI (além das do backend)
+    if (!repasseModeloId) {
+      throw new Error("Selecione um Modelo de Distribuição.");
+    }
+
+    if (!repasseUsaSplit) {
+      if (!repasseAdvPrincipalId) {
+        throw new Error("Sem split: selecione o Advogado Principal do repasse.");
+      }
+    } else {
+      const norm = repasseSplits
+        .map((r) => ({
+          advogadoId: Number(r.advogadoId),
+          percentualBp: Number(r.percentualBp),
+        }))
+        .filter((r) => Number.isFinite(r.advogadoId) && Number.isFinite(r.percentualBp) && r.percentualBp > 0);
+
+      if (norm.length < 2) {
+        throw new Error("Split ativado: informe ao menos 2 advogados com percentual (>0).");
+      }
+    }
+
+    const body = {
+      modeloDistribuicaoId: Number(repasseModeloId),
+      usaSplitSocio: Boolean(repasseUsaSplit),
+      advogadoPrincipalId: repasseUsaSplit ? null : Number(repasseAdvPrincipalId),
+      splits: repasseUsaSplit
+        ? repasseSplits.map((r) => ({
+            advogadoId: Number(r.advogadoId),
+            percentualBp: Number(r.percentualBp),
+          }))
+        : [],
+    };
+
+    await apiFetch(`/api/contratos/${contrato.id}/repasse-config`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    setRepasseOk("Configuração de repasse salva.");
+    await repasseRefreshContrato();
+  } catch (e) {
+    setRepasseError(e?.message || "Erro ao salvar configuração de repasse.");
+  } finally {
+    setRepasseSaving(false);
+  }
+}
+
 /* =========================
    Page
 ========================= */
@@ -431,6 +519,60 @@ useEffect(() => {
   return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [paiId, filhoId]);
+
+// =========================
+// REPASSE (Card do Contrato)
+// =========================
+const [modelosDistribuicao, setModelosDistribuicao] = React.useState([]);
+const [advogadosDisponiveis, setAdvogadosDisponiveis] = React.useState([]);
+
+const [repasseModeloId, setRepasseModeloId] = React.useState(null);
+const [repasseUsaSplit, setRepasseUsaSplit] = React.useState(false);
+const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = React.useState(null);
+
+// splits: [{ advogadoId: number, percentualBp: number }]
+const [repasseSplits, setRepasseSplits] = React.useState([]);
+
+const [repasseSaving, setRepasseSaving] = React.useState(false);
+const [repasseError, setRepasseError] = React.useState(null);
+const [repasseOk, setRepasseOk] = React.useState(null);
+
+// Carrega modelos + advogados (admin-only)
+React.useEffect(() => {
+  (async () => {
+    try {
+      const m = await apiFetch("/api/modelo-distribuicao");
+      setModelosDistribuicao(Array.isArray(m) ? m : []);
+    } catch (e) {
+      console.error(e);
+    }
+    try {
+      const a = await apiFetch("/api/advogados");
+      // opcional: filtrar ativos, se houver campo "ativo"
+      setAdvogadosDisponiveis(Array.isArray(a) ? a : []);
+    } catch (e) {
+      console.error(e);
+    }
+  })();
+}, []);
+
+// Quando o contrato carregar/atualizar, popula o card
+React.useEffect(() => {
+  if (!contrato) return;
+
+  setRepasseModeloId(contrato.modeloDistribuicaoId ?? null);
+  setRepasseUsaSplit(Boolean(contrato.usaSplitSocio));
+  setRepasseAdvPrincipalId(contrato.repasseAdvogadoPrincipalId ?? null);
+
+  // Se seu GET /api/contratos/:id já inclui repasseSplits:
+  const splitsRaw = Array.isArray(contrato.repasseSplits) ? contrato.repasseSplits : [];
+  setRepasseSplits(
+    splitsRaw.map((s) => ({
+      advogadoId: s.advogadoId,
+      percentualBp: s.percentualBp,
+    }))
+  );
+}, [contrato]);
 
   const contratoNumero = useMemo(() => getContratoNumeroRef(contrato), [contrato]);
 
@@ -801,6 +943,162 @@ const totalRecebido = useMemo(() => {
         </div>
       </Card>
 
+  {/* =========================
+      CARD — REPASSE
+  ========================= */}
+<Card title="Repasse">
+  <div className="card">
+    <div className="card-header">
+      <h3>Repasse</h3>
+      <p style={{ marginTop: 4, opacity: 0.8 }}>
+        Configure o modelo de distribuição e a regra de split do Sócio (SOCIO).
+      </p>
+    </div>
+
+    <div className="card-body">
+      {/* Modelo */}
+      <div className="row" style={{ gap: 12, alignItems: "center" }}>
+        <div style={{ flex: 1 }}>
+          <label>Modelo de Distribuição</label>
+          <select
+            value={repasseModeloId ?? ""}
+            onChange={(e) => setRepasseModeloId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Selecione...</option>
+            {modelosDistribuicao.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.codigo || m.cod} — {m.descricao}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Split toggle */}
+        <div style={{ minWidth: 220 }}>
+          <label>Split no SOCIO?</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={repasseUsaSplit}
+              onChange={(e) => setRepasseUsaSplit(e.target.checked)}
+            />
+            <span>{repasseUsaSplit ? "Sim (2+ advogados)" : "Não (1 advogado)"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sem split: advogado principal */}
+      {!repasseUsaSplit && (
+        <div style={{ marginTop: 12 }}>
+          <label>Advogado Principal do Repasse (SOCIO 100%)</label>
+          <select
+            value={repasseAdvPrincipalId ?? ""}
+            onChange={(e) => setRepasseAdvPrincipalId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Selecione...</option>
+            {advogadosDisponiveis.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Com split: tabela de splits */}
+      {repasseUsaSplit && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <label>Split do SOCIO entre advogados</label>
+            <button type="button" onClick={repasseAddSplitRow}>
+              + Adicionar advogado
+            </button>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <table style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Advogado</th>
+                  <th style={{ textAlign: "left", width: 160 }}>%</th>
+                  <th style={{ width: 90 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {repasseSplits.map((row, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <select
+                        value={row.advogadoId ?? ""}
+                        onChange={(e) => repasseUpdateSplit(idx, { advogadoId: e.target.value ? Number(e.target.value) : "" })}
+                      >
+                        <option value="">Selecione...</option>
+                        {advogadosDisponiveis.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="ex: 10,00"
+                        value={bpToPercentString(row.percentualBp)}
+                        onChange={(e) => repasseUpdateSplit(idx, { percentualBp: percentStringToBp(e.target.value) })}
+                      />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button type="button" onClick={() => repasseRemoveSplitRow(idx)}>
+                        Remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+                {repasseSplits.length === 0 && (
+                  <tr>
+                    <td colSpan={3} style={{ opacity: 0.7, paddingTop: 8 }}>
+                      Adicione pelo menos 2 advogados para o split.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 8, opacity: 0.8 }}>
+            Soma do split (bp):{" "}
+            <strong>
+              {repasseSplits.reduce((acc, r) => acc + Number(r.percentualBp || 0), 0)}
+            </strong>
+            {" "}— (a validação final de “≤ SOCIO do modelo” é feita no backend)
+          </div>
+        </div>
+      )}
+
+      {/* Alerts */}
+      {repasseError && (
+      <div style={{ marginTop: 12, color: "crimson" }}>
+        {repasseError}
+      </div>
+      )}
+      {repasseOk && (
+      <div style={{ marginTop: 12, color: "green" }}>
+        {repasseOk}
+      </div>
+      )}
+
+      {/* Save */}
+      <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" onClick={salvarRepasseConfig} disabled={repasseSaving}>
+          {repasseSaving ? "Salvando..." : "Salvar Repasse"}
+        </button>
+      </div>
+    </div>
+  </div>
+</Card>
       <Card
         title="Parcelas"
         right={
@@ -998,18 +1296,18 @@ const totalRecebido = useMemo(() => {
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={ratear} onChange={(e) => {
-  const checked = e.target.checked;
-  setRatear(checked);
-  setRetErrMsg("");
+                  const checked = e.target.checked;
+                      setRatear(checked);
+                      setRetErrMsg("");
 
-  // ao voltar para manual, repropoe a compensação padrão
-  if (!checked) {
-    setManualOutros((prev) =>
-      recomputeManualOutrosForDefaultCompensacao(retValorDigits, retParcela, previstas, prev)
-    );
-  }
-}}
- />
+                      // ao voltar para manual, repropoe a compensação padrão
+                      if (!checked) {
+                        setManualOutros((prev) =>
+                        recomputeManualOutrosForDefaultCompensacao(retValorDigits, retParcela, previstas, prev)
+                      );
+                    }
+                  }}
+                />
                 <span className="font-semibold">Ratear entre as demais parcelas PREVISTAS</span>
               </label>
 
