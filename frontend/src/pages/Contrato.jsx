@@ -371,6 +371,23 @@ export default function ContratoPage({ user }) {
   const [manualOutros, setManualOutros] = useState({}); // {parcelaId: digits}
   const [retErrMsg, setRetErrMsg] = useState("");
 
+  /* =========================
+        REPASSE (states)
+  ========================= */
+  const [modelosDistribuicao, setModelosDistribuicao] = useState([]);
+  const [advogadosDisponiveis, setAdvogadosDisponiveis] = useState([]);
+
+  const [repasseModeloId, setRepasseModeloId] = useState(null);
+  const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
+  const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
+
+  // splits: [{ advogadoId, percentualBp }]
+  const [repasseSplits, setRepasseSplits] = useState([]);
+
+  const [repasseSaving, setRepasseSaving] = useState(false);
+  const [repasseError, setRepasseError] = useState(null);
+  const [repasseOk, setRepasseOk] = useState(null);
+
   async function load() {
     try {
       setLoading(true);
