@@ -2614,7 +2614,9 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       });
       if (!modelo) return res.status(400).json({ message: "Modelo de distribuição não encontrado." });
 
-      const itemSocio = (modelo.itens || []).find((it) => it.destinatario === "SOCIO");
+      const itemSocio = (modelo.itens || []).find(
+        (it) => it.destinoTipo === "SOCIO" || it.destinatario === "SOCIO"
+      );
       socioBp = itemSocio ? Number(itemSocio.percentualBp) : 0;
       if (!Number.isFinite(socioBp)) socioBp = 0;
     }
