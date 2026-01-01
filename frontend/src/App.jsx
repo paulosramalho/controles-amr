@@ -6,6 +6,7 @@ import { apiFetch, setAuth, getUser, getToken, clearAuth } from "./lib/api";
 
 import ContratoPage from "./pages/Contrato";
 import PagamentosPage from "./pages/Pagamentos";
+import PagamentosAvulsos from "./pages/PagamentosAvulsos";
 import RepassesPage from "./pages/Repasses";
 import AdvogadosPage from "./pages/Advogados";
 import ClientesPage from "./pages/Clientes";
@@ -272,6 +273,7 @@ function Shell({ user, onLogout }) {
 
           <Route path="/contratos/:id" element={<ContratoPage user={user} />} />
           <Route path="/pagamentos" element={<PagamentosPage user={user} />} />
+          <Route path="/pagamentos-avulsos" element={<PagamentosAvulsos user={user} />} />
           <Route path="/repasses" element={<RepassesPage user={user} />} />
           
           <Route path="/livro-caixa/lancamentos" element={<Placeholder title="Livro Caixa — Lançamentos" />} />
