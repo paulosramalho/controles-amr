@@ -19,6 +19,7 @@ model Cliente {
   ativo           Boolean             @default(true)
   contratos       ContratoPagamento[]
   ordens          OrdemPagamento[]
+  PagamentoAvulso PagamentoAvulso[]
 
   @@index([ativo])
   @@index([nomeRazaoSocial])
@@ -294,6 +295,7 @@ model Usuario {
   RetificacaoContrato   RetificacaoContrato[]
   RetificacaoParcela    RetificacaoParcela[]
   advogado              Advogado?             @relation(fields: [advogadoId], references: [id])
+  PagamentoAvulso       PagamentoAvulso[]
 
   @@index([ativo])
   @@index([role])
@@ -316,6 +318,8 @@ model Advogado {
   ParcelaSplitAdvogado          ParcelaSplitAdvogado[]
   RepasseLinhaAdvogado          RepasseLinhaAdvogado[]
   usuario                       Usuario?
+  PagamentoAvulso               PagamentoAvulso[]
+  PagamentoAvulsoSplit          PagamentoAvulsoSplit[]
 
   @@index([ativo])
 }
@@ -364,6 +368,7 @@ model ModeloDistribuicao {
   contratosDefault ContratoPagamento[]      @relation("ContratoModeloDistribuicao")
   itens            ModeloDistribuicaoItem[]
   parcelasOverride ParcelaContrato[]        @relation("ParcelaModeloDistribuicao")
+  PagamentoAvulso  PagamentoAvulso[]
 
   @@map("ModeloDistribuicao")
 }
@@ -424,6 +429,53 @@ model ContratoRepasseSplitAdvogado {
   @@unique([contratoId, advogadoId])
   @@index([contratoId])
   @@map("ContratoRepasseSplitAdvogado")
+}
+
+model PagamentoAvulso {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // opcional: pode existir pagamento sem cliente cadastrado
+  clienteId Int?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  descricao       String
+  dataRecebimento DateTime
+  valorRecebido   Decimal  @db.Decimal(12, 2)
+  meioRecebimento String?
+
+  // regra de repasse
+  modeloDistribuicaoId Int
+  modeloDistribuicao   ModeloDistribuicao @relation(fields: [modeloDistribuicaoId], references: [id])
+
+  advogadoPrincipalId Int?
+  advogadoPrincipal   Advogado? @relation(fields: [advogadoPrincipalId], references: [id])
+
+  usaSplitSocio Boolean                @default(false)
+  splits        PagamentoAvulsoSplit[]
+
+  canceladoEm    DateTime?
+  canceladoPorId Int?
+  canceladoPor   Usuario?  @relation(fields: [canceladoPorId], references: [id])
+
+  @@index([dataRecebimento])
+  @@index([clienteId])
+  @@index([modeloDistribuicaoId])
+}
+
+model PagamentoAvulsoSplit {
+  id                Int             @id @default(autoincrement())
+  pagamentoAvulsoId Int
+  pagamentoAvulso   PagamentoAvulso @relation(fields: [pagamentoAvulsoId], references: [id], onDelete: Cascade)
+
+  advogadoId Int
+  advogado   Advogado @relation(fields: [advogadoId], references: [id])
+
+  percentualBp Int
+
+  @@index([pagamentoAvulsoId])
+  @@index([advogadoId])
 }
 
 enum FormaPagamentoContrato {

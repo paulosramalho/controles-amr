@@ -2255,66 +2255,64 @@ app.put("/api/usuarios/me", requireAuth, async (req, res) => {
 app.get("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
     const q = (req.query.q || "").toString().trim();
-const qDigits = onlyDigits(q);
+    const qDigits = onlyDigits(q);
 
-// 1) Descobre clientes pelo nome (não-relacional, blindado)
-let clienteIds = [];
-if (q) {
-  const clientes = await prisma.cliente.findMany({
-    where: { nomeRazaoSocial: { contains: q, mode: "insensitive" } },
-    select: { id: true },
-    take: 200,
-  });
-  clienteIds = clientes.map((c) => c.id);
-}
-
-const where = q
-  ? {
-      OR: [
-        // Contrato
-        { numeroContrato: { contains: q, mode: "insensitive" } },
-
-        // CPF/CNPJ (com máscara ou não)
-        { cliente: { cpfCnpj: { contains: qDigits } } },
-
-        // ✅ Cliente por ID (garante busca por nome)
-        ...(clienteIds.length ? [{ clienteId: { in: clienteIds } }] : []),
-      ],
+    // 1) Descobre clientes pelo nome (não-relacional, blindado)
+    let clienteIds = [];
+    if (q) {
+      const clientes = await prisma.cliente.findMany({
+        where: { nomeRazaoSocial: { contains: q, mode: "insensitive" } },
+        select: { id: true },
+        take: 200,
+      });
+      clienteIds = clientes.map((c) => c.id);
     }
-  : undefined;
 
-    const contratos = await prisma.contratoPagamento.findMany({
-      where,
-      include: {
-        cliente: true,
-        contratoOrigem: { select: { id: true, numeroContrato: true } },
-        renegociadoPara: { select: { id: true, numeroContrato: true } },
-        parcelas: {
-          orderBy: { numero: "asc" },
-          include: {
-            canceladaPor: { select: { id: true, nome: true } },
+    const where = q
+      ? {
+        OR: [
+          // Contrato
+          { numeroContrato: { contains: q, mode: "insensitive" } },
+           // CPF/CNPJ (com máscara ou não)
+          { cliente: { cpfCnpj: { contains: qDigits } } },
+          // ✅ Cliente por ID (garante busca por nome)
+          ...(clienteIds.length ? [{ clienteId: { in: clienteIds } }] : []),
+        ],
+      }
+      : undefined;
+
+      const contratos = await prisma.contratoPagamento.findMany({
+        where,
+        include: {
+          cliente: true,
+          contratoOrigem: { select: { id: true, numeroContrato: true } },
+          renegociadoPara: { select: { id: true, numeroContrato: true } },
+          parcelas: {
+            orderBy: { numero: "asc" },
+            include: {
+              canceladaPor: { select: { id: true, nome: true } },
+            },
           },
         },
-      },
-      orderBy: [{ createdAt: "desc" }],
-      take: 200,
-    });
+        orderBy: [{ createdAt: "desc" }],
+        take: 200,
+      });
 
-    const out = contratos.map((c) => {
-      const parcelas = c.parcelas || [];
-      const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
-      const totalRecebido = recebidas.reduce((acc, p) => {
-        const movs = Array.isArray(p.movimentos) ? p.movimentos : [];
-        const somaMovs = movs.reduce((s, m) => s + Number(m.valor || 0), 0);
-        const efetivo = Number(p.valorRecebido || 0) + somaMovs;
-        return acc + efetivo;
-      }, 0);
+      const out = contratos.map((c) => {
+        const parcelas = c.parcelas || [];
+        const recebidas = parcelas.filter((p) => p.status === "RECEBIDA");
+        const totalRecebido = recebidas.reduce((acc, p) => {
+          const movs = Array.isArray(p.movimentos) ? p.movimentos : [];
+          const somaMovs = movs.reduce((s, m) => s + Number(m.valor || 0), 0);
+          const efetivo = Number(p.valorRecebido || 0) + somaMovs;
+          return acc + efetivo;
+        }, 0);
 
-      return {
-        id: c.id,
-        numeroContrato: c.numeroContrato,
-        renegociadoParaId: c.renegociadoParaId,
-        contratoOrigemId: c.contratoOrigemId,
+        return {
+          id: c.id,
+          numeroContrato: c.numeroContrato,
+          renegociadoParaId: c.renegociadoParaId,
+          contratoOrigemId: c.contratoOrigemId,
         contratoOrigem: c.contratoOrigem ? { id: c.contratoOrigem.id, numeroContrato: c.contratoOrigem.numeroContrato } : null,
         renegociadoPara: c.renegociadoPara ? { id: c.renegociadoPara.id, numeroContrato: c.renegociadoPara.numeroContrato } : null,
         clienteId: c.clienteId,
@@ -2335,6 +2333,7 @@ const where = q
     });
 
     res.json(out);
+  
   } catch (err) {
     console.error("Erro ao listar contratos:", err);
     res.status(500).json({ message: "Erro ao listar pagamentos (contratos)." });
@@ -2350,6 +2349,7 @@ const where = q
 //   parcelas?: { quantidade, primeiroVencimento, valorParcela? },
 //   observacoes?
 // }
+
 app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
   try {
     const {
@@ -2484,21 +2484,20 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
       return tx.contratoPagamento.findUnique({
         where: { id: contrato.id },
         include: {
-  cliente: true,
-  parcelas: {
-    orderBy: { numero: "asc" },
-    include: {
-      canceladaPor: {
-        select: { id: true, nome: true }
-      },
-      movimentos: {
-        orderBy: { createdAt: "asc" },
-        include: { criadoPor: { select: { id: true, nome: true } } }
-      }
-    }
-  }
-}
-,
+          cliente: true,
+          parcelas: {
+            orderBy: { numero: "asc" },
+            include: {
+              canceladaPor: {
+                select: { id: true, nome: true }
+              },
+              movimentos: {
+                orderBy: { createdAt: "asc" },
+                include: { criadoPor: { select: { id: true, nome: true } } }
+              }
+            }
+          }
+        },
       });
     });
 
@@ -2507,6 +2506,140 @@ app.post("/api/contratos", requireAuth, requireAdmin, async (req, res) => {
     if (err?.code === "P2002") return res.status(409).json({ message: "Número de contrato já existe." });
     console.error("Erro ao criar contrato:", err);
     res.status(500).json({ message: err?.message || "Erro ao criar contrato." });
+  }
+});
+
+// =========================
+// Pagamentos Avulsos (sem contrato)
+// =========================
+
+// Listar
+app.get("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const itens = await prisma.pagamentoAvulso.findMany({
+      where: { canceladoEm: null },
+      include: {
+        cliente: true,
+        modeloDistribuicao: true,
+        advogadoPrincipal: { select: { id: true, nome: true } },
+        splits: { include: { advogado: { select: { id: true, nome: true } } }, orderBy: { id: "asc" } },
+      },
+      orderBy: [{ dataRecebimento: "desc" }, { id: "desc" }],
+      take: 200,
+    });
+
+    const out = itens.map((p) => ({
+      ...p,
+      valorRecebidoFmt: Number(p.valorRecebido || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      cliente: p.cliente ? serializeCliente({ ...p.cliente, ordens: [] }) : null,
+    }));
+
+    return res.json(out);
+  } catch (err) {
+    console.error("Erro ao listar pagamentos avulsos:", err);
+    return res.status(500).json({ message: "Erro ao listar pagamentos avulsos." });
+  }
+});
+
+// Criar
+app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const {
+      clienteId,
+      descricao,
+      dataRecebimento,
+      valorRecebido,
+      meioRecebimento,
+      modeloDistribuicaoId,
+      advogadoPrincipalId,
+      usaSplitSocio,
+      splits,
+    } = req.body || {};
+
+    const desc = String(descricao || "").trim();
+    if (!desc) return res.status(400).json({ message: "Informe a descrição do pagamento." });
+
+    const dt = parseDateInput(dataRecebimento);
+    if (!dt) return res.status(400).json({ message: "Data inválida. Use DD/MM/AAAA." });
+
+    const cents = moneyToCents(valorRecebido);
+    if (cents === null || cents <= 0n) return res.status(400).json({ message: "Informe um valor válido." });
+    const valor = Number(cents) / 100;
+
+    const modeloId = modeloDistribuicaoId ? Number(modeloDistribuicaoId) : null;
+    if (!modeloId) return res.status(400).json({ message: "Selecione o Modelo de Distribuição." });
+
+    const advId = advogadoPrincipalId ? Number(advogadoPrincipalId) : null;
+
+    // cria pagamento
+    const created = await prisma.pagamentoAvulso.create({
+      data: {
+        clienteId: clienteId ? Number(clienteId) : null,
+        descricao: desc,
+        dataRecebimento: dt,
+        valorRecebido: valor,
+        meioRecebimento: (meioRecebimento || "PIX").toString().trim().toUpperCase(),
+        modeloDistribuicaoId: modeloId,
+        advogadoPrincipalId: advId,
+        usaSplitSocio: !!usaSplitSocio,
+      },
+    });
+
+    // salva splits (se habilitado)
+    const arr = Array.isArray(splits) ? splits : [];
+    if (created.usaSplitSocio && arr.length) {
+      const rows = arr
+        .filter((s) => s && s.advogadoId)
+        .map((s) => {
+          const bp = percentToBp(s.percentual); // você já tem função parecida? se não, te passo.
+          return {
+            pagamentoAvulsoId: created.id,
+            advogadoId: Number(s.advogadoId),
+            percentualBp: bp,
+          };
+        });
+
+      if (rows.length) {
+        await prisma.pagamentoAvulsoSplit.createMany({ data: rows });
+      }
+    }
+
+    const full = await prisma.pagamentoAvulso.findUnique({
+      where: { id: created.id },
+      include: {
+        cliente: true,
+        modeloDistribuicao: true,
+        advogadoPrincipal: { select: { id: true, nome: true } },
+        splits: { include: { advogado: { select: { id: true, nome: true } } }, orderBy: { id: "asc" } },
+      },
+    });
+
+    return res.json({
+      ...full,
+      valorRecebidoFmt: Number(full.valorRecebido || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      cliente: full.cliente ? serializeCliente({ ...full.cliente, ordens: [] }) : null,
+    });
+  } catch (err) {
+    console.error("Erro ao criar pagamento avulso:", err);
+    return res.status(500).json({ message: "Erro ao criar pagamento avulso." });
+  }
+});
+
+// Cancelar (soft delete)
+app.patch("/api/pagamentos-avulsos/:id/cancelar", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: "ID inválido." });
+
+    const updated = await prisma.pagamentoAvulso.update({
+      where: { id },
+      data: { canceladoEm: new Date(), canceladoPorId: req.user?.id ?? null },
+    });
+
+    return res.json({ message: "Pagamento avulso cancelado.", item: updated });
+  } catch (err) {
+    console.error("Erro ao cancelar pagamento avulso:", err);
+    return res.status(500).json({ message: "Erro ao cancelar pagamento avulso." });
   }
 });
 
