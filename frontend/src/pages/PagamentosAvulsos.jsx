@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api"; // ajuste o path conforme seu projeto
-
+import { apiFetch } from "../lib/api";
+import Can from "../components/Can";
 export default function PagamentosAvulsos() {
   const navigate = useNavigate();
 
