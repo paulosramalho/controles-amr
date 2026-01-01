@@ -1050,43 +1050,6 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
     const baseMes = mes === 1 ? 12 : mes - 1;
 
     const { start: baseStart, end: baseEnd } = monthRangeUTC(baseAno, baseMes);
-  
-    // na montagem das linhas, use o valor "base":
-    // - RECEBIDA -> valorRecebido
-    // - PREVISTA -> valorPrevisto
-    const linhas = parcelas.map((p) => {
-      const valorBase = p.status === "RECEBIDA" && p.valorRecebido != null ? p.valorRecebido : p.valorPrevisto;
-
-      const valorBrutoCent = toCents(valorBase);
-
-      // status visual da parcela para o front
-      const parcelaStatus =
-        p.status === "RECEBIDA"
-          ? "PAGA"
-          : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
-
-      // ... (mantém seu cálculo de alíquota/imposto/líquido e distribuição)
-      // IMPORTANTE: onde você usava p.valorRecebido, substitua por valorBase/valorBrutoCent.
-
-      return {
-        parcelaId: p.id,
-        parcelaNumero: p.numero,
-        parcelaStatus,                 // ✅ novo
-        parcelaVencimento: p.vencimento, // ✅ novo (útil p/ auditoria/UI)
-        contratoId: p.contratoId,
-
-        numeroContrato: p.contrato?.numero,
-        clienteId: p.contrato?.clienteId,
-        clienteNome: p.contrato?.cliente?.nome,
-    
-        dataRecebimento: p.dataRecebimento,
-
-        valorBruto: fromCents(valorBrutoCent),
-
-        // ... mantém os demais campos já existentes:
-        // aliquotaBp, imposto, liquido, escritorio, fundoReserva, advogados, pendencias...
-      };
-    });
 
     // Alíquota da competência (ou última)
     const aliquotaExata = await prisma.aliquota.findUnique({
