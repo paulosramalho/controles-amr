@@ -276,6 +276,9 @@ export default function ContratoPage({ user }) {
   const [prevLink, setPrevLink] = useState(null); // { id, numero }
   const [nextLink, setNextLink] = useState(null); // { id, numero }
 
+  const [repasseSplitDraft, setRepasseSplitDraft] = useState({}); 
+  // { [idx]: "20,00" } — guarda o texto enquanto o usuário digita    
+
   // Receber
   const [receberOpen, setReceberOpen] = useState(false);
   const [receberParcela, setReceberParcela] = useState(null);
@@ -331,6 +334,16 @@ function repasseAddSplitRow() {
 
 function repasseRemoveSplitRow(index) {
   setRepasseSplits((prev) => prev.filter((_, i) => i !== index));
+  setRepasseSplitDraft((prev) => {
+    const next = {};
+    // reindexa porque os idx mudam quando remove
+    Object.keys(prev).forEach((k) => {
+      const i = Number(k);
+      if (i < index) next[i] = prev[i];
+      if (i > index) next[i - 1] = prev[i];
+    });
+    return next;
+  });
 }
 
 function repasseUpdateSplit(index, patch) {
@@ -388,7 +401,7 @@ async function salvarRepasseConfig() {
     await apiFetch(`/contratos/${contrato.id}/repasse-config`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: body,
     });
 
     setRepasseOk("Configuração de repasse salva.");
@@ -1028,8 +1041,21 @@ const totalRecebido = useMemo(() => {
                             type="text"
                             inputMode="decimal"
                             placeholder="10,00"
-                            value={bpToPercentString(row.percentualBp)}
-                            onChange={(e) => repasseUpdateSplit(idx, { percentualBp: percentStringToBp(e.target.value) })}
+                            value={repasseSplitDraft[idx] ?? bpToPercentString(row.percentualBp)}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setRepasseSplitDraft((prev) => ({ ...prev, [idx]: v }));
+                            }}
+                            onBlur={() => {
+                              const raw = repasseSplitDraft[idx];
+                              if (raw == null) return;
+                              repasseUpdateSplit(idx, { percentualBp: percentStringToBp(raw) });
+                              setRepasseSplitDraft((prev) => {
+                                const next = { ...prev };
+                                delete next[idx];
+                                return next;
+                              });
+                            }}
                           />
                         </td>
                         <td style={{ textAlign: "right" }}>
