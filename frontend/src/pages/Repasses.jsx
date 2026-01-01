@@ -124,7 +124,9 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
                     <tr key={l.parcelaId}>
-                      <td style={td}>{l.numeroContrato || `#${l.contratoId}`}</td>
+                      <td style={td}>
+                        {parcelaBadge(l.parcelaStatus)} — {l.numeroContrato || `#${l.contratoId}`}
+                      </td>
                       <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
                       <td style={tdNum}>{money(l.valorBruto)}</td>
                       <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
@@ -167,7 +169,7 @@ export default function RepassesPage({ user }) {
 
         {!loading && data?.linhas && data.linhas.length === 0 && (
           <div style={{ marginTop: 12, opacity: 0.8 }}>
-            Nenhum recebimento no mês considerado.
+            Nenhuma parcela no mês considerado.
           </div>
         )}
       </div>
@@ -178,6 +180,13 @@ export default function RepassesPage({ user }) {
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
 const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
 const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+
+// helper simples (pode ficar perto do money())
+function parcelaBadge(status) {
+  if (status === "PAGA") return "🟩 Paga";
+  if (status === "ATRASADA") return "🟥 Atrasada";
+  return "🟦 Pendente";
+}
 
 function money(v) {
   const n = Number(v || 0);
