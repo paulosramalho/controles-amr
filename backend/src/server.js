@@ -1050,37 +1050,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
     const baseMes = mes === 1 ? 12 : mes - 1;
 
     const { start: baseStart, end: baseEnd } = monthRangeUTC(baseAno, baseMes);
-
-    // 🔁 antes: você filtrava só RECEBIDA por dataRecebimento/valorRecebido
-    // ✅ agora: OR entre:
-    //  - RECEBIDA: dataRecebimento no mês-base
-    //  - PREVISTA: vencimento no mês-base
-    const parcelas = await prisma.parcelaContrato.findMany({
-      where: {
-        canceladaEm: null,
-        contrato: { ativo: true },
-        OR: [
-          {
-            status: "RECEBIDA",
-            valorRecebido: { not: null },
-            dataRecebimento: { gte: baseStart, lt: baseEnd },
-          },
-          {
-            status: "PREVISTA",
-            vencimento: { gte: baseStart, lt: baseEnd },
-          },
-        ],
-      },
-      include: {
-        contrato: {
-          include: {
-            cliente: true,
-            repasseConfig: true,
-          },
-        },
-      },
-    });
-    
+  
     // na montagem das linhas, use o valor "base":
     // - RECEBIDA -> valorRecebido
     // - PREVISTA -> valorPrevisto
@@ -1141,11 +1111,21 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
     // Parcelas recebidas no mês M
     const parcelas = await prisma.parcelaContrato.findMany({
       where: {
-        dataRecebimento: { gte: start, lt: end },
-        valorRecebido: { not: null },
         canceladaEm: null,
         contrato: { ativo: true },
-      },
+        OR: [
+         {
+           status: "RECEBIDA",
+           valorRecebido: { not: null },
+           dataRecebimento: { gte: baseStart, lt: baseEnd },
+         },
+         {
+           status: "PREVISTA",
+           vencimento: { gte: baseStart, lt: baseEnd },
+         },
+       ],
+     },
+
       include: {
         contrato: {
           include: {
