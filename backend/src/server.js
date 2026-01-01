@@ -1037,6 +1037,87 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
     const { year: anoPag, month: mesPag } = prevMonth(ano, mes);
     const { start, end } = monthRangeUTC(anoPag, mesPag);
 
+    // =======================================================
+    // AJUSTE: Repasses deve incluir parcelas RECEBIDAS e PREVISTAS
+    // no mês-base (M), para compor o repasse do mês (M+1)
+    // + status visual: PAGA | PENDENTE | ATRASADA
+    // =======================================================
+
+    const hoje = new Date();
+
+    // (o repasse de (ano/mes) considera o mês-base anterior)
+    const baseAno = mes === 1 ? ano - 1 : ano;
+    const baseMes = mes === 1 ? 12 : mes - 1;
+
+    const { start: baseStart, end: baseEnd } = monthRangeUTC(baseAno, baseMes);
+
+    // 🔁 antes: você filtrava só RECEBIDA por dataRecebimento/valorRecebido
+    // ✅ agora: OR entre:
+    //  - RECEBIDA: dataRecebimento no mês-base
+    //  - PREVISTA: vencimento no mês-base
+    const parcelas = await prisma.parcelaContrato.findMany({
+      where: {
+        canceladaEm: null,
+        contrato: { ativo: true },
+        OR: [
+          {
+            status: "RECEBIDA",
+            valorRecebido: { not: null },
+            dataRecebimento: { gte: baseStart, lt: baseEnd },
+          },
+          {
+            status: "PREVISTA",
+            vencimento: { gte: baseStart, lt: baseEnd },
+          },
+        ],
+      },
+      include: {
+        contrato: {
+          include: {
+            cliente: true,
+            repasseConfig: true,
+          },
+        },
+      },
+    });
+    
+    // na montagem das linhas, use o valor "base":
+    // - RECEBIDA -> valorRecebido
+    // - PREVISTA -> valorPrevisto
+    const linhas = parcelas.map((p) => {
+      const valorBase = p.status === "RECEBIDA" && p.valorRecebido != null ? p.valorRecebido : p.valorPrevisto;
+
+      const valorBrutoCent = toCents(valorBase);
+
+      // status visual da parcela para o front
+      const parcelaStatus =
+        p.status === "RECEBIDA"
+          ? "PAGA"
+          : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+
+      // ... (mantém seu cálculo de alíquota/imposto/líquido e distribuição)
+      // IMPORTANTE: onde você usava p.valorRecebido, substitua por valorBase/valorBrutoCent.
+
+      return {
+        parcelaId: p.id,
+        parcelaNumero: p.numero,
+        parcelaStatus,                 // ✅ novo
+        parcelaVencimento: p.vencimento, // ✅ novo (útil p/ auditoria/UI)
+        contratoId: p.contratoId,
+
+        numeroContrato: p.contrato?.numero,
+        clienteId: p.contrato?.clienteId,
+        clienteNome: p.contrato?.cliente?.nome,
+    
+        dataRecebimento: p.dataRecebimento,
+
+        valorBruto: fromCents(valorBrutoCent),
+
+        // ... mantém os demais campos já existentes:
+        // aliquotaBp, imposto, liquido, escritorio, fundoReserva, advogados, pendencias...
+      };
+    });
+
     // Alíquota da competência (ou última)
     const aliquotaExata = await prisma.aliquota.findUnique({
       where: { mes_ano: { mes, ano } },
