@@ -123,7 +123,7 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
-                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus) }}
+                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus) }}>
                       <td style={td}>
                         {l.numeroContrato || `#${l.contratoId}`}
                       </td>
