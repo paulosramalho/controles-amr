@@ -1166,10 +1166,13 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
     const valorBrutoCent = toCents(valorBase);
 
     // --- status visual (corrige "paga aparecendo pendente")
-    const parcelaStatus =
-      (p.valorRecebido != null || p.dataRecebimento != null || p.status === "RECEBIDA")
-        ? "PAGA"
-        : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+    const isPaga =
+      p.valorRecebido != null ||
+      p.dataRecebimento != null;
+
+    const parcelaStatus = isPaga
+      ? "PAGA"
+      : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
 
       const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
       const liquidoCent = valorBrutoCent - impostoCent;
