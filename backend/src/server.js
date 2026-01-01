@@ -1071,24 +1071,24 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
 
     const aliquotaBp = aliquotaUsada.percentualBp;
 
-    // Parcelas recebidas no mês M
+    // Parcelas do mês-base (M): RECEBIDAS + PREVISTAS
     const parcelas = await prisma.parcelaContrato.findMany({
       where: {
         canceladaEm: null,
         contrato: { ativo: true },
         OR: [
-         {
-           status: "RECEBIDA",
-           valorRecebido: { not: null },
-           dataRecebimento: { gte: baseStart, lt: baseEnd },
-         },
-         {
-           status: "PREVISTA",
-           vencimento: { gte: baseStart, lt: baseEnd },
-         },
-       ],
-     },
-
+          // RECEBIDA no mês-base (usa dataRecebimento)
+          {
+            valorRecebido: { not: null },
+            dataRecebimento: { gte: start, lt: end },
+          },
+          // PREVISTA no mês-base (usa vencimento)
+          {
+            status: "PREVISTA",
+            vencimento: { gte: start, lt: end },
+          },
+        ],
+      },
       include: {
         contrato: {
           include: {
@@ -1098,8 +1098,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
               include: { advogado: { select: { id: true, nome: true } } },
               orderBy: { id: "asc" },
             },
-            // garante que temos esses flags no objeto contrato
-            // (se seu schema já retorna por padrão, ok — mas aqui fica explícito)
+            repasseConfig: true,
           },
         },
         splitsAdvogados: {
@@ -1109,7 +1108,11 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
           include: { itens: true },
         },
       },
-      orderBy: [{ dataRecebimento: "asc" }, { id: "asc" }],
+      orderBy: [
+        { vencimento: "asc" },        // PREVISTA ordena bem
+        { dataRecebimento: "asc" },   // RECEBIDA também
+        { id: "asc" },
+      ],
     });
 
     // Pegar configs do contrato (para pendências/cálculo quando não houver override na parcela)
@@ -1149,7 +1152,25 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
 
     // Montar linhas
     const linhas = parcelas.map((p) => {
-      const valorBrutoCent = toCents(p.valorRecebido);
+ 
+    // ✅ DENTRO do seu:  const linhas = parcelas.map((p) => { ... })
+    // Trocar o começo do map (as primeiras linhas do cálculo) por isto:
+
+    const hoje = new Date();
+
+    // --- valor base: RECEBIDA usa valorRecebido; PREVISTA usa valorPrevisto
+    const valorBase =
+      (p.valorRecebido != null ? p.valorRecebido : null) ??
+      (p.valorPrevisto != null ? p.valorPrevisto : 0);
+
+    const valorBrutoCent = toCents(valorBase);
+
+    // --- status visual (corrige "paga aparecendo pendente")
+    const parcelaStatus =
+      (p.valorRecebido != null || p.dataRecebimento != null || p.status === "RECEBIDA")
+        ? "PAGA"
+        : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+
       const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
       const liquidoCent = valorBrutoCent - impostoCent;
 
@@ -1235,6 +1256,10 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         fundoReserva: fromCents(fundoReservaCent),
         escritorio: fromCents(escritorioCent),
         socioTotal: fromCents(socioTotalCent),
+
+        parcelaStatus,
+        parcelaVencimento: p.vencimento,
+        parcelaNumero: p.numero,
 
         advogados: advs.map((a) => ({
           advogadoId: a.advogadoId,
