@@ -123,22 +123,11 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
-                    
-                    <tr
-                      key={l.parcelaId}
-                      style={{
-                        background: rowBgByStatus(l.parcelaStatus),
-                        outline: "1px solid red",
-                      }}
-                    >
-
+                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus) }}>
                       <td style={td}>
                         {l.numeroContrato || `#${l.contratoId}`}
                       </td>
-
-                      <td>{l.parcelaStatus}</td>
-
-
+                      <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
                       <td style={tdNum}>{money(l.valorBruto)}</td>
                       <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
                       <td style={tdNum}>{money(l.imposto)}</td>
