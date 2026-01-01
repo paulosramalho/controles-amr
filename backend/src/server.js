@@ -3287,6 +3287,7 @@ app.patch(
           valorRecebido: Number(cents) / 100, // ✅ Decimal correto
           meioRecebimento: meio,
           observacoes: observacoes ? String(observacoes).trim() : null,
+          ...(vaiMarcarRecebida ? { status: "RECEBIDA" } : {}),
         },
       });
 
