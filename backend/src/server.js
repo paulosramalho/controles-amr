@@ -1238,6 +1238,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
 
       return {
         parcelaId: p.id,
+        parcelaStatus,
         contratoId: p.contratoId,
         numeroContrato: p.contrato?.numeroContrato,
         clienteId: p.contrato?.cliente?.id,
