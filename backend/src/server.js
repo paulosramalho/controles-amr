@@ -1080,12 +1080,12 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
           // RECEBIDA no mês-base (usa dataRecebimento)
           {
             valorRecebido: { not: null },
-            dataRecebimento: { gte: start, lt: end },
+            dataRecebimento: { gte: baseStart, lt: baseEnd },
           },
           // PREVISTA no mês-base (usa vencimento)
           {
             status: "PREVISTA",
-            vencimento: { gte: start, lt: end },
+            vencimento: { gte: baseStart, lt: baseEnd },
           },
         ],
       },
@@ -1098,7 +1098,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
               include: { advogado: { select: { id: true, nome: true } } },
               orderBy: { id: "asc" },
             },
-            repasseConfig: true,
+           // repasseConfig: true,
           },
         },
         splitsAdvogados: {
