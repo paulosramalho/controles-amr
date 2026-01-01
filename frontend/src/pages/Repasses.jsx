@@ -123,9 +123,9 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
-                    <tr key={l.parcelaId}>
+                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus) }}>
                       <td style={td}>
-                        {parcelaBadge(l.parcelaStatus)} — {l.numeroContrato || `#${l.contratoId}`}
+                        {l.numeroContrato || `#${l.contratoId}`}
                       </td>
                       <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
                       <td style={tdNum}>{money(l.valorBruto)}</td>
@@ -139,7 +139,7 @@ export default function RepassesPage({ user }) {
 
                       <td style={tdNum}>{money(l.escritorio)}</td>
                       <td style={tdNum}>{money(l.fundoReserva)}</td>
-                      <td style={td}>{pend.length ? pend.join(", ") : "OK"}</td>
+                      <td style={td}>{pend.length ? pend.join(", ") : "-"}</td>
                     </tr>
                   );
                 })}
@@ -180,6 +180,12 @@ export default function RepassesPage({ user }) {
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
 const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
 const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+
+function rowBgByStatus(status) {
+  if (status === "PAGA") return "#E9F8EE";      // 🟩 leve
+  if (status === "ATRASADA") return "#FDECEC";  // 🟥 leve
+  return "#EAF2FF";                             // 🟦 leve (PENDENTE)
+}
 
 // helper simples (pode ficar perto do money())
 function parcelaBadge(status) {
