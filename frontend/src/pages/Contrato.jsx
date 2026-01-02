@@ -398,12 +398,6 @@ function repasseUpdateSplit(index, patch) {
   );
 }
 
-async function repasseRefreshContrato() {
-  const updated = await apiFetch(`/contratos/${contrato.id}`);
-  // ajuste para o seu setter real:
-  setContrato(updated);
-}
-
 async function salvarRepasseConfig() {
   setRepasseSaving(true);
   setRepasseError(null);
@@ -452,12 +446,17 @@ async function salvarRepasseConfig() {
 
     setRepasseOk("Configuração de repasse salva.");
 
+    // 🧼 limpa estados temporários após salvar
+    setRepasseError(null);
+    setRepasseSplitDraft({});
+    setRepasseEditMode(false);
+
     // limpa estados temporários e trava em modo leitura
     setRepasseError(null);
     setRepasseSplitDraft({});
     setRepasseEditMode(false);
 
-    await repasseRefreshContrato();
+    await reloadContrato();
   } catch (e) {
     setRepasseError(e?.message || "Erro ao salvar configuração de repasse.");
   } finally {
@@ -1224,12 +1223,12 @@ const totalRecebido = useMemo(() => {
                 <button
                   type="button"
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                  onClick={() => {
-                    // cancela edição: recarrega valores do contrato (voltando para read-only)
+                  onClick={async () => {
                     setRepasseOk(null);
                     setRepasseError(null);
                     setRepasseSplitDraft({});
                     setRepasseEditMode(false);
+                    await reloadContrato(); // 🔁 volta exatamente ao estado do backend
                   }}
                 >
                   Cancelar
