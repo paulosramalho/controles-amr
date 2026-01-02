@@ -329,6 +329,8 @@ export default function ContratoPage({ user }) {
   const [repasseError, setRepasseError] = useState(null);
   const [repasseOk, setRepasseOk] = useState(null);
 
+  const [repasseEditMode, setRepasseEditMode] = useState(true); // começa editável; depois a gente ajusta no load
+
 // %SOCIO do modelo selecionado (em bp)
 const repasseSocioBp = useMemo(() => {
   if (!repasseModeloId) return 0;
@@ -449,6 +451,12 @@ async function salvarRepasseConfig() {
     });
 
     setRepasseOk("Configuração de repasse salva.");
+
+    // limpa estados temporários e trava em modo leitura
+    setRepasseError(null);
+    setRepasseSplitDraft({});
+    setRepasseEditMode(false);
+
     await repasseRefreshContrato();
   } catch (e) {
     setRepasseError(e?.message || "Erro ao salvar configuração de repasse.");
@@ -647,6 +655,9 @@ useEffect(() => {
     setRepasseSplitDraft({});
     return;
   }
+
+  // se já existe alguma configuração, abre em modo leitura; se não existe, abre em edição
+  setRepasseEditMode(!(hasSplits || hasAdv || hasModelo));
 
   // Se já existe algo, aí sim carrega para edição
   setRepasseModeloId(
@@ -1053,7 +1064,8 @@ const totalRecebido = useMemo(() => {
               <select
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={repasseModeloId ?? ""}
-                onChange={(e) => {
+                disabled={!repasseEditMode}
+                 onChange={(e) => {
                   const v = e.target.value ? Number(e.target.value) : null;
                   setRepasseModeloId(v);
 
@@ -1061,7 +1073,7 @@ const totalRecebido = useMemo(() => {
                   setRepasseSplits([]);
                   setRepasseSplitDraft({});
                   if (!repasseUsaSplit) setRepasseAdvPrincipalId(null);
-                }}
+                }}                
               >
                 <option value="">— Selecione —</option>
                 {modelosDistribuicao.map((m) => (
@@ -1076,6 +1088,7 @@ const totalRecebido = useMemo(() => {
               <input
                 type="checkbox"
                 checked={repasseUsaSplit}
+                disabled={!repasseEditMode}
                 onChange={(e) => {
                   const checked = e.target.checked;
                   setRepasseUsaSplit(checked);
@@ -1100,6 +1113,7 @@ const totalRecebido = useMemo(() => {
               <select
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={repasseAdvPrincipalId ?? ""}
+                disabled={!repasseEditMode}
                 onChange={(e) => setRepasseAdvPrincipalId(e.target.value ? Number(e.target.value) : null)}
               >
                 <option value="">— Selecione —</option>
@@ -1115,13 +1129,15 @@ const totalRecebido = useMemo(() => {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <strong className="text-sm text-slate-900">Splits</strong>
-                <button
-                  type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                  onClick={repasseAddSplitRow}
-                >
-                  + Adicionar advogado
-                </button>
+                {repasseEditMode && (
+                  <button
+                    type="button"
+                    onClick={addRepasseSplit}
+                  >
+                    + Adicionar advogado
+                  </button>
+                )}
+
               </div>
 
               {(repasseSplits || []).map((row, idx) => (
@@ -1147,6 +1163,7 @@ const totalRecebido = useMemo(() => {
                     inputMode="numeric"
                     placeholder="20,00"
                     value={repasseSplitDraft[idx] ?? bpToPercentString(row.percentualBp)}
+                    disabled={!repasseEditMode}
                     onChange={(e) => {
                       const masked = percentMask(e.target.value); // mesma máscara do Avulso
                       setRepasseSplitDraft((prev) => ({ ...prev, [idx]: masked }));
@@ -1165,13 +1182,15 @@ const totalRecebido = useMemo(() => {
                       });
                     }}
                   />
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                    onClick={() => repasseRemoveSplitRow(idx)}
-                  >
-                    Remover
-                  </button>
+                  {repasseEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => removerRepasseSplit(idx)}
+                    >
+                      Remover
+                    </button>
+                  )}
+
                 </div>
               ))}
 
@@ -1189,16 +1208,47 @@ const totalRecebido = useMemo(() => {
           {repasseOk && <div style={{ color: "green" }}>{repasseOk}</div>}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button
-              type="button"
-              onClick={salvarRepasseConfig}
-              disabled={repasseSaving || repasseSplitExcede}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              title={repasseSplitExcede ? "Ajuste os splits para não exceder o % do SÓCIO do modelo." : ""}
-            >
-              {repasseSaving ? "Salvando..." : "Salvar"}
-            </button>
+            {!repasseEditMode ? (
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                onClick={() => {
+                  setRepasseOk(null);
+                  setRepasseError(null);
+                  setRepasseEditMode(true);
+                }}
+              >
+                Editar
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                  onClick={() => {
+                    // cancela edição: recarrega valores do contrato (voltando para read-only)
+                    setRepasseOk(null);
+                    setRepasseError(null);
+                    setRepasseSplitDraft({});
+                    setRepasseEditMode(false);
+                  }}
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={salvarRepasseConfig}
+                  disabled={repasseSaving || repasseSplitExcede || !repasseEditMode}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  title={repasseSplitExcede ? "Ajuste os splits para não exceder o % do SÓCIO do modelo." : ""}
+                >
+                  {repasseSaving ? "Salvando..." : "Salvar"}
+                </button>
+              </>
+            )}
           </div>
+
         </div>
       </Card>
 
