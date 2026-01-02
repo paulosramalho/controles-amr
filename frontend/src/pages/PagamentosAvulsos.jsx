@@ -197,7 +197,7 @@ export default function PagamentosAvulsos() {
             Voltar
           </button>
         }
-        >
+      >
 
       <div style={card}>
         <div style={grid}>
@@ -327,6 +327,7 @@ export default function PagamentosAvulsos() {
           <button style={btn} onClick={onSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
         </div>
       </div>
-    </div>
-  );
+    </Card>
+  </div>
+);
 }
