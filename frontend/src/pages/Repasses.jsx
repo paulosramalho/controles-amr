@@ -223,7 +223,6 @@ export default function RepassesPage({ user }) {
   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
 
 
-                return (
                   return (
   <tr
     key={l.parcelaId}
