@@ -185,14 +185,16 @@ export default function PagamentosAvulsos() {
 
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Pagamentos Avulsos</h2>
-        <button style={btnSec} type="button" onClick={() => navigate("/pagamentos")}>
-          Voltar
-        </button>
-      </div>
-
       <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Pagamentos Avulsos</div>
+            <button style={btnSec} type="button" onClick={() => navigate("/pagamentos")}>
+              Voltar
+            </button>
+          </div>
+        
+          <div style={{ height: 1, background: "#eee", margin: "12px 0" }} />
+
         <div style={grid}>
           <div>
             <label>Cliente</label>
