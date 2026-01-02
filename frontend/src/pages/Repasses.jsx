@@ -178,9 +178,9 @@ export default function RepassesPage({ user }) {
             Nenhuma parcela no mês considerado.
           </div>
         )}
-      </div>   {/* fecha conteúdo */}
-    </div>     {/* fecha card */}
-  </div>       {/* fecha wrapper */}
+      </div>   
+    </div>     
+  </div>       
 );
 }
 
