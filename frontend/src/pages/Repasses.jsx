@@ -173,15 +173,17 @@ export default function RepassesPage({ user }) {
           </div>
         )}
 
-        {!loading && data?.linhas && data.linhas.length === 0 && (
+                {!loading && data?.linhas && data.linhas.length === 0 && (
           <div style={{ marginTop: 12, opacity: 0.8 }}>
             Nenhuma parcela no mês considerado.
           </div>
         )}
-      </div>
-    </div>
-  );
+      </div>   {/* fecha conteúdo */}
+    </div>     {/* fecha card */}
+  </div>       {/* fecha wrapper */}
+);
 }
+
 
 const card = {
   border: "1px solid #ddd",
