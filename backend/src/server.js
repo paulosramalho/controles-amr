@@ -199,6 +199,28 @@ function splitCents(totalCents, n) {
   return out;
 }
 
+// Converte percentual (ex.: "10,00" ou 10) para basis points (bp)
+// 1,00% = 100 bp | 10,00% = 1000 bp | 100,00% = 10000 bp
+function percentToBp(input) {
+  if (input === null || input === undefined) return null;
+
+  // number => % direto
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) return null;
+    return Math.round(input * 100);
+  }
+
+  const s0 = String(input).trim();
+  if (!s0) return null;
+
+  // aceita "10,00" / "10.00" / "10" / "10%" / " 10,00 % "
+  const s = s0.replace("%", "").trim().replace(/\./g, "").replace(",", ".");
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+
+  return Math.round(n * 100);
+}
+
 /**
  * Serializa registros sem quebrar contrato:
  * - mantém datas originais
