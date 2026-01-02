@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import Can from "../components/Can";
+import Card from "../components/Card";
+
 export default function PagamentosAvulsos() {
   const navigate = useNavigate();
 
@@ -62,15 +64,16 @@ export default function PagamentosAvulsos() {
     (async () => {
       try {
         setLoading(true);
-        const [m, a, c, l] = await Promise.all([
-          apiFetch("/modelos-distribuicao"),
+        const [m, a, c] = await Promise.all([
+          apiFetch("/modelo-distribuicao"),
           apiFetch("/advogados"),
-          apiFetch("/clientes"),
+          apiFetch("/clients"),
         ]);
+
         setModelos(m || []);
         setAdvogados(a || []);
         setClientes(c || []);
-        setLista(l || []);
+
       } catch (e) {
         console.error(e);
         alert("Erro ao carregar dados de Pagamentos Avulsos.");
@@ -155,7 +158,7 @@ export default function PagamentosAvulsos() {
         body: payload, // objeto puro
       });
 
-      setLista((old) => [resp, ...old]);
+      // (removido) não exibimos "Últimos lançamentos" nesta tela
 
       // limpa
       setForm({
@@ -182,13 +185,19 @@ export default function PagamentosAvulsos() {
   if (loading) return <div style={{ padding: 16 }}>Carregando…</div>;
 
   return (
-    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Pagamentos Avulsos</h2>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={btnSec} onClick={() => navigate("/pagamentos")}>Voltar</button>
-        </div>
-      </div>
+    <div className="p-6">
+      <Card
+        title="Pagamentos Avulsos"
+        right={
+          <button
+            type="button"
+            onClick={() => navigate("/pagamentos")}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
+          >
+            Voltar
+          </button>
+        }
+        >
 
       <div style={card}>
         <div style={grid}>
