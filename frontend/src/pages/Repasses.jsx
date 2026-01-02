@@ -268,11 +268,11 @@ function rowBgByStatus(status, vencimento) {
       dt.setHours(0, 0, 0, 0);
       if (dt < today) return "#FDECEC"; // venceu => 🟥
     }
-    return "#FDECEC"; // ainda não venceu => 🟦
+    return "#EAF2FF"; // ainda não venceu => 🟦
   }
 
   // fallback
-  return "#EAF2FF";
+  return "#FFF1CC";
 }
 
 function parseBRDate(v) {
