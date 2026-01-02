@@ -289,12 +289,6 @@ const somaSplitsBp = useMemo(() => {
             </select>
           </div>
 
-          {form.usaSplitSocio && somaSplitsBp > socioBp && (
-            <div style={{ color: "#b91c1c", marginTop: 8, fontSize: 13 }}>
-              A soma dos splits ({(somaSplitsBp / 100).toFixed(2)}%)
-              excede o percentual destinado no modelo ({(socioBp / 100).toFixed(2)}%).
-            </div>
-          )}
 
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, alignItems: "center" }}>
             <input
