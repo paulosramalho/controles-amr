@@ -394,7 +394,7 @@ function rowBgByStatus(status, vencimento) {
   const s = String(status || "").trim().toUpperCase();
 
   // 🟩 PAGA / RECEBIDA
-  if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#D9FBE2";
+  if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#DDEBFF";
 
   // neutro
   if (s === "CANCELADA") return "#F3F4F6";
@@ -411,11 +411,11 @@ function rowBgByStatus(status, vencimento) {
       dt.setHours(0, 0, 0, 0);
       if (dt < today) return "#FFD9D9"; // venceu
     }
-    return "#DDEBFF"; // não venceu
+    return "#FFF1CC"; // não venceu
   }
 
   // fallback (tratamos como pendente)
-  return "#DDEBFF";
+  return "#FFF1CC";
 }
 
 function parseBRDate(v) {
