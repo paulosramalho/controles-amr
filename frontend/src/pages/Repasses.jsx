@@ -250,11 +250,17 @@ const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 function rowBgByStatus(status, vencimento) {
   const s = String(status || "").toUpperCase();
 
+    // normaliza variações (backend pode mandar PAGA/PENDENTE/ATRASADA)
+  if (s === "PAGA") return "#E9F8EE";
+  if (s === "PENDENTE") return "#EAF2FF";
+
   // RECEBIDA => 🟩
   if (s === "RECEBIDA") return "#E9F8EE";
 
-  // CANCELADA: você não pediu cor específica.
-  // Vou manter neutra (cinza bem leve) para não “sumir” na leitura.
+  // ATRASADA => 🟥
+  if (s === "ATRASADA") return "#FDECEC";
+
+  // CANCELADA neutra
   if (s === "CANCELADA") return "#F3F4F6";
 
   // PREVISTA: decide 🟦 ou 🟥 conforme vencimento vs hoje
@@ -264,11 +270,9 @@ function rowBgByStatus(status, vencimento) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       dt.setHours(0, 0, 0, 0);
-      // vencida e ainda não recebida => 🟥
-      if (dt < today) return "#FDECEC";
+      if (dt < today) return "#FDECEC"; // vencida => 🟥
     }
-    // ainda não venceu => 🟦
-    return "#EAF2FF";
+    return "#EAF2FF"; // ainda não venceu => 🟦
   }
 
   // fallback (qualquer coisa desconhecida)
