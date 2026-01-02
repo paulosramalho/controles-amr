@@ -97,17 +97,6 @@ export default function RepassesPage({ user }) {
         </div>
       )}
 
-      {/* conteúdo (tabela) dentro do mesmo card */}
-      <div style={{ padding: "0 12px 12px" }}>
-        {loading && <div>Carregando…</div>}
-
-        {!loading && data?.linhas && (
-          <div style={{ overflowX: "auto", border: "1px solid #ddd", borderRadius: 8 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-            {/* ... mantém todo o seu <thead> e <tbody> exatamente como está hoje ... */}
-          </div>
-        )}
-
         <div style={{ marginTop: 12 }}>
         {loading && <div>Carregando…</div>}
 
