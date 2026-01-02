@@ -178,8 +178,6 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio")
 
-                  return (
-
 {console.log("ROW DEBUG:", {
   parcelaStatus: l.parcelaStatus,
   status: l.status,
@@ -191,6 +189,7 @@ export default function RepassesPage({ user }) {
 })}
 
 
+                  return (
                     <tr key={l.parcelaId}>
                       <td style={td(bg)}>{l.numeroContrato}</td>
                       <td style={td(bg)}>{l.clienteNome}</td>
