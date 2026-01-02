@@ -184,19 +184,13 @@ export default function PagamentosAvulsos() {
   if (loading) return <div style={{ padding: 16 }}>Carregando…</div>;
 
   return (
-    <div className="p-6">
-      <Card
-        title="Pagamentos Avulsos"
-        right={
-          <button
-            type="button"
-            onClick={() => navigate("/pagamentos")}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 transition"
-          >
-            Voltar
-          </button>
-        }
-      >
+    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h2 style={{ margin: 0 }}>Pagamentos Avulsos</h2>
+        <button style={btnSec} type="button" onClick={() => navigate("/pagamentos")}>
+          Voltar
+        </button>
+      </div>
 
       <div style={card}>
         <div style={grid}>
@@ -326,7 +320,4 @@ export default function PagamentosAvulsos() {
           <button style={btn} onClick={onSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
         </div>
       </div>
-    </Card>
-  </div>
-);
 }
