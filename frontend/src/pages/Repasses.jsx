@@ -62,10 +62,10 @@ export default function RepassesPage({ user }) {
       <div style={card}>
 
         {/* HEADER */}
-        <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: "22px" }}>Repasses</h2>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ opacity: 0.8 }}>Competência:</span>
 
             {/* badge competência */}
@@ -95,11 +95,11 @@ export default function RepassesPage({ user }) {
                 style={{ width: 84, border: "none", background: "transparent", fontWeight: 600 }}
               />
             </span>
+          </div>
 
-            <button onClick={load} disabled={loading}>Atualizar</button>
-
-            {/* Alíquota: [alíquota] — [mês corrente] (fallback: mês corrente -1) */}
-            <span style={{ opacity: 0.85 }}>
+          {/* Alíquota (direita) — em strong */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 13, opacity: 0.9 }}>
               {(() => {
                 const compMes = mes;
                 const compAno = ano;
@@ -109,15 +109,14 @@ export default function RepassesPage({ user }) {
                 const aliqBp = data?.aliquotaUsada?.percentualBp;
                 const aliqTxt = (Number(aliqBp || 0) / 100).toFixed(2) + "%";
 
-                // mês a exibir: se backend mandou aliquotaUsada, usa ela; senão, fallback do “mês corrente -1”
-                const mShow = data?.aliquotaUsada?.mes ?? mesBase;
-                const aShow = data?.aliquotaUsada?.ano ?? anoBase;
+                // referência: se backend mandou, usa; senão fallback mês anterior à competência
+                const mRef = data?.aliquotaUsada?.mes ?? mesBase;
+                const aRef = data?.aliquotaUsada?.ano ?? anoBase;
 
-                return (
-                  <>Alíquota: {mShow}/{aShow} — {aliqTxt}</>
-                );
+                // ✅ invertido: alíquota — referência
+                return `${aliqTxt} — ${mRef}/${aRef}`;
               })()}
-            </span>
+            </strong>
           </div>
         </div>
 
@@ -202,7 +201,7 @@ export default function RepassesPage({ user }) {
           </div>
         )}
 
-                {!loading && data?.linhas && data.linhas.length === 0 && (
+        {!loading && data?.linhas && data.linhas.length === 0 && (
           <div style={{ marginTop: 12, opacity: 0.8 }}>
             Nenhuma parcela no mês considerado.
           </div>
