@@ -172,7 +172,16 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
-                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus || l.status) }}>
+                    <tr
+                      key={l.parcelaId}
+                      style={{
+                        background: rowBgByStatus(
+                          l.parcelaStatus || l.status,
+                          // tenta pegar vencimento com vários nomes possíveis (sem quebrar nada)
+                          l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt
+                        ),
+                      }}
+                    >
                       <td style={td}>
                         {l.numeroContrato || `#${l.contratoId}`}
                       </td>
@@ -238,22 +247,55 @@ const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #d
 const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
 const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
-function rowBgByStatus(status) {
+function rowBgByStatus(status, vencimento) {
   const s = String(status || "").toUpperCase();
 
-  // aceita variações comuns
-  if (s === "PAGA" || s === "RECEBIDA" || s === "PAGO" || s === "RECEBIDO") return "#E9F8EE";      // 🟩
-  if (s === "ATRASADA" || s === "ATRASADO" || s === "VENCIDA" || s === "VENCIDO") return "#FDECEC"; // 🟥
+  // RECEBIDA => 🟩
+  if (s === "RECEBIDA") return "#E9F8EE";
 
-  // pendente / prevista / em aberto
-  return "#EAF2FF"; // 🟦
+  // CANCELADA: você não pediu cor específica.
+  // Vou manter neutra (cinza bem leve) para não “sumir” na leitura.
+  if (s === "CANCELADA") return "#F3F4F6";
+
+  // PREVISTA: decide 🟦 ou 🟥 conforme vencimento vs hoje
+  if (s === "PREVISTA") {
+    const dt = parseBRDate(vencimento);
+    if (dt) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      dt.setHours(0, 0, 0, 0);
+      // vencida e ainda não recebida => 🟥
+      if (dt < today) return "#FDECEC";
+    }
+    // ainda não venceu => 🟦
+    return "#EAF2FF";
+  }
+
+  // fallback (qualquer coisa desconhecida)
+  return "#EAF2FF";
 }
 
-// helper simples (pode ficar perto do money())
-function parcelaBadge(status) {
-  if (status === "PAGA") return "🟩 Paga";
-  if (status === "ATRASADA") return "🟥 Atrasada";
-  return "🟦 Pendente";
+function parseBRDate(v) {
+  if (!v) return null;
+
+  // já é Date?
+  if (v instanceof Date && !isNaN(v)) return v;
+
+  const s = String(v).trim();
+
+  // DD/MM/AAAA
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const yy = Number(m[3]);
+    const dt = new Date(yy, mm - 1, dd);
+    return isNaN(dt) ? null : dt;
+  }
+
+  // ISO (ou algo que Date entenda)
+  const dt = new Date(s);
+  return isNaN(dt) ? null : dt;
 }
 
 function money(v) {
