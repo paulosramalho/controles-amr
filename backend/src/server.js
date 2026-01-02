@@ -2542,6 +2542,7 @@ app.get("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) =
 });
 
 // Criar
+// Criar (OPÇÃO A): avulso vira ContratoPagamento + 1 Parcela RECEBIDA
 app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) => {
   try {
     const {
@@ -2556,6 +2557,9 @@ app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) 
       splits,
     } = req.body || {};
 
+    // validações básicas
+    if (!clienteId) return res.status(400).json({ message: "Selecione o Cliente." });
+
     const desc = String(descricao || "").trim();
     if (!desc) return res.status(400).json({ message: "Informe a descrição do pagamento." });
 
@@ -2564,63 +2568,126 @@ app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) 
 
     const cents = moneyToCents(valorRecebido);
     if (cents === null || cents <= 0n) return res.status(400).json({ message: "Informe um valor válido." });
-    const valor = Number(cents) / 100;
 
     const modeloId = modeloDistribuicaoId ? Number(modeloDistribuicaoId) : null;
     if (!modeloId) return res.status(400).json({ message: "Selecione o Modelo de Distribuição." });
 
+    const usaSplit = !!usaSplitSocio;
     const advId = advogadoPrincipalId ? Number(advogadoPrincipalId) : null;
 
-    // cria pagamento
-    const created = await prisma.pagamentoAvulso.create({
-      data: {
-        clienteId: clienteId ? Number(clienteId) : null,
-        descricao: desc,
-        dataRecebimento: dt,
-        valorRecebido: valor,
-        meioRecebimento: (meioRecebimento || "PIX").toString().trim().toUpperCase(),
-        modeloDistribuicaoId: modeloId,
-        advogadoPrincipalId: advId,
-        usaSplitSocio: !!usaSplitSocio,
-      },
-    });
+    // normaliza meio
+    const meioOk = (meioRecebimento || "PIX").toString().trim().toUpperCase();
 
-    // salva splits (se habilitado)
+    // normaliza splits (se usaSplit)
     const arr = Array.isArray(splits) ? splits : [];
-    if (created.usaSplitSocio && arr.length) {
-      const rows = arr
-        .filter((s) => s && s.advogadoId)
-        .map((s) => {
-          const bp = percentToBp(s.percentual); // você já tem função parecida? se não, te passo.
-          return {
-            pagamentoAvulsoId: created.id,
+    const normalizedSplits = usaSplit
+      ? arr
+          .filter((s) => s && s.advogadoId)
+          .map((s) => ({
             advogadoId: Number(s.advogadoId),
-            percentualBp: bp,
-          };
+            percentualBp: percentToBp(s.percentual), // já existe no server.js (você usou no outro endpoint)
+          }))
+      : [];
+
+    // gera numeroContrato: AV-AAAAMMDDSSS (SSS incremental por dia)
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const prefix = `AV-${yyyy}${mm}${dd}`;
+
+    // retry simples para evitar colisão em concorrência
+    let numeroContrato = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const last = await prisma.contratoPagamento.findFirst({
+        where: { numeroContrato: { startsWith: prefix } },
+        orderBy: { numeroContrato: "desc" },
+        select: { numeroContrato: true },
+      });
+
+      const lastSeq = last?.numeroContrato ? Number(String(last.numeroContrato).slice(-3)) : 0;
+      const nextSeq = String((lastSeq || 0) + 1).padStart(3, "0");
+      numeroContrato = `${prefix}${nextSeq}`;
+
+      try {
+        const created = await prisma.$transaction(async (tx) => {
+          // cria contrato especial
+          const contrato = await tx.contratoPagamento.create({
+            data: {
+              clienteId: Number(clienteId),
+              numeroContrato,
+              valorTotal: centsToDecimalString(cents),
+              formaPagamento: "AVISTA",
+              observacoes: desc,
+              modeloDistribuicaoId: modeloId,
+              usaSplitSocio: usaSplit,
+              repasseAdvogadoPrincipalId: usaSplit ? null : advId,
+            },
+          });
+
+          // cria parcela RECEBIDA (entra em Pagamentos e em Repasses M -> M+1)
+          const parcela = await tx.parcelaContrato.create({
+            data: {
+              contratoId: contrato.id,
+              numero: 1,
+              vencimento: dt,
+              valorPrevisto: centsToDecimalString(cents),
+              status: "RECEBIDA",
+              dataRecebimento: dt,
+              valorRecebido: centsToDecimalString(cents),
+              meioRecebimento: meioOk,
+              modeloDistribuicaoId: modeloId,
+            },
+          });
+
+          // split ON: grava também no contrato + na parcela
+          if (usaSplit) {
+            await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId: contrato.id } });
+            await tx.contratoRepasseSplitAdvogado.createMany({
+              data: normalizedSplits.map((s) => ({
+                contratoId: contrato.id,
+                advogadoId: s.advogadoId,
+                percentualBp: s.percentualBp,
+              })),
+            });
+
+            await tx.parcelaSplitAdvogado.createMany({
+              data: normalizedSplits.map((s) => ({
+                parcelaId: parcela.id,
+                advogadoId: s.advogadoId,
+                percentualBp: s.percentualBp,
+              })),
+            });
+          } else {
+            await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId: contrato.id } });
+            await tx.parcelaSplitAdvogado.deleteMany({ where: { parcelaId: parcela.id } });
+          }
+
+          return tx.contratoPagamento.findUnique({
+            where: { id: contrato.id },
+            include: {
+              cliente: true,
+              parcelas: {
+                orderBy: { numero: "asc" },
+                include: { splitsAdvogados: { include: { advogado: true } } },
+              },
+              repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
+              repasseSplits: { include: { advogado: true }, orderBy: { id: "asc" } },
+              modeloDistribuicao: true,
+            },
+          });
         });
 
-      if (rows.length) {
-        await prisma.pagamentoAvulsoSplit.createMany({ data: rows });
+        return res.status(201).json(created);
+      } catch (err) {
+        // colisão de unique no numeroContrato → tenta próximo SSS
+        if (err?.code === "P2002") continue;
+        throw err;
       }
     }
 
-    const full = await prisma.pagamentoAvulso.findUnique({
-      where: { id: created.id },
-      include: {
-        cliente: true,
-        modeloDistribuicao: true,
-        advogadoPrincipal: { select: { id: true, nome: true } },
-        splits: { include: { advogado: { select: { id: true, nome: true } } }, orderBy: { id: "asc" } },
-      },
-    });
-
-    return res.json({
-      ...full,
-      valorRecebidoFmt: Number(full.valorRecebido || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-      cliente: full.cliente ? serializeCliente({ ...full.cliente, ordens: [] }) : null,
-    });
+    return res.status(409).json({ message: "Não foi possível gerar número AV automaticamente. Tente novamente." });
   } catch (err) {
-    console.error("Erro ao criar pagamento avulso:", err);
+    console.error("Erro ao criar pagamento avulso (opção A):", err);
     return res.status(500).json({ message: "Erro ao criar pagamento avulso." });
   }
 });
