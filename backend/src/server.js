@@ -1099,17 +1099,17 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         canceladaEm: null,
         contrato: { ativo: true },
         OR: [
-          // RECEBIDA no mês-base (usa dataRecebimento)
-          {
-            valorRecebido: { not: null },
-            dataRecebimento: { gte: baseStart, lt: baseEnd },
-          },
-          // PREVISTA no mês-base (usa vencimento)
-          {
-            status: "PREVISTA",
-            vencimento: { gte: baseStart, lt: baseEnd },
-          },
-        ],
+         {
+       -   status: "RECEBIDA",
+           valorRecebido: { not: null },
+          dataRecebimento: { gte: baseStart, lt: baseEnd },
+        },
+        {
+          status: "PREVISTA",
+          vencimento: { gte: baseStart, lt: baseEnd },
+        },
+      ],
+
       },
       include: {
         contrato: {
@@ -1180,21 +1180,24 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
 
     const hoje = new Date();
 
-    // --- valor base: RECEBIDA usa valorRecebido; PREVISTA usa valorPrevisto
-    const valorBase =
-      (p.valorRecebido != null ? p.valorRecebido : null) ??
-      (p.valorPrevisto != null ? p.valorPrevisto : 0);
+    const recebidaNoMesBase =
+      p.valorRecebido != null &&
+      p.dataRecebimento &&
+      p.dataRecebimento >= baseStart &&
+      p.dataRecebimento < baseEnd;
 
-    const valorBrutoCent = toCents(valorBase);
+      const valorBase = recebidaNoMesBase
+        ? p.valorRecebido
+        : (p.valorPrevisto != null ? p.valorPrevisto : 0);
 
-    // --- status visual (corrige "paga aparecendo pendente")
-    const isPaga =
-      p.valorRecebido != null ||
-      p.dataRecebimento != null;
+      // ⚠️ mantém isso
+      const valorBrutoCent = toCents(valorBase);
 
-    const parcelaStatus = isPaga
-      ? "PAGA"
-      : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+      // --- status visual correto
+      const parcelaStatus = recebidaNoMesBase
+        ? "PAGA"
+        : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+
 
       const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
       const liquidoCent = valorBrutoCent - impostoCent;
