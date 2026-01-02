@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import Can from "../components/Can";
-import Card from "../components/Card";
 
 export default function PagamentosAvulsos() {
   const navigate = useNavigate();
