@@ -13,6 +13,30 @@ export default function PagamentosAvulsos() {
   const [advogados, setAdvogados] = useState([]);
   const [clientes, setClientes] = useState([]);
 
+// percentual do SÓCIO (em bp) do modelo selecionado
+const socioBp = useMemo(() => {
+  if (!form.modeloDistribuicaoId) return 0;
+  const m = modelos.find((x) => String(x.id) === String(form.modeloDistribuicaoId));
+  if (!m || !Array.isArray(m.itens)) return 0;
+
+  const itemSocio = m.itens.find((it) => it.destinatario === "SOCIO");
+  const bp = itemSocio ? Number(itemSocio.percentualBp) : 0;
+  return Number.isFinite(bp) ? bp : 0;
+}, [form.modeloDistribuicaoId, modelos]);
+
+// soma dos splits (em bp)
+const somaSplitsBp = useMemo(() => {
+  if (!form.usaSplitSocio) return 0;
+
+  return (form.splits || []).reduce((acc, s) => {
+    if (!s || !s.percentual) return acc;
+    const raw = String(s.percentual).replace("%", "").trim().replace(/\./g, "").replace(",", ".");
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return acc;
+    return acc + Math.round(n * 100); // % -> bp
+  }, 0);
+}, [form.splits, form.usaSplitSocio]);
+
   const [form, setForm] = useState({
     clienteId: "",
     descricao: "",
@@ -265,6 +289,13 @@ export default function PagamentosAvulsos() {
             </select>
           </div>
 
+          {form.usaSplitSocio && somaSplitsBp > socioBp && (
+            <div style={{ color: "#b91c1c", marginTop: 8, fontSize: 13 }}>
+              A soma dos splits ({(somaSplitsBp / 100).toFixed(2)}%)
+              excede o percentual destinado no modelo ({(socioBp / 100).toFixed(2)}%).
+            </div>
+          )}
+
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, alignItems: "center" }}>
             <input
               type="checkbox"
@@ -321,7 +352,18 @@ export default function PagamentosAvulsos() {
         )}
 
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button style={btn} onClick={onSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
+          <button
+            style={{
+              ...btnPri,
+              opacity: form.usaSplitSocio && somaSplitsBp > socioBp ? 0.5 : 1,
+              cursor: form.usaSplitSocio && somaSplitsBp > socioBp ? "not-allowed" : "pointer",
+            }}
+            disabled={form.usaSplitSocio && somaSplitsBp > socioBp}
+            onClick={salvar}
+          >
+            Salvar
+          </button>
+
         </div>
       </div>
     </div>
