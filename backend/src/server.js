@@ -1100,7 +1100,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         contrato: { ativo: true },
         OR: [
          {
-       -   status: "RECEBIDA",
+           status: "RECEBIDA",
            valorRecebido: { not: null },
           dataRecebimento: { gte: baseStart, lt: baseEnd },
         },
