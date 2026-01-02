@@ -394,13 +394,13 @@ function rowBgByStatus(status, vencimento) {
   const s = String(status || "").trim().toUpperCase();
 
   // 🟩 PAGA / RECEBIDA
-  if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#E9F8EE";
+  if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#D9FBE2";
 
   // neutro
   if (s === "CANCELADA") return "#F3F4F6";
 
   // 🟥 ATRASADA / VENCIDA
-  if (["ATRASADA", "VENCIDA", "OVERDUE"].includes(s)) return "#FDECEC";
+  if (["ATRASADA", "VENCIDA", "OVERDUE"].includes(s)) return "#FFD9D9";
 
   // 🟦 PREVISTA / PENDENTE (vira 🟥 se venceu pelo vencimento)
   if (["PREVISTA", "PENDENTE", "ABERTA"].includes(s)) {
@@ -409,13 +409,13 @@ function rowBgByStatus(status, vencimento) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       dt.setHours(0, 0, 0, 0);
-      if (dt < today) return "#FDECEC"; // venceu
+      if (dt < today) return "#FFD9D9"; // venceu
     }
-    return "#EAF2FF"; // não venceu
+    return "#DDEBFF"; // não venceu
   }
 
   // fallback (tratamos como pendente)
-  return "#EAF2FF";
+  return "#DDEBFF";
 }
 
 function parseBRDate(v) {
