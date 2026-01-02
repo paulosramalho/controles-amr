@@ -268,7 +268,7 @@ function rowBgByStatus(status, vencimento) {
       dt.setHours(0, 0, 0, 0);
       if (dt < today) return "#FDECEC"; // venceu => 🟥
     }
-    return "#EAF2FF"; // ainda não venceu => 🟦
+    return "#FDECEC"; // ainda não venceu => 🟦
   }
 
   // fallback
