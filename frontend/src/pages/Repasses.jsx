@@ -253,18 +253,17 @@ const card = {
 };
 
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
-const td = (bg) => ({
+const td = {
   padding: "10px 8px",
   borderBottom: "1px solid #eee",
   whiteSpace: "nowrap",
-  background: bg,
-});
+};
 
-const tdNum = (bg) => ({
-  ...td(bg),
+const tdNum = {
+  ...td,
   textAlign: "right",
   fontVariantNumeric: "tabular-nums",
-});
+};
 
 function rowBgByStatus(status, vencimento) {
   const s = String(status || "").trim().toUpperCase();
