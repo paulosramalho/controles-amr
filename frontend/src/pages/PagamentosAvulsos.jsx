@@ -35,7 +35,13 @@ const socioBp = useMemo(() => {
   const itens = itensByModeloId[id] || [];
   if (!Array.isArray(itens) || !itens.length) return 0;
 
-  const itemSocio = itens.find((it) => String(it.destinatario || "").toUpperCase() === "SOCIO");
+  const itemSocio = itens.find((it) => {
+  const a = String(it.destinoTipo || "").toUpperCase();
+  const b = String(it.destinatario || "").toUpperCase();
+  const c = String(it.destino || "").toUpperCase();
+  return a === "SOCIO" || b === "SOCIO" || c === "SOCIO";
+});
+
   const bp = itemSocio ? Number(itemSocio.percentualBp) : 0;
   return Number.isFinite(bp) ? bp : 0;
 }, [form.modeloDistribuicaoId, itensByModeloId]);
