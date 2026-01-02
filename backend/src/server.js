@@ -1099,11 +1099,12 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         canceladaEm: null,
         contrato: { ativo: true },
         OR: [
-         {
-           status: "RECEBIDA",
-           valorRecebido: { not: null },
+         // pagamento considerado no mês base (independente do status gravado)
+        {
+          valorRecebido: { not: null },
           dataRecebimento: { gte: baseStart, lt: baseEnd },
         },
+        // parcelas previstas que vencem no mês base
         {
           status: "PREVISTA",
           vencimento: { gte: baseStart, lt: baseEnd },
