@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import Can from "../components/Can";
@@ -352,12 +352,12 @@ const somaSplitsBp = useMemo(() => {
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
             style={{
-              ...btnPri,
+              ...btn,
               opacity: form.usaSplitSocio && somaSplitsBp > socioBp ? 0.5 : 1,
               cursor: form.usaSplitSocio && somaSplitsBp > socioBp ? "not-allowed" : "pointer",
             }}
             disabled={form.usaSplitSocio && somaSplitsBp > socioBp}
-            onClick={salvar}
+            onClick={onSave}
           >
             Salvar
           </button>
