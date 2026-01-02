@@ -320,4 +320,6 @@ export default function PagamentosAvulsos() {
           <button style={btn} onClick={onSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
         </div>
       </div>
+    </div>
+  )
 }
