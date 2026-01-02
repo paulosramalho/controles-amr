@@ -18,6 +18,15 @@ export default function RepassesPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  // Debug visual (produção): ative com ?dbg=1 na URL
+  const dbgEnabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("dbg");
+
+  const [dbgOpen, setDbgOpen] = useState(false);
+  const [dbgInfo, setDbgInfo] = useState(null);
+
+
   async function load() {
     setLoading(true);
     setErr("");
@@ -166,32 +175,67 @@ export default function RepassesPage({ user }) {
 
               <tbody>
                 {data.linhas.map((l) => {
+  const statusRaw = l.parcelaStatus || l.status;
+  const vencRaw = l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt;
 
-                  const bg = rowBgByStatus(
-                    l.parcelaStatus || l.status,
-                    l.vencimento || l.parcelaVencimento || l.dataVencimento
-                  );
+  // ANTES (dados que entram na comparação)
+  const s = String(statusRaw || "").trim().toUpperCase();
+  const dt = parseBRDate(vencRaw);
 
-                  const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
-                  const pend = [];
-                  if (l.pendencias?.modeloAusente) pend.push("Modelo");
-                  if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
-                  if (l.pendencias?.splitExcedido) pend.push("Split>Socio")
+  let today = null;
+  let vencLTtoday = null;
+  if (dt) {
+    today = new Date();
+    today.setHours(0, 0, 0, 0);
+    dt.setHours(0, 0, 0, 0);
+    vencLTtoday = dt < today;
+  }
 
-                  // DEBUG seguro (não quebra JSX)
-                  if (import.meta?.env?.DEV) {
-                    console.log("ROW DEBUG:", {
-                    parcelaId: l.parcelaId,
-                    parcelaStatus: l.parcelaStatus,
-                    status: l.status,
-                    vencimento:
-                      l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt,
-                    bg,
-                  });
-                }
+  // DEPOIS (resultado da comparação)
+  const bg = rowBgByStatus(statusRaw, vencRaw);
+
+  const dbgPayload = {
+    antes: {
+      parcelaId: l.parcelaId,
+      statusRaw,
+      statusNorm: s,
+      vencRaw,
+      vencParsed: dt ? dt.toISOString().slice(0, 10) : null,
+      today: today ? today.toISOString().slice(0, 10) : null,
+      vencMenorQueHoje: vencLTtoday,
+    },
+    depois: {
+      bg,
+      regraAplicada:
+        ["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s) ? "PAGA/RECEBIDA => 🟩" :
+        s === "CANCELADA" ? "CANCELADA => neutro" :
+        ["ATRASADA", "VENCIDA", "OVERDUE"].includes(s) ? "ATRASADA => 🟥" :
+        ["PREVISTA", "PENDENTE", "ABERTA"].includes(s)
+          ? (vencLTtoday ? "PREVISTA/PENDENTE vencida => 🟥" : "PREVISTA/PENDENTE não venceu => 🟦")
+          : "FALLBACK => 🟦",
+    },
+  };
+
+  const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
+  const pend = [];
+  if (l.pendencias?.modeloAusente) pend.push("Modelo");
+  if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
+  if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
+
 
                 return (
-                  <tr key={l.parcelaId} style={{ background: bg }}>
+                  return (
+  <tr
+    key={l.parcelaId}
+    style={{ background: bg, cursor: dbgEnabled ? "pointer" : "default" }}
+    onClick={() => {
+      if (!dbgEnabled) return;
+      setDbgInfo(dbgPayload);
+      setDbgOpen(true);
+    }}
+    title={dbgEnabled ? "DBG: clique para ver Antes/Depois" : undefined}
+  >
+
                   <td style={td}>{l.numeroContrato || `#${l.contratoId}`}</td>
                   <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
                   <td style={tdNum}>{money(l.valorBruto)}</td>
@@ -240,7 +284,89 @@ export default function RepassesPage({ user }) {
           </div>
         )}
       </div>   
-    </div>     
+    </div>   
+        {/* DEBUG MODAL (produção) */}
+        {dbgOpen && dbgInfo && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: 16,
+            }}
+            onClick={() => setDbgOpen(false)}
+          >
+            <div
+              style={{
+                width: "min(920px, 96vw)",
+                maxHeight: "86vh",
+                overflow: "auto",
+                background: "#fff",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+                padding: 16,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  Debug BG — Parcela {dbgInfo?.antes?.parcelaId}
+                </div>
+                <button
+                  onClick={() => setDbgOpen(false)}
+                  style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ddd", background: "#fafafa", cursor: "pointer" }}
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+                <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Antes</div>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>
+{JSON.stringify(dbgInfo.antes, null, 2)}
+                  </pre>
+                </div>
+
+                <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Depois</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontWeight: 700 }}>BG:</span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        border: "1px solid #e5e7eb",
+                        background: "#f8fafc",
+                        fontSize: 12,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <span style={{ width: 14, height: 14, borderRadius: 4, background: dbgInfo.depois.bg, border: "1px solid #ddd" }} />
+                      {dbgInfo.depois.bg}
+                    </span>
+                  </div>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 12 }}>
+{JSON.stringify(dbgInfo.depois, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                Dica: abra Repasses com <b>?dbg=1</b> e clique na linha.
+              </div>
+            </div>
+          </div>
+        )}
+  
   </div>       
 );
 }
