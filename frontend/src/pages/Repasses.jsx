@@ -59,35 +59,55 @@ export default function RepassesPage({ user }) {
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>Repasses</h2>
+      <div style={card}>
+        <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Repasses</h2>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <label>Competência (M+1):</label>
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
-            {monthOptions().map((m) => (
-              <option key={m.v} value={m.v}>{m.t}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            value={ano}
-            onChange={(e) => setAno(Number(e.target.value))}
-            style={{ width: 90 }}
-          />
-          <button onClick={load} disabled={loading}>Atualizar</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ opacity: 0.8 }}>Competência (M+1):</span>
+
+            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
+              {monthOptions().map((m) => (
+                <option key={m.v} value={m.v}>{m.t}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              value={ano}
+              onChange={(e) => setAno(Number(e.target.value))}
+              style={{ width: 90 }}
+            />
+
+            <button onClick={load} disabled={loading}>Atualizar</button>
+
+            {data?.aliquotaUsada && (
+              <span style={{ opacity: 0.85 }}>
+                Alíquota usada: {data.aliquotaUsada.mes}/{data.aliquotaUsada.ano} — {(data.aliquotaUsada.percentualBp / 100).toFixed(2)}%
+                {" · "}Pagamentos considerados: {data.pagamentosConsiderados.mes}/{data.pagamentosConsiderados.ano}
+              </span>
+            )}
+          </div>
         </div>
 
-        {data?.aliquotaUsada && (
-          <div style={{ marginLeft: "auto", opacity: 0.85 }}>
-            Alíquota usada: {data.aliquotaUsada.mes}/{data.aliquotaUsada.ano} — {data.aliquotaUsada.percentualBp / 100}% 
-            {" · "}Pagamentos considerados: {data.pagamentosConsiderados.mes}/{data.pagamentosConsiderados.ano}
-          </div>
-        )}
+        {/* erro dentro do card */}
+        {err && (
+          <div style={{ margin: "0 12px 12px", padding: 10, background: "#fee", border: "1px solid #f99", borderRadius: 8 }}>
+        {err}
       </div>
+    )}
 
-      {err && (
-        <div style={{ marginTop: 12, padding: 10, background: "#fee", border: "1px solid #f99" }}>
+    {/* conteúdo (tabela) dentro do mesmo card */}
+    <div style={{ padding: "0 12px 12px" }}>
+      {loading && <div>Carregando…</div>}
+
+      {!loading && data?.linhas && (
+        <div style={{ overflowX: "auto", border: "1px solid #ddd", borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+            {/* ... mantém todo o seu <thead> e <tbody> exatamente como está hoje ... */}
+
+          {err && (
+            <div style={{ marginTop: 12, padding: 10, background: "#fee", border: "1px solid #f99" }}>
           {err}
         </div>
       )}
@@ -174,8 +194,15 @@ export default function RepassesPage({ user }) {
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }
+
+const card = {
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  background: "#fff",
+};
 
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
 const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
