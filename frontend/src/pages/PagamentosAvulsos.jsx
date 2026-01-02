@@ -13,6 +13,18 @@ export default function PagamentosAvulsos() {
   const [advogados, setAdvogados] = useState([]);
   const [clientes, setClientes] = useState([]);
 
+  const [form, setForm] = useState({
+    clienteId: "",
+    descricao: "",
+    dataRecebimento: "", // DD/MM/AAAA
+    valorRecebido: "", // máscara R$
+    meioRecebimento: "PIX",
+    modeloDistribuicaoId: "",
+    advogadoPrincipalId: "",
+    usaSplitSocio: false,
+    splits: [], // { advogadoId, percentual } em %
+  });
+
 // percentual do SÓCIO (em bp) do modelo selecionado
 const socioBp = useMemo(() => {
   if (!form.modeloDistribuicaoId) return 0;
@@ -36,18 +48,6 @@ const somaSplitsBp = useMemo(() => {
     return acc + Math.round(n * 100); // % -> bp
   }, 0);
 }, [form.splits, form.usaSplitSocio]);
-
-  const [form, setForm] = useState({
-    clienteId: "",
-    descricao: "",
-    dataRecebimento: "", // DD/MM/AAAA
-    valorRecebido: "", // máscara R$
-    meioRecebimento: "PIX",
-    modeloDistribuicaoId: "",
-    advogadoPrincipalId: "",
-    usaSplitSocio: false,
-    splits: [], // { advogadoId, percentual } em %
-  });
 
   // helpers simples (mantém sua regra de máscara em um único lugar depois)
   const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
