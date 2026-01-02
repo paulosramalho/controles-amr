@@ -63,32 +63,61 @@ export default function RepassesPage({ user }) {
 
         {/* HEADER */}
         <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Repasses</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: "22px" }}>Repasses</h2>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ opacity: 0.8 }}>Competência (M+1):</span>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ opacity: 0.8 }}>Competência:</span>
 
-            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
-              {monthOptions().map((m) => (
-                <option key={m.v} value={m.v}>{m.t}</option>
-              ))}
-            </select>
+            {/* badge competência */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid #e5e7eb",
+                background: "#f8fafc",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={{ border: "none", background: "transparent" }}>
+                {monthOptions().map((m) => (
+                  <option key={m.v} value={m.v}>{m.t}</option>
+                ))}
+              </select>
 
-            <input
-              type="number"
-              value={ano}
-              onChange={(e) => setAno(Number(e.target.value))}
-              style={{ width: 90 }}
-            />
+              <input
+                type="number"
+                value={ano}
+                onChange={(e) => setAno(Number(e.target.value))}
+                style={{ width: 84, border: "none", background: "transparent", fontWeight: 600 }}
+              />
+            </span>
 
             <button onClick={load} disabled={loading}>Atualizar</button>
 
-            {data?.aliquotaUsada && (
-              <span style={{ opacity: 0.85 }}>
-                Alíquota usada: {data.aliquotaUsada.mes}/{data.aliquotaUsada.ano} — {(data.aliquotaUsada.percentualBp / 100).toFixed(2)}%
-                {" · "}Pagamentos considerados: {data.pagamentosConsiderados.mes}/{data.pagamentosConsiderados.ano}
-              </span>
-            )}
+            {/* Alíquota: [alíquota] — [mês corrente] (fallback: mês corrente -1) */}
+            <span style={{ opacity: 0.85 }}>
+              {(() => {
+                const compMes = mes;
+                const compAno = ano;
+                const mesBase = compMes === 1 ? 12 : compMes - 1;
+                const anoBase = compMes === 1 ? compAno - 1 : compAno;
+
+                const aliqBp = data?.aliquotaUsada?.percentualBp;
+                const aliqTxt = (Number(aliqBp || 0) / 100).toFixed(2) + "%";
+
+                // mês a exibir: se backend mandou aliquotaUsada, usa ela; senão, fallback do “mês corrente -1”
+                const mShow = data?.aliquotaUsada?.mes ?? mesBase;
+                const aShow = data?.aliquotaUsada?.ano ?? anoBase;
+
+                return (
+                  <>Alíquota: {mShow}/{aShow} — {aliqTxt}</>
+                );
+              })()}
+            </span>
           </div>
         </div>
 
