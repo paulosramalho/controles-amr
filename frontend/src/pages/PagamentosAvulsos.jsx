@@ -246,8 +246,10 @@ export default function PagamentosAvulsos() {
             <select style={input} value={form.modeloDistribuicaoId} onChange={(e) => setForm((f) => ({ ...f, modeloDistribuicaoId: e.target.value }))}>
               <option value="">—</option>
               {modelos.map((m) => (
-                <option key={m.id} value={m.id}>{m.nome}</option>
-              ))}
+                <option key={m.id} value={m.id}>
+                 {m.codigo ? `${m.codigo} — ${m.descricao || ""}` : (m.descricao || `Modelo #${m.id}`)}
+               </option>
+             ))}
             </select>
           </div>
 
