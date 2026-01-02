@@ -178,48 +178,37 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio")
 
-{console.log("ROW DEBUG:", {
-  parcelaStatus: l.parcelaStatus,
-  status: l.status,
-  vencimento: l.vencimento,
-  bg: rowBgByStatus(
-    l.parcelaStatus || l.status,
-    l.vencimento || l.parcelaVencimento || l.dataVencimento
-  )
-})}
+                  // DEBUG seguro (não quebra JSX)
+                  if (import.meta?.env?.DEV) {
+                    console.log("ROW DEBUG:", {
+                    parcelaId: l.parcelaId,
+                    parcelaStatus: l.parcelaStatus,
+                    status: l.status,
+                    vencimento:
+                      l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt,
+                    bg,
+                  });
+                }
 
+                return (
+                  <tr key={l.parcelaId} style={{ background: bg }}>
+                  <td style={td}>{l.numeroContrato || `#${l.contratoId}`}</td>
+                  <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
+                  <td style={tdNum}>{money(l.valorBruto)}</td>
+                  <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
+                  <td style={tdNum}>{money(l.imposto)}</td>
+                  <td style={tdNum}>{money(l.liquido)}</td>
 
-                  return (
-                    <tr key={l.parcelaId}>
-                      <td style={td(bg)}>{l.numeroContrato}</td>
-                      <td style={td(bg)}>{l.clienteNome}</td>
-                      <td style={tdNum(bg)}>{money(l.valorBruto)}</td>
-                      style={{
-                        background: rowBgByStatus(
-                          l.parcelaStatus || l.status,
-                          // tenta pegar vencimento com vários nomes possíveis (sem quebrar nada)
-                          l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt
-                        ),
-                      }}
-                    >
-                      <td style={td}>
-                        {l.numeroContrato || `#${l.contratoId}`}
-                      </td>
-                      <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
-                      <td style={tdNum}>{money(l.valorBruto)}</td>
-                      <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
-                      <td style={tdNum}>{money(l.imposto)}</td>
-                      <td style={tdNum}>{money(l.liquido)}</td>
+                  {advogadoCols.map((c) => (
+                    <td key={c.id} style={tdNum}>{money(advMap.get(c.id) || 0)}</td>
+                  ))}
 
-                      {advogadoCols.map((c) => (
-                        <td key={c.id} style={tdNum}>{money(advMap.get(c.id) || 0)}</td>
-                      ))}
+                  <td style={tdNum}>{money(l.escritorio)}</td>
+                  <td style={tdNum}>{money(l.fundoReserva)}</td>
+                  <td style={td}>{pend.length ? pend.join(", ") : "-"}</td>
+                </tr>
+              );
 
-                      <td style={tdNum}>{money(l.escritorio)}</td>
-                      <td style={tdNum}>{money(l.fundoReserva)}</td>
-                      <td style={td}>{pend.length ? pend.join(", ") : "-"}</td>
-                    </tr>
-                  );
                 })}
 
                 {totalsRow && (
@@ -280,28 +269,28 @@ const tdNum = (bg) => ({
 function rowBgByStatus(status, vencimento) {
   const s = String(status || "").trim().toUpperCase();
 
-  // ✅ PAGA / RECEBIDA => 🟩
+  // 🟩 PAGA / RECEBIDA
   if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#E9F8EE";
 
-  // ✅ CANCELADA => neutro
+  // neutro
   if (s === "CANCELADA") return "#F3F4F6";
 
-  // ✅ ATRASADA (ou vencida) => 🟥
+  // 🟥 ATRASADA / VENCIDA
   if (["ATRASADA", "VENCIDA", "OVERDUE"].includes(s)) return "#FDECEC";
 
-  // ✅ PREVISTA / PENDENTE => 🟦 ou 🟥 conforme vencimento
+  // 🟦 PREVISTA / PENDENTE (vira 🟥 se venceu pelo vencimento)
   if (["PREVISTA", "PENDENTE", "ABERTA"].includes(s)) {
     const dt = parseBRDate(vencimento);
     if (dt) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       dt.setHours(0, 0, 0, 0);
-      if (dt < today) return "#FDECEC"; // venceu => 🟥
+      if (dt < today) return "#FDECEC"; // venceu
     }
-    return "#EAF2FF"; // ainda não venceu => 🟦
+    return "#EAF2FF"; // não venceu
   }
 
-  // fallback
+  // fallback (tratamos como pendente)
   return "#EAF2FF";
 }
 
