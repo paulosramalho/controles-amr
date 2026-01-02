@@ -166,14 +166,35 @@ export default function RepassesPage({ user }) {
 
               <tbody>
                 {data.linhas.map((l) => {
+
+                  const bg = rowBgByStatus(
+                    l.parcelaStatus || l.status,
+                    l.vencimento || l.parcelaVencimento || l.dataVencimento
+                  );
+
                   const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
                   const pend = [];
                   if (l.pendencias?.modeloAusente) pend.push("Modelo");
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
-                  if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
+                  if (l.pendencias?.splitExcedido) pend.push("Split>Socio")
+
                   return (
-                    <tr
-                      key={l.parcelaId}
+
+{console.log("ROW DEBUG:", {
+  parcelaStatus: l.parcelaStatus,
+  status: l.status,
+  vencimento: l.vencimento,
+  bg: rowBgByStatus(
+    l.parcelaStatus || l.status,
+    l.vencimento || l.parcelaVencimento || l.dataVencimento
+  )
+})}
+
+
+                    <tr key={l.parcelaId}>
+                      <td style={td(bg)}>{l.numeroContrato}</td>
+                      <td style={td(bg)}>{l.clienteNome}</td>
+                      <td style={tdNum(bg)}>{money(l.valorBruto)}</td>
                       style={{
                         background: rowBgByStatus(
                           l.parcelaStatus || l.status,
@@ -244,8 +265,18 @@ const card = {
 };
 
 const th = { textAlign: "left", padding: "10px 8px", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
-const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "nowrap" };
-const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+const td = (bg) => ({
+  padding: "10px 8px",
+  borderBottom: "1px solid #eee",
+  whiteSpace: "nowrap",
+  background: bg,
+});
+
+const tdNum = (bg) => ({
+  ...td(bg),
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+});
 
 function rowBgByStatus(status, vencimento) {
   const s = String(status || "").trim().toUpperCase();
@@ -268,11 +299,11 @@ function rowBgByStatus(status, vencimento) {
       dt.setHours(0, 0, 0, 0);
       if (dt < today) return "#FDECEC"; // venceu => 🟥
     }
-    return "#FFF1CC"; // ainda não venceu => 🟦
+    return "#EAF2FF"; // ainda não venceu => 🟦
   }
 
   // fallback
-  return "#FFF1CC";
+  return "#EAF2FF";
 }
 
 function parseBRDate(v) {
