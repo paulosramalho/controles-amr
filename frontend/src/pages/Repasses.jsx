@@ -65,59 +65,74 @@ export default function RepassesPage({ user }) {
         <div style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: "22px" }}>Repasses</h2>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ opacity: 0.8 }}>Competência:</span>
+          {/* Direita: Competência + Alíquota (badge) */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            {/* Competência (select + ano) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ opacity: 0.8 }}>Competência:</span>
 
-            {/* badge competência */}
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "1px solid #e5e7eb",
-                background: "#f8fafc",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={{ border: "none", background: "transparent" }}>
-                {monthOptions().map((m) => (
-                  <option key={m.v} value={m.v}>{m.t}</option>
-                ))}
-              </select>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  background: "#f8fafc",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={{ border: "none", background: "transparent" }}>
+                  {monthOptions().map((m) => (
+                    <option key={m.v} value={m.v}>{m.t}</option>
+                  ))}
+                </select>
 
-              <input
-                type="number"
-                value={ano}
-                onChange={(e) => setAno(Number(e.target.value))}
-                style={{ width: 84, border: "none", background: "transparent", fontWeight: 600 }}
-              />
-            </span>
+                <input
+                  type="number"
+                  value={ano}
+                  onChange={(e) => setAno(Number(e.target.value))}
+                  style={{ width: 84, border: "none", background: "transparent", fontWeight: 600 }}
+                />
+              </span>
+            </div>
+
+            {/* Alíquota (badge) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ opacity: 0.8, fontWeight: 600 }}>Alíquota</span>
+
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  background: "#f1f5f9",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {(() => {
+                  const compMes = mes;
+                  const compAno = ano;
+                  const mesBase = compMes === 1 ? 12 : compMes - 1;
+                  const anoBase = compMes === 1 ? compAno - 1 : compAno;
+    
+                  const aliqBp = data?.aliquotaUsada?.percentualBp;
+                  const aliqTxt = (Number(aliqBp || 0) / 100).toFixed(2) + "%";
+
+                  const mRef = data?.aliquotaUsada?.mes ?? mesBase;
+                  const aRef = data?.aliquotaUsada?.ano ?? anoBase;
+
+                  return `${aliqTxt} — ${mRef}/${aRef}`;
+                })()}
+              </span>
+            </div>
           </div>
 
-          {/* Alíquota (direita) — em strong */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <strong style={{ fontSize: 13, opacity: 0.9 }}>
-              {(() => {
-                const compMes = mes;
-                const compAno = ano;
-                const mesBase = compMes === 1 ? 12 : compMes - 1;
-                const anoBase = compMes === 1 ? compAno - 1 : compAno;
-
-                const aliqBp = data?.aliquotaUsada?.percentualBp;
-                const aliqTxt = (Number(aliqBp || 0) / 100).toFixed(2) + "%";
-
-                // referência: se backend mandou, usa; senão fallback mês anterior à competência
-                const mRef = data?.aliquotaUsada?.mes ?? mesBase;
-                const aRef = data?.aliquotaUsada?.ano ?? anoBase;
-
-                // ✅ invertido: alíquota — referência
-                return `${aliqTxt} — ${mRef}/${aRef}`;
-              })()}
-            </strong>
-          </div>
         </div>
 
         {/* erro dentro do card */}
@@ -157,7 +172,7 @@ export default function RepassesPage({ user }) {
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
                   return (
-                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus) }}>
+                    <tr key={l.parcelaId} style={{ background: rowBgByStatus(l.parcelaStatus || l.status) }}>
                       <td style={td}>
                         {l.numeroContrato || `#${l.contratoId}`}
                       </td>
@@ -224,9 +239,14 @@ const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "n
 const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
 function rowBgByStatus(status) {
-  if (status === "PAGA") return "#E9F8EE";      // 🟩 leve
-  if (status === "ATRASADA") return "#FDECEC";  // 🟥 leve
-  return "#EAF2FF";                             // 🟦 leve (PENDENTE)
+  const s = String(status || "").toUpperCase();
+
+  // aceita variações comuns
+  if (s === "PAGA" || s === "RECEBIDA" || s === "PAGO" || s === "RECEBIDO") return "#E9F8EE";      // 🟩
+  if (s === "ATRASADA" || s === "ATRASADO" || s === "VENCIDA" || s === "VENCIDO") return "#FDECEC"; // 🟥
+
+  // pendente / prevista / em aberto
+  return "#EAF2FF"; // 🟦
 }
 
 // helper simples (pode ficar perto do money())
