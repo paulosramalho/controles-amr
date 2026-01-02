@@ -2826,6 +2826,170 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
   }
 });
 
+// =========================
+// PAGAMENTOS AVULSOS (admin-only)
+// Opção A: vira ContratoPagamento especial + 1 Parcela RECEBIDA
+// numeroContrato: AV-AAAAMMDDSSS (ex.: AV-20260101001)
+// =========================
+app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const {
+      clienteId,
+      descricao,
+      dataRecebimento,
+      valorRecebido,
+      meioRecebimento,
+      modeloDistribuicaoId,
+      advogadoPrincipalId,
+      usaSplitSocio,
+      splits,
+    } = req.body || {};
+
+    if (!clienteId) return res.status(400).json({ message: "Selecione o Cliente." });
+
+    const desc = String(descricao || "").trim();
+    if (!desc) return res.status(400).json({ message: "Informe a descrição do pagamento." });
+
+    const dt = parseDateInput(dataRecebimento);
+    if (!dt) return res.status(400).json({ message: "Data inválida. Use DD/MM/AAAA." });
+
+    const cents = moneyToCents(valorRecebido);
+    if (cents === null || cents <= 0n) return res.status(400).json({ message: "Informe um valor válido." });
+
+    const modeloId = modeloDistribuicaoId ? Number(modeloDistribuicaoId) : null;
+    if (!modeloId) return res.status(400).json({ message: "Selecione o Modelo de Distribuição." });
+
+    const advId = advogadoPrincipalId ? Number(advogadoPrincipalId) : null;
+    const usaSplit = Boolean(usaSplitSocio);
+
+    // sem split => exige advogado
+    if (!usaSplit) {
+      if (!Number.isFinite(advId)) return res.status(400).json({ message: "Selecione o Advogado (sem split)." });
+    }
+
+    // valida modelo + %SOCIO (para validar splits)
+    const modelo = await prisma.modeloDistribuicao.findUnique({
+      where: { id: modeloId },
+      include: { itens: true },
+    });
+    if (!modelo) return res.status(400).json({ message: "Modelo de distribuição não encontrado." });
+
+    const itemSocio = (modelo.itens || []).find((it) => it.destinatario === "SOCIO");
+    let socioBp = itemSocio ? Number(itemSocio.percentualBp) : 0;
+    if (!Number.isFinite(socioBp)) socioBp = 0;
+
+    const splitsArr = Array.isArray(splits) ? splits : [];
+    const normalizedSplits = splitsArr
+      .map((s) => ({
+        advogadoId: Number(s?.advogadoId),
+        percentualBp: percentToBp(s?.percentual),
+      }))
+      .filter((s) => Number.isFinite(s.advogadoId) && Number.isFinite(s.percentualBp) && s.percentualBp > 0);
+
+    if (usaSplit) {
+      if (normalizedSplits.length < 2) {
+        return res.status(400).json({ message: "Split ativado: informe ao menos 2 advogados com percentual." });
+      }
+      const somaBp = normalizedSplits.reduce((acc, s) => acc + s.percentualBp, 0);
+      if (somaBp > socioBp) {
+        return res.status(400).json({
+          message: `Split excede o percentual do SOCIO no modelo. Soma: ${somaBp} bp; SOCIO: ${socioBp} bp.`,
+        });
+      }
+    }
+
+    // numeroContrato: AV-AAAAMMDDSSS
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const pad3 = (n) => String(n).padStart(3, "0");
+    const yyyymmdd = `${dt.getFullYear()}${pad2(dt.getMonth() + 1)}${pad2(dt.getDate())}`;
+    const prefix = `AV-${yyyymmdd}`;
+
+    const sameDayCount = await prisma.contratoPagamento.count({
+      where: { numeroContrato: { startsWith: prefix } },
+    });
+    const seq = pad3(sameDayCount + 1);
+    const numeroContrato = `${prefix}${seq}`;
+
+    // meioRecebimento (enum do Prisma) – se vier inválido, salva null
+    const meio = (meioRecebimento || "").toString().trim().toUpperCase();
+    const meioOk = ["PIX", "TED", "BOLETO", "CARTAO", "DINHEIRO", "OUTRO"].includes(meio) ? meio : null;
+
+    const created = await prisma.$transaction(async (tx) => {
+      // cria contrato especial
+      const contrato = await tx.contratoPagamento.create({
+        data: {
+          clienteId: Number(clienteId),
+          numeroContrato,
+          valorTotal: centsToDecimalString(cents),
+          formaPagamento: "AVISTA",
+          observacoes: desc,
+          modeloDistribuicaoId: modeloId,
+          usaSplitSocio: usaSplit,
+          repasseAdvogadoPrincipalId: usaSplit ? null : advId,
+        },
+      });
+
+      // cria parcela RECEBIDA (entra em repasse M -> M+1 via dataRecebimento)
+      const parcela = await tx.parcelaContrato.create({
+        data: {
+          contratoId: contrato.id,
+          numero: 1,
+          vencimento: dt,
+          valorPrevisto: centsToDecimalString(cents),
+          status: "RECEBIDA",
+          dataRecebimento: dt,
+          valorRecebido: centsToDecimalString(cents),
+          meioRecebimento: meioOk,
+          modeloDistribuicaoId: modeloId,
+        },
+      });
+
+      // split ON: grava também no contrato + na parcela
+      if (usaSplit) {
+        await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId: contrato.id } });
+        await tx.contratoRepasseSplitAdvogado.createMany({
+          data: normalizedSplits.map((s) => ({
+            contratoId: contrato.id,
+            advogadoId: s.advogadoId,
+            percentualBp: s.percentualBp,
+          })),
+        });
+
+        await tx.parcelaSplitAdvogado.createMany({
+          data: normalizedSplits.map((s) => ({
+            parcelaId: parcela.id,
+            advogadoId: s.advogadoId,
+            percentualBp: s.percentualBp,
+          })),
+        });
+      } else {
+        // split OFF: garante limpo
+        await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId: contrato.id } });
+        await tx.parcelaSplitAdvogado.deleteMany({ where: { parcelaId: parcela.id } });
+      }
+
+      return tx.contratoPagamento.findUnique({
+        where: { id: contrato.id },
+        include: {
+          cliente: true,
+          parcelas: {
+            orderBy: { numero: "asc" },
+            include: { splitsAdvogados: { include: { advogado: true } } },
+          },
+          repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
+          repasseSplits: { include: { advogado: true }, orderBy: { id: "asc" } },
+          modeloDistribuicao: true,
+        },
+      });
+    });
+
+    return res.status(201).json(created);
+  } catch (err) {
+    console.error("Erro ao criar pagamento avulso (opção A):", err);
+    return res.status(500).json({ message: "Erro ao criar pagamento avulso." });
+  }
+});
+
 // =====================
 // ADMIN-ONLY: EDIÇÃO (restrita) e RETIFICAÇÃO (auditável)
 // Decisão do projeto:
