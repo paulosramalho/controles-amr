@@ -60,6 +60,8 @@ export default function RepassesPage({ user }) {
   return (
     <div style={{ padding: 16 }}>
       <div style={card}>
+
+        {/* HEADER */}
         <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Repasses</h2>
 
@@ -88,31 +90,25 @@ export default function RepassesPage({ user }) {
               </span>
             )}
           </div>
-        </div>
-
-        {/* erro dentro do card */}
-        {err && (
-          <div style={{ margin: "0 12px 12px", padding: 10, background: "#fee", border: "1px solid #f99", borderRadius: 8 }}>
-        {err}
-      </div>
-    )}
-
-    {/* conteúdo (tabela) dentro do mesmo card */}
-    <div style={{ padding: "0 12px 12px" }}>
-      {loading && <div>Carregando…</div>}
-
-      {!loading && data?.linhas && (
-        <div style={{ overflowX: "auto", border: "1px solid #ddd", borderRadius: 8 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-            {/* ... mantém todo o seu <thead> e <tbody> exatamente como está hoje ... */}
-
+          {/* erro dentro do card */}
           {err && (
-            <div style={{ marginTop: 12, padding: 10, background: "#fee", border: "1px solid #f99" }}>
+            <div style={{ margin: "0 12px 12px", padding: 10, background: "#fee", border: "1px solid #f99", borderRadius: 8 }}>
           {err}
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
+      {/* conteúdo (tabela) dentro do mesmo card */}
+      <div style={{ padding: "0 12px 12px" }}>
+        {loading && <div>Carregando…</div>}
+
+        {!loading && data?.linhas && (
+          <div style={{ overflowX: "auto", border: "1px solid #ddd", borderRadius: 8 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+            {/* ... mantém todo o seu <thead> e <tbody> exatamente como está hoje ... */}
+          </div>
+        )}
+
+        <div style={{ marginTop: 12 }}>
         {loading && <div>Carregando…</div>}
 
         {!loading && data?.linhas && (
@@ -193,10 +189,10 @@ export default function RepassesPage({ user }) {
           </div>
         )}
       </div>
+
     </div>
   </div>
 );
-}
 
 const card = {
   border: "1px solid #ddd",
