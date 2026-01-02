@@ -90,14 +90,15 @@ export default function RepassesPage({ user }) {
               </span>
             )}
           </div>
-          {/* erro dentro do card */}
-          {err && (
-            <div style={{ margin: "0 12px 12px", padding: 10, background: "#fee", border: "1px solid #f99", borderRadius: 8 }}>
-          {err}
         </div>
-      )}
 
-        <div style={{ marginTop: 12 }}>
+        {/* erro dentro do card */}
+        {err && (
+          <div style={{ margin: "0 12px 12px", padding: 10, background: "#fee", border: "1px solid #f99", borderRadius: 8 }}>
+            {err}
+          </div>
+        )}
+        <div style={{ padding: "0 12px 12px" }}>
         {loading && <div>Carregando…</div>}
 
         {!loading && data?.linhas && (
@@ -178,10 +179,9 @@ export default function RepassesPage({ user }) {
           </div>
         )}
       </div>
-
     </div>
-  </div>
-);
+  );
+}
 
 const card = {
   border: "1px solid #ddd",
