@@ -1175,30 +1175,26 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
 
     // Montar linhas
     const linhas = parcelas.map((p) => {
- 
-    // ✅ DENTRO do seu:  const linhas = parcelas.map((p) => { ... })
-    // Trocar o começo do map (as primeiras linhas do cálculo) por isto:
+      // --- RECEBIDA no mês-base? (usa valorRecebido; senão usa valorPrevisto)
+      const recebidaNoMesBase =
+        p.valorRecebido != null &&
+        p.dataRecebimento &&
+        p.dataRecebimento >= baseStart &&
+        p.dataRecebimento < baseEnd;
 
-    const hoje = new Date();
-
-    const recebidaNoMesBase =
-      p.valorRecebido != null &&
-      p.dataRecebimento &&
-      p.dataRecebimento >= baseStart &&
-      p.dataRecebimento < baseEnd;
-
-      const valorBase = recebidaNoMesBase
-        ? p.valorRecebido
-        : (p.valorPrevisto != null ? p.valorPrevisto : 0);
-
-      // ⚠️ mantém isso
+      const valorBase = recebidaNoMesBase ? p.valorRecebido : (p.valorPrevisto ?? 0);
       const valorBrutoCent = toCents(valorBase);
 
-      // --- status visual correto
-      const parcelaStatus = recebidaNoMesBase
-        ? "PAGA"
-        : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PENDENTE");
+      // --- status visual (independe do campo status do banco)
+      // regras:
+      // - se tem valorRecebido OU dataRecebimento => RECEBIDA (🟩)
+      // - senão, se vencimento < hoje => ATRASADA (🟥)
+      // - senão => PREVISTA (🟦)
+      const isRecebida = (p.valorRecebido != null) || (p.dataRecebimento != null);
 
+      const parcelaStatus = isRecebida
+        ? "RECEBIDA"
+        : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PREVISTA");
 
       const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
       const liquidoCent = valorBrutoCent - impostoCent;
