@@ -248,34 +248,30 @@ const td = { padding: "10px 8px", borderBottom: "1px solid #eee", whiteSpace: "n
 const tdNum = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
 function rowBgByStatus(status, vencimento) {
-  const s = String(status || "").toUpperCase();
+  const s = String(status || "").trim().toUpperCase();
 
-    // normaliza variações (backend pode mandar PAGA/PENDENTE/ATRASADA)
-  if (s === "PAGA") return "#E9F8EE";
-  if (s === "PENDENTE") return "#EAF2FF";
+  // ✅ PAGA / RECEBIDA => 🟩
+  if (["PAGA", "RECEBIDA", "PAGO", "RECEBIDO"].includes(s)) return "#E9F8EE";
 
-  // RECEBIDA => 🟩
-  if (s === "RECEBIDA") return "#E9F8EE";
-
-  // ATRASADA => 🟥
-  if (s === "ATRASADA") return "#FDECEC";
-
-  // CANCELADA neutra
+  // ✅ CANCELADA => neutro
   if (s === "CANCELADA") return "#F3F4F6";
 
-  // PREVISTA: decide 🟦 ou 🟥 conforme vencimento vs hoje
-  if (s === "PREVISTA") {
+  // ✅ ATRASADA (ou vencida) => 🟥
+  if (["ATRASADA", "VENCIDA", "OVERDUE"].includes(s)) return "#FDECEC";
+
+  // ✅ PREVISTA / PENDENTE => 🟦 ou 🟥 conforme vencimento
+  if (["PREVISTA", "PENDENTE", "ABERTA"].includes(s)) {
     const dt = parseBRDate(vencimento);
     if (dt) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       dt.setHours(0, 0, 0, 0);
-      if (dt < today) return "#FDECEC"; // vencida => 🟥
+      if (dt < today) return "#FDECEC"; // venceu => 🟥
     }
     return "#EAF2FF"; // ainda não venceu => 🟦
   }
 
-  // fallback (qualquer coisa desconhecida)
+  // fallback
   return "#EAF2FF";
 }
 
