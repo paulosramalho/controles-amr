@@ -1132,12 +1132,11 @@ const totalRecebido = useMemo(() => {
                 {repasseEditMode && (
                   <button
                     type="button"
-                    onClick={addRepasseSplit}
+                    onClick={repasseAddSplitRow}
                   >
                     + Adicionar advogado
                   </button>
                 )}
-
               </div>
 
               {(repasseSplits || []).map((row, idx) => (
@@ -1148,6 +1147,7 @@ const totalRecebido = useMemo(() => {
                   <select
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     value={row.advogadoId ?? ""}
+                    disabled={!repasseEditMode}
                     onChange={(e) =>
                       repasseUpdateSplit(idx, { advogadoId: e.target.value ? Number(e.target.value) : "" })
                     }
@@ -1157,7 +1157,6 @@ const totalRecebido = useMemo(() => {
                       <option key={a.id} value={a.id}>{a.nome}</option>
                     ))}
                   </select>
-
                   <input
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     inputMode="numeric"
