@@ -255,6 +255,16 @@ function percentStringToBp(s) {
   return Math.round(n * 100); // 10.00 => 1000
 }
 
+// Máscara de % igual à usada em Pagamentos Avulsos:
+// recebe "2000" => "20,00"
+function percentMask(value) {
+  const d = onlyDigits(value);
+  if (!d) return "";
+  const n = Number(d) / 100;
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /* =========================
    Page
 ========================= */
@@ -305,6 +315,9 @@ export default function ContratoPage({ user }) {
   const [modelosDistribuicao, setModelosDistribuicao] = useState([]);
   const [advogadosDisponiveis, setAdvogadosDisponiveis] = useState([]);
 
+  // cache de itens por modelo (porque /modelo-distribuicao pode vir sem itens)
+  const [itensByModeloId, setItensByModeloId] = useState({});
+
   const [repasseModeloId, setRepasseModeloId] = useState(null);
   const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
   const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
@@ -315,6 +328,37 @@ export default function ContratoPage({ user }) {
   const [repasseSaving, setRepasseSaving] = useState(false);
   const [repasseError, setRepasseError] = useState(null);
   const [repasseOk, setRepasseOk] = useState(null);
+
+// %SOCIO do modelo selecionado (em bp)
+const repasseSocioBp = useMemo(() => {
+  if (!repasseModeloId) return 0;
+  const idNum = Number(repasseModeloId);
+  const itens = itensByModeloId[idNum] || [];
+  if (!Array.isArray(itens) || !itens.length) return 0;
+
+  // tenta nos 3 campos possíveis (mesma lógica do Avulso)
+  const itemSocio = itens.find((it) => {
+    const a = String(it.destinoTipo || "").toUpperCase();
+    const b = String(it.destinatario || "").toUpperCase();
+    const c = String(it.destino || "").toUpperCase();
+    return a === "SOCIO" || b === "SOCIO" || c === "SOCIO";
+  });
+
+  const bp = itemSocio ? Number(itemSocio.percentualBp) : 0;
+  return Number.isFinite(bp) ? bp : 0;
+}, [repasseModeloId, itensByModeloId]);
+
+// soma dos splits do repasse (em bp) — usa percentualBp já calculado
+const repasseSomaSplitsBp = useMemo(() => {
+  if (!repasseUsaSplit) return 0;
+  return (repasseSplits || []).reduce((acc, r) => {
+    const bp = Number(r?.percentualBp);
+    if (!Number.isFinite(bp) || bp <= 0) return acc;
+    return acc + bp;
+  }, 0);
+}, [repasseUsaSplit, repasseSplits]);
+
+const repasseSplitExcede = repasseUsaSplit && repasseSomaSplitsBp > repasseSocioBp;
 
   async function load() {
     try {
@@ -566,6 +610,24 @@ useEffect(() => {
     }
   })();
 }, []);
+
+// quando escolhe um modelo no REPASSE, busca os itens dele (1x) para calcular SOCIO corretamente
+useEffect(() => {
+  (async () => {
+    try {
+      const idNum = repasseModeloId ? Number(repasseModeloId) : null;
+      if (!idNum) return;
+      if (itensByModeloId[idNum]) return; // já cacheado
+
+      const itens = await apiFetch(`/modelo-distribuicao/${idNum}/itens`);
+      setItensByModeloId((m) => ({ ...m, [idNum]: Array.isArray(itens) ? itens : [] }));
+    } catch (e) {
+      console.error(e);
+      // não quebra UI; deixa socioBp = 0 até conseguir carregar
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [repasseModeloId]);
 
 // Quando o contrato carregar/atualizar, popula o card
 useEffect(() => {
@@ -958,128 +1020,166 @@ const totalRecebido = useMemo(() => {
              CARD — REPASSE
       ========================= */}
       <Card title="Repasse">
-        <div className="card">        
-          {/* REPASSE — conteúdo do card (sem título/descrição) */}
-          <div className="row" style={{ gap: 12, alignItems: "center" }}>
-            <div style={{ flex: 1 }}>
-              <label>Modelo de Distribuição</label>
-              <select
-                value={repasseModeloId ?? ""}
-                onChange={(e) => setRepasseModeloId(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">Selecione...</option>
-                {modelosDistribuicao.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {(m.codigo || m.cod)} — {m.descricao}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div style={{ minWidth: 160 }}>
-              <label>Split ?</label>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={repasseUsaSplit}
-                  onChange={(e) => setRepasseUsaSplit(e.target.checked)}
-                />
-              </div>
-            </div>
-          </div>
-          {!repasseUsaSplit && (
-            <div style={{ marginTop: 12 }}>
-              <label>Advogado Principal</label>
-              <select
-                value={repasseAdvPrincipalId ?? ""}
-                onChange={(e) => setRepasseAdvPrincipalId(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">Selecione...</option>
-                {advogadosDisponiveis.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {repasseUsaSplit && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-                <button type="button" onClick={repasseAddSplitRow}>
-                  + Adicionar advogado
-                </button>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <table style={{ width: "100%" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left" }}>Advogado</th>
-                      <th style={{ textAlign: "left", width: 160 }}>%</th>
-                      <th style={{ width: 90 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {repasseSplits.map((row, idx) => (
-                      <tr key={idx}>
-                        <td>
-                          <select
-                            value={row.advogadoId ?? ""}
-                            onChange={(e) =>
-                              repasseUpdateSplit(idx, { advogadoId: e.target.value ? Number(e.target.value) : "" })
-                            }
-                          >
-                            <option value="">Selecione...</option>
-                            {advogadosDisponiveis.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.nome}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="10,00"
-                            value={repasseSplitDraft[idx] ?? bpToPercentString(row.percentualBp)}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setRepasseSplitDraft((prev) => ({ ...prev, [idx]: v }));
-                            }}
-                            onBlur={() => {
-                              const raw = repasseSplitDraft[idx];
-                              if (raw == null) return;
-                              repasseUpdateSplit(idx, { percentualBp: percentStringToBp(raw) });
-                              setRepasseSplitDraft((prev) => {
-                                const next = { ...prev };
-                                delete next[idx];
-                                return next;
-                              });
-                            }}
-                          />
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <button type="button" onClick={() => repasseRemoveSplitRow(idx)}>
-                            Remover
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+        <Card title="Repasse">
+  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    {/* linha Modelo + Split */}
+    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, alignItems: "end" }}>
+      <div>
+        <label className="text-xs text-slate-600">Modelo de Distribuição</label>
+        <select
+          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={repasseModeloId ?? ""}
+          onChange={(e) => {
+            const v = e.target.value ? Number(e.target.value) : null;
+            setRepasseModeloId(v);
 
-          {repasseError && <div style={{ marginTop: 12, color: "crimson" }}>{repasseError}</div>}
-          {repasseOk && <div style={{ marginTop: 12, color: "green" }}>{repasseOk}</div>}
+            // ao trocar modelo, também zera splits/draft para evitar validação “fantasma”
+            setRepasseSplits([]);
+            setRepasseSplitDraft({});
+            if (!repasseUsaSplit) setRepasseAdvPrincipalId(null);
+          }}
+        >
+          <option value="">— Selecione —</option>
+          {modelosDistribuicao.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.codigo ? `${m.codigo} — ${m.descricao || ""}` : (m.descricao || `Modelo #${m.id}`)}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" onClick={salvarRepasseConfig} disabled={repasseSaving}>
-              {repasseSaving ? "Salvando..." : "Salvar"}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 18 }}>
+        <input
+          type="checkbox"
+          checked={repasseUsaSplit}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setRepasseUsaSplit(checked);
+
+            // se ativar split, limpa advogado único; se desativar, limpa tabela de splits
+            if (checked) {
+              setRepasseAdvPrincipalId(null);
+            } else {
+              setRepasseSplits([]);
+              setRepasseSplitDraft({});
+            }
+          }}
+        />
+        <span className="text-sm">Split</span>
+      </div>
+    </div>
+
+    {/* Advogado (sem split) — tirar “Principal” */}
+    {!repasseUsaSplit && (
+      <div>
+        <label className="text-xs text-slate-600">Advogado</label>
+        <select
+          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={repasseAdvPrincipalId ?? ""}
+          onChange={(e) => setRepasseAdvPrincipalId(e.target.value ? Number(e.target.value) : null)}
+        >
+          <option value="">— Selecione —</option>
+          {advogadosDisponiveis.map((a) => (
+            <option key={a.id} value={a.id}>{a.nome}</option>
+          ))}
+        </select>
+      </div>
+    )}
+
+    {/* Splits (com split) — igual Avulso */}
+    {repasseUsaSplit && (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <strong className="text-sm text-slate-900">Splits</strong>
+          <button
+            type="button"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+            onClick={repasseAddSplitRow}
+          >
+            + Adicionar advogado
+          </button>
+        </div>
+
+        {(repasseSplits || []).map((row, idx) => (
+          <div
+            key={idx}
+            style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 10, alignItems: "center" }}
+          >
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              value={row.advogadoId ?? ""}
+              onChange={(e) =>
+                repasseUpdateSplit(idx, { advogadoId: e.target.value ? Number(e.target.value) : "" })
+              }
+            >
+              <option value="">— advogado —</option>
+              {advogadosDisponiveis.map((a) => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+            </select>
+
+            <input
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              inputMode="numeric"
+              placeholder="20,00"
+              value={repasseSplitDraft[idx] ?? bpToPercentString(row.percentualBp)}
+              onChange={(e) => {
+                const masked = percentMask(e.target.value); // mesma máscara do Avulso
+                setRepasseSplitDraft((prev) => ({ ...prev, [idx]: masked }));
+
+                // já atualiza bp em tempo real para validar/disable botão sem depender do blur
+                repasseUpdateSplit(idx, { percentualBp: percentStringToBp(masked) });
+              }}
+              onBlur={() => {
+                // garante persistência final do bp (mesmo já atualizando no onChange)
+                const raw = repasseSplitDraft[idx];
+                if (raw == null) return;
+                repasseUpdateSplit(idx, { percentualBp: percentStringToBp(raw) });
+                setRepasseSplitDraft((prev) => {
+                  const next = { ...prev };
+                  delete next[idx];
+                  return next;
+                });
+              }}
+            />
+
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+              onClick={() => repasseRemoveSplitRow(idx)}
+            >
+              Remover
             </button>
           </div>
-        </div>
+        ))}
+
+        {/* validação igual Avulso */}
+        {repasseSplitExcede && (
+          <div className="text-sm" style={{ color: "#b91c1c" }}>
+            A soma dos splits ({(repasseSomaSplitsBp / 100).toFixed(2).replace(".", ",")}%)
+            excede o percentual definido no modelo aplicado ({(repasseSocioBp / 100).toFixed(2).replace(".", ",")}%).
+          </div>
+        )}
+      </div>
+    )}
+
+    {repasseError && <div style={{ color: "crimson" }}>{repasseError}</div>}
+    {repasseOk && <div style={{ color: "green" }}>{repasseOk}</div>}
+
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+      <button
+        type="button"
+        onClick={salvarRepasseConfig}
+        disabled={repasseSaving || repasseSplitExcede}
+        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        title={repasseSplitExcede ? "Ajuste os splits para não exceder o % do SÓCIO do modelo." : ""}
+      >
+        {repasseSaving ? "Salvando..." : "Salvar"}
+      </button>
+    </div>
+  </div>
+</Card>
+
       </Card>
 
       <Card
