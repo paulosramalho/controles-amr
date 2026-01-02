@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import Can from "../components/Can";
@@ -11,8 +11,6 @@ export default function PagamentosAvulsos() {
   const [modelos, setModelos] = useState([]);
   const [advogados, setAdvogados] = useState([]);
   const [clientes, setClientes] = useState([]);
-
-  const [lista, setLista] = useState([]);
 
   const [form, setForm] = useState({
     clienteId: "",
@@ -44,6 +42,22 @@ export default function PagamentosAvulsos() {
     return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
+  const isoToBR = (iso) => {
+    // "2025-12-31" -> "31/12/2025"
+    if (!iso || typeof iso !== "string") return "";
+    const [y, m, d] = iso.split("-");
+    if (!y || !m || !d) return "";
+    return `${d}/${m}/${y}`;
+  };
+
+  const brToISO = (br) => {
+    // "31/12/2025" -> "2025-12-31"
+    if (!br || typeof br !== "string") return "";
+    const [d, m, y] = br.split("/");
+    if (!y || !m || !d) return "";
+    return `${y}-${m}-${d}`;
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -52,7 +66,6 @@ export default function PagamentosAvulsos() {
           apiFetch("/modelos-distribuicao"),
           apiFetch("/advogados"),
           apiFetch("/clientes"),
-          apiFetch("/pagamentos-avulsos"),
         ]);
         setModelos(m || []);
         setAdvogados(a || []);
@@ -60,7 +73,7 @@ export default function PagamentosAvulsos() {
         setLista(l || []);
       } catch (e) {
         console.error(e);
-        alert("Erro ao carregar Pagamentos Avulsos.");
+        alert("Erro ao carregar dados de Pagamentos Avulsos.");
       } finally {
         setLoading(false);
       }
@@ -116,8 +129,13 @@ export default function PagamentosAvulsos() {
     try {
       setSaving(true);
 
+      if (!form.clienteId) {
+        alert("Selecione o Cliente.");
+        return;
+      }
+
       const payload = {
-        clienteId: form.clienteId ? Number(form.clienteId) : null,
+        clienteId: Number(form.clienteId),
         descricao: String(form.descricao || "").trim(),
         dataRecebimento: form.dataRecebimento, // backend valida DD/MM/AAAA
         valorRecebido: form.valorRecebido, // backend converte
@@ -166,7 +184,7 @@ export default function PagamentosAvulsos() {
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Pagamentos Avulsos (sem contrato)</h2>
+        <h2 style={{ margin: 0 }}>Pagamentos Avulsos</h2>
         <div style={{ display: "flex", gap: 10 }}>
           <button style={btnSec} onClick={() => navigate("/pagamentos")}>Voltar</button>
         </div>
@@ -175,9 +193,9 @@ export default function PagamentosAvulsos() {
       <div style={card}>
         <div style={grid}>
           <div>
-            <label>Cliente (opcional)</label>
+            <label>Cliente</label>
             <select style={input} value={form.clienteId} onChange={(e) => setForm((f) => ({ ...f, clienteId: e.target.value }))}>
-              <option value="">—</option>
+              <option value="">— Selecione —</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>{c.nomeRazaoSocial}</option>
               ))}
@@ -197,8 +215,13 @@ export default function PagamentosAvulsos() {
           </div>
 
           <div>
-            <label>Data do recebimento (DD/MM/AAAA)</label>
-            <input style={input} value={form.dataRecebimento} onChange={(e) => setForm((f) => ({ ...f, dataRecebimento: e.target.value }))} placeholder="31/12/2025" />
+            <label>Data do recebimento</label>
+            <input
+              type="date"
+              style={input}
+              value={brToISO(form.dataRecebimento)}
+              onChange={(e) => setForm((f) => ({ ...f, dataRecebimento: isoToBR(e.target.value) }))}
+            />
           </div>
 
           <div>
@@ -227,7 +250,7 @@ export default function PagamentosAvulsos() {
           </div>
 
           <div>
-            <label>Advogado Principal</label>
+            <label>Advogado</label>
             <select style={input} value={form.advogadoPrincipalId} onChange={(e) => setForm((f) => ({ ...f, advogadoPrincipalId: e.target.value }))}>
               <option value="">—</option>
               {advogados.map((a) => (
@@ -242,14 +265,14 @@ export default function PagamentosAvulsos() {
               checked={form.usaSplitSocio}
               onChange={(e) => setForm((f) => ({ ...f, usaSplitSocio: e.target.checked }))}
             />
-            <span>Usar split do SÓCIO</span>
+            <span>split</span>
           </div>
         </div>
 
         {form.usaSplitSocio && (
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong>Splits (sobre a cota do SÓCIO)</strong>
+              <strong>Splits</strong>
               <button style={btnSec} onClick={addSplit}>+ Adicionar advogado</button>
             </div>
 
@@ -293,26 +316,6 @@ export default function PagamentosAvulsos() {
 
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button style={btn} onClick={onSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
-        </div>
-      </div>
-
-      <div style={card}>
-        <strong>Últimos lançamentos</strong>
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {lista.map((p) => (
-            <div key={p.id} style={{ border: "1px solid #eee", borderRadius: 12, padding: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div>
-                  <div><strong>{p.descricao || "—"}</strong></div>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>
-                    {p.dataRecebimento || "—"} • {p.meioRecebimento || "—"}
-                  </div>
-                </div>
-                <div><strong>{p.valorRecebidoFmt || p.valorRecebido || "—"}</strong></div>
-              </div>
-            </div>
-          ))}
-          {!lista.length && <div style={{ opacity: 0.7 }}>Sem lançamentos ainda.</div>}
         </div>
       </div>
     </div>
