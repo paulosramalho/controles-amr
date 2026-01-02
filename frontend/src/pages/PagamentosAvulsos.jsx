@@ -13,6 +13,9 @@ export default function PagamentosAvulsos() {
   const [advogados, setAdvogados] = useState([]);
   const [clientes, setClientes] = useState([]);
 
+  // cache de itens por modelo (porque /modelo-distribuicao não vem com itens)
+  const [itensByModeloId, setItensByModeloId] = useState({});
+
   const [form, setForm] = useState({
     clienteId: "",
     descricao: "",
@@ -28,13 +31,14 @@ export default function PagamentosAvulsos() {
 // percentual do SÓCIO (em bp) do modelo selecionado
 const socioBp = useMemo(() => {
   if (!form.modeloDistribuicaoId) return 0;
-  const m = modelos.find((x) => String(x.id) === String(form.modeloDistribuicaoId));
-  if (!m || !Array.isArray(m.itens)) return 0;
+  const id = Number(form.modeloDistribuicaoId);
+  const itens = itensByModeloId[id] || [];
+  if (!Array.isArray(itens) || !itens.length) return 0;
 
-  const itemSocio = m.itens.find((it) => it.destinatario === "SOCIO");
+  const itemSocio = itens.find((it) => String(it.destinatario || "").toUpperCase() === "SOCIO");
   const bp = itemSocio ? Number(itemSocio.percentualBp) : 0;
   return Number.isFinite(bp) ? bp : 0;
-}, [form.modeloDistribuicaoId, modelos]);
+}, [form.modeloDistribuicaoId, itensByModeloId]);
 
 // soma dos splits (em bp)
 const somaSplitsBp = useMemo(() => {
@@ -105,6 +109,24 @@ const somaSplitsBp = useMemo(() => {
       }
     })();
   }, []);
+  
+  // quando escolhe um modelo, busca os itens dele (1x) para calcular SOCIO corretamente
+  useEffect(() => {
+    (async () => {
+      try {
+        const id = form.modeloDistribuicaoId ? Number(form.modeloDistribuicaoId) : null;
+        if (!id) return;
+        if (itensByModeloId[id]) return; // já tenho cache
+
+        const itens = await apiFetch(`/modelo-distribuicao/${id}/itens`);
+        setItensByModeloId((m) => ({ ...m, [id]: Array.isArray(itens) ? itens : [] }));
+      } catch (e) {
+        console.error(e);
+        // não trava a tela; só deixa socioBp = 0 até conseguir carregar
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.modeloDistribuicaoId]);
 
   const btn = {
     padding: "10px 12px",
