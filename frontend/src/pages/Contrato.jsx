@@ -1288,10 +1288,10 @@ const totalRecebido = useMemo(() => {
         </div>
       )}
 
-{/* Indicação (quando o modelo exigir INDICACAO) */}
+      {/* Indicação (quando o modelo exigir INDICACAO) */}
       {repasseExigeIndicacao && (
         <div>
-          <label className="text-xs text-slate-600">Indicação</label>
+          <label className="text-xs text-slate-600"><strong>Indicação</strong></label>
           <select
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
             value={repasseIndicacaoAdvogadoId ?? ""}
