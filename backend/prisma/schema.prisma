@@ -71,6 +71,7 @@ model ContratoPagamento {
   formaPagamento             FormaPagamentoContrato
   observacoes                String?
   ativo                      Boolean                        @default(true)
+  isentoTributacao           Boolean                        @default(false)
   contratoOrigemId           Int?
   renegociadoEm              DateTime?
   renegociadoParaId          Int?
