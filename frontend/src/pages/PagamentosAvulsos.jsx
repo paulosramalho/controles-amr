@@ -22,6 +22,7 @@ export default function PagamentosAvulsos() {
     dataRecebimento: "", // DD/MM/AAAA
     valorRecebido: "", // máscara R$
     meioRecebimento: "PIX",
+    isentoTributacao: false,
     modeloDistribuicaoId: "",
     advogadoPrincipalId: "",
     usaSplitSocio: false,
@@ -194,6 +195,7 @@ const somaSplitsBp = useMemo(() => {
         dataRecebimento: form.dataRecebimento, // backend valida DD/MM/AAAA
         valorRecebido: form.valorRecebido, // backend converte
         meioRecebimento: form.meioRecebimento,
+        isentoTributacao: !!form.isentoTributacao,
         modeloDistribuicaoId: form.modeloDistribuicaoId ? Number(form.modeloDistribuicaoId) : null,
         advogadoPrincipalId: form.advogadoPrincipalId ? Number(form.advogadoPrincipalId) : null,
         usaSplitSocio: !!form.usaSplitSocio,
@@ -218,6 +220,7 @@ const somaSplitsBp = useMemo(() => {
         dataRecebimento: "",
         valorRecebido: "",
         meioRecebimento: "PIX",
+        isentoTributacao: false,
         modeloDistribuicaoId: "",
         advogadoPrincipalId: "",
         usaSplitSocio: false,
@@ -268,6 +271,16 @@ const somaSplitsBp = useMemo(() => {
               <option value="DINHEIRO">DINHEIRO</option>
               <option value="OUTRO">OUTRO</option>
             </select>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={!!form.isentoTributacao}
+                onChange={(e) => setForm((f) => ({ ...f, isentoTributacao: e.target.checked }))}
+              />
+              <span>Isento de tributação</span>
+            </div>
+
           </div>
 
           <div>
