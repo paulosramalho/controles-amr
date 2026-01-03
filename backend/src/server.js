@@ -3859,9 +3859,14 @@ app.get("/api/contratos/:id/renegociar-preview", requireAuth, requireAdmin, asyn
     }
 
     const contrato = await prisma.contratoPagamento.findUnique({
-      where: { id: contratoId },
-      include: { parcelas: true },
-    });
+  where: { id: contratoId },
+  include: {
+    cliente: true,
+    parcelas: true,
+    repasseSplits: true, // ✅ para devolver splits no preview
+  },
+});
+
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
 
@@ -3915,6 +3920,17 @@ app.get("/api/contratos/:id/renegociar-preview", requireAuth, requireAdmin, asyn
       dataBaseISO: dataBase.toISOString(),
       saldoCents: saldoCents.toString(), // em centavos (string)
       formaPagamentoOriginal: contrato.formaPagamento,
+      // ✅ Repasse atual do contrato origem (para pré-preencher no front)
+      modeloDistribuicaoId: contrato.modeloDistribuicaoId ?? null,
+      usaSplitSocio: !!contrato.usaSplitSocio,
+      repasseAdvogadoPrincipalId: contrato.repasseAdvogadoPrincipalId ?? null,
+      repasseSplits: Array.isArray(contrato.repasseSplits)
+        ? contrato.repasseSplits.map((s) => ({
+            advogadoId: s.advogadoId,
+            percentualBp: s.percentualBp,
+          }))
+        : [],
+
     });
   } catch (err) {
     console.error("Erro ao preparar renegociação:", err);
@@ -3933,12 +3949,14 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
     }
 
     const contrato = await prisma.contratoPagamento.findUnique({
-      where: { id: contratoId },
-      include: {
-        cliente: true,
-        parcelas: true,
-      },
-    });
+  where: { id: contratoId },
+  include: {
+    cliente: true,
+    parcelas: true,
+    repasseSplits: true, // ✅ vamos copiar os splits para o filho
+  },
+});
+
 
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
 
@@ -4103,6 +4121,21 @@ app.post("/api/contratos/:id/renegociar", requireAuth, requireAdmin, async (req,
           formaPagamento: fp,
           observacoes: `Originado da renegociação do contrato ${contrato.numeroContrato}.`,
           contratoOrigemId: contrato.id,
+          // ✅ Herda configuração de repasse do contrato origem
+          modeloDistribuicaoId: contrato.modeloDistribuicaoId ?? null,
+          usaSplitSocio: !!contrato.usaSplitSocio,
+          repasseAdvogadoPrincipalId: contrato.repasseAdvogadoPrincipalId ?? null,
+
+          // ✅ Herda splits do contrato origem (se existirem)
+          repasseSplits: Array.isArray(contrato.repasseSplits) && contrato.repasseSplits.length
+            ? {
+                create: contrato.repasseSplits.map((s) => ({
+                  advogadoId: s.advogadoId,
+                  percentualBp: s.percentualBp,
+                })),
+              }
+            : undefined,
+
           parcelas: {
             create: parcelasPlan.map((p) => ({
               numero: p.numero,
