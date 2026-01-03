@@ -1201,77 +1201,36 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
       const liquidoCent = valorBrutoCent - impostoCent;
 
       const modeloId = p.modeloDistribuicaoId || contratoModeloMap.get(p.contratoId) || null;
-      const modelo = modeloId ? modeloMap.get(modeloId) : null;
+const modelo = modeloId ? modeloMap.get(modeloId) : null;
 
-      // Itens do modelo (bp sobre o líquido)
-      let frBp = 0;
-      let escBp = 0;
-      let socioBp = 0;
-      let indicacaoBp = 0;
+// Itens do modelo (bp sobre o líquido)
+let frBp = 0;
+let escBp = 0;
+let socioBp = 0;
+let indicacaoBp = 0;
 
-      for (const it of modelo.itens) {
-        const tipo = String(it.destinoTipo || it.destinatario || "").toUpperCase();
+const itensModelo = Array.isArray(modelo?.itens) ? modelo.itens : [];
 
-        if (tipo === "FUNDO_RESERVA") frBp += it.percentualBp;
-        if (tipo === "ESCRITORIO") escBp += it.percentualBp;
-        if (tipo === "SOCIO") socioBp += it.percentualBp;
-        if (tipo === "INDICACAO") indicacaoBp += it.percentualBp;
-      }
+for (const it of itensModelo) {
+  const tipo = String(it.destinoTipo || it.destinatario || "").toUpperCase();
+
+  if (tipo === "FUNDO_RESERVA") frBp += Number(it.percentualBp || 0);
+  if (tipo === "ESCRITORIO") escBp += Number(it.percentualBp || 0);
+  if (tipo === "SOCIO") socioBp += Number(it.percentualBp || 0);
+  if (tipo === "INDICACAO") indicacaoBp += Number(it.percentualBp || 0);
+}
 
       const fundoReservaCent = Math.round(liquidoCent * bpToRate(frBp));
       const escritorioCent = Math.round(liquidoCent * bpToRate(escBp));
       const socioTotalCent = Math.round(liquidoCent * bpToRate(socioBp));
-      const valorIndicacao = 
-        indicacaoBp > 0
-        ? Math.round(liquidoCent * bpToRate(indicacaoBp))
-        : 0;
+const valorSocioCent = socioTotalCent;
+
+const valorIndicacao =
+  indicacaoBp > 0
+    ? Math.round(liquidoCent * bpToRate(indicacaoBp))
+    : 0;
+
       
-      // ------------------------------
-      // Advogados do Repasse (SOCIO + INDICAÇÃO)
-      // ------------------------------
-      const advogados = [];
-
-      // SOCIO → advogado principal ou splits (se houver)
-      if (valorSocio > 0) {
-        if (p.contrato.usaSplitSocio && Array.isArray(p.contrato.repasseSplits) && p.contrato.repasseSplits.length) {
-          for (const s of p.contrato.repasseSplits) {
-            advogados.push({
-              advogadoId: s.advogadoId,
-              nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
-              origem: "SOCIO",
-              valorCentavos: Math.round(valorSocio * bpToRate(s.percentualBp)),
-            });
-          }
-        } else if (p.contrato.repasseAdvogadoPrincipal) {
-          advogados.push({
-            advogadoId: p.contrato.repasseAdvogadoPrincipal.id,
-            nome: p.contrato.repasseAdvogadoPrincipal.nome,
-            origem: "SOCIO",
-            valorCentavos: valorSocio,
-          });
-        }
-      }
-
-      // INDICAÇÃO → entra como mais um advogado
-      if (valorIndicacao > 0 && p.contrato.repasseIndicacaoAdvogado) {
-        const advId = p.contrato.repasseIndicacaoAdvogado.id;
-
-        // se for o MESMO advogado do SOCIO, soma valores
-        const existente = advogados.find((a) => a.advogadoId === advId);
-
-        if (existente) {
-          existente.valorCentavos += valorIndicacao;
-          existente.origem = "SOCIO+INDICACAO";
-        } else {
-          advogados.push({
-            advogadoId: advId,
-            nome: p.contrato.repasseIndicacaoAdvogado.nome,
-            origem: "INDICACAO",
-            valorCentavos: valorIndicacao,
-          });
-        }
-      }
-
       // Splits dos advogados (bp sobre o LÍQUIDO)
       // Prioridade:
       // 1) split por PARCELA (p.splitsAdvogados) se existir
@@ -1311,6 +1270,25 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         }
       }
 
+// ✅ INDICAÇÃO: adiciona (ou soma) no mesmo array de advogados retornado ao front
+if (valorIndicacao > 0 && contrato.repasseIndicacaoAdvogado?.id) {
+  const advId = contrato.repasseIndicacaoAdvogado.id;
+
+  const existente = advs.find((a) => a.advogadoId === advId);
+  if (existente) {
+    existente.valorCentavos += valorIndicacao;
+    existente.origem = existente.origem ? `${existente.origem}+INDICACAO` : "INDICACAO";
+  } else {
+    advs.push({
+      advogadoId: advId,
+      nome: contrato.repasseIndicacaoAdvogado.nome,
+      percentualBp: indicacaoBp || 0,
+      valorCentavos: valorIndicacao,
+      origem: "INDICACAO",
+    });
+  }
+}
+
       const somaSplitsBp = advs.reduce((acc, a) => acc + (a.percentualBp || 0), 0);
       const splitOk = somaSplitsBp <= (socioBp || 0);
 
@@ -1321,14 +1299,6 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         numeroContrato: p.contrato?.numeroContrato,
         clienteId: p.contrato?.cliente?.id,
         clienteNome: p.contrato?.cliente?.nomeRazaoSocial,
-
-        advogados: advogados.map((a) => ({
-          advogadoId: a.advogadoId,
-          nome: a.nome,
-          origem: a.origem,
-          valor: a.valorCentavos / 100,
-        })),
-
 
         dataRecebimento: p.dataRecebimento,
         valorBruto: fromCents(valorBrutoCent),
@@ -1349,11 +1319,13 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         parcelaNumero: p.numero,
 
         advogados: advs.map((a) => ({
-          advogadoId: a.advogadoId,
-          nome: a.nome,
-          percentualBp: a.percentualBp,
-          valor: fromCents(a.valorCentavos),
-        })),
+  advogadoId: a.advogadoId,
+  nome: a.nome,
+  percentualBp: a.percentualBp,
+  origem: a.origem || "SOCIO",
+  valor: fromCents(a.valorCentavos),
+})),
+
 
         // flags para UI
         pendencias: {
