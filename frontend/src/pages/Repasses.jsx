@@ -168,7 +168,7 @@ export default function RepassesPage({ user }) {
                     const statusRaw = l.parcelaStatus || l.status;
                     const vencRaw = l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt;
                     const bg = rowBgByStatus(statusRaw, vencRaw);
-                  };
+                  }
 
                   const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
                   const pend = [];
