@@ -77,6 +77,7 @@ model ContratoPagamento {
   renegociadoPorId           Int?
   modeloDistribuicaoId       Int?
   repasseAdvogadoPrincipalId Int?
+  repasseIndicacaoAdvogadoId Int?
   usaSplitSocio              Boolean                        @default(false)
   cliente                    Cliente                        @relation(fields: [clienteId], references: [id])
   contratoOrigem             ContratoPagamento?             @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
@@ -86,6 +87,7 @@ model ContratoPagamento {
   renegociadosDele           ContratoPagamento[]            @relation("ContratoRenegociadoPara")
   renegociadoPor             Usuario?                       @relation("ContratoRenegociadoPor", fields: [renegociadoPorId], references: [id])
   repasseAdvogadoPrincipal   Advogado?                      @relation("ContratoRepasseAdvogadoPrincipal", fields: [repasseAdvogadoPrincipalId], references: [id])
+  repasseIndicacaoAdvogado   Advogado?                      @relation("ContratoRepasseIndicacaoAdvogado", fields: [repasseIndicacaoAdvogadoId], references: [id])
   repasseSplits              ContratoRepasseSplitAdvogado[]
   parcelas                   ParcelaContrato[]
   repasseLinhas              RepasseLinha[]
@@ -97,6 +99,7 @@ model ContratoPagamento {
   @@index([ativo])
   @@index([contratoOrigemId])
   @@index([renegociadoParaId])
+  @@index([repasseIndicacaoAdvogadoId])
 }
 
 model ParcelaContrato {
@@ -314,6 +317,7 @@ model Advogado {
   oab                           String                         @unique
   chavePix                      String?                        @db.VarChar(255)
   contratosComoPrincipalRepasse ContratoPagamento[]            @relation("ContratoRepasseAdvogadoPrincipal")
+  contratosComoIndicacaoRepasse ContratoPagamento[]            @relation("ContratoRepasseIndicacaoAdvogado")
   ContratoRepasseSplitAdvogado  ContratoRepasseSplitAdvogado[]
   ParcelaSplitAdvogado          ParcelaSplitAdvogado[]
   RepasseLinhaAdvogado          RepasseLinhaAdvogado[]
