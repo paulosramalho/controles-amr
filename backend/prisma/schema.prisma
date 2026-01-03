@@ -71,7 +71,6 @@ model ContratoPagamento {
   formaPagamento             FormaPagamentoContrato
   observacoes                String?
   ativo                      Boolean                        @default(true)
-  isentoTributacao           Boolean                        @default(false)
   contratoOrigemId           Int?
   renegociadoEm              DateTime?
   renegociadoParaId          Int?
@@ -80,6 +79,7 @@ model ContratoPagamento {
   repasseAdvogadoPrincipalId Int?
   usaSplitSocio              Boolean                        @default(false)
   repasseIndicacaoAdvogadoId Int?
+  isentoTributacao           Boolean                        @default(false)
   cliente                    Cliente                        @relation(fields: [clienteId], references: [id])
   contratoOrigem             ContratoPagamento?             @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
   derivados                  ContratoPagamento[]            @relation("ContratoOrigem")
