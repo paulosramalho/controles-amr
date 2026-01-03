@@ -2695,7 +2695,7 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       usaSplitSocio,
       advogadoPrincipalId,
       indicacaoAdvogadoId, // ✅ novo (quando modelo tiver INDICACAO)
-      isentoTributacao
+      isentoTributacao,
       splits, // [{ advogadoId, percentualBp }]      
     } = req.body || {};
 
