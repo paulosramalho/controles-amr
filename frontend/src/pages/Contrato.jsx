@@ -1184,8 +1184,6 @@ const totalRecebido = useMemo(() => {
                 ))}
               </select>
             </div>
-
-            {/* Indicação (quando o modelo exigir INDICACAO) */}
             {repasseExigeIndicacao && (
               <div>
                 <label className="text-xs text-slate-600">Indicação</label>
@@ -1202,7 +1200,6 @@ const totalRecebido = useMemo(() => {
                 </select>
               </div>
             )}
-
           )}
 
           {/* Splits (com split) — igual Avulso */}
