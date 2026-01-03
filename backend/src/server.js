@@ -2937,18 +2937,19 @@ app.post("/api/pagamentos-avulsos", requireAuth, requireAdmin, async (req, res) 
     const created = await prisma.$transaction(async (tx) => {
       // cria contrato especial
       const contrato = await tx.contratoPagamento.create({
-        data: {
-          clienteId: Number(clienteId),
-          numeroContrato,
-          valorTotal: centsToDecimalString(cents),
-          formaPagamento: "AVISTA",
-          observacoes: desc,
-          modeloDistribuicaoId: modeloId,
-          usaSplitSocio: usaSplit,
-          repasseAdvogadoPrincipalId: usaSplit ? null : advId,
-          isentoTributacao: Boolean(isentoTributacao),
-        },
-      });
+  data: {
+    clienteId: Number(clienteId),
+    numeroContrato,
+    valorTotal: centsToDecimalString(cents),
+    formaPagamento: "AVISTA",
+    observacoes: desc,
+    modeloDistribuicaoId: modeloId,
+    usaSplitSocio: usaSplit,
+    repasseAdvogadoPrincipalId: usaSplit ? null : advId,
+    isentoTributacao: Boolean(isentoTributacao),
+  },
+});
+
 
       // cria parcela RECEBIDA (entra em repasse M -> M+1 via dataRecebimento)
       const parcela = await tx.parcelaContrato.create({
