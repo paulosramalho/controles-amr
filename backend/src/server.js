@@ -2928,23 +2928,6 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       if (!Number.isFinite(indicacaoBp)) indicacaoBp = 0;
     }
 
-      // ✅ INDICACAO no modelo (modelo F, etc.)
-      const itemIndicacao = (modelo.itens || []).find((it) => it.destinoTipo === "INDICACAO");
-      const exigeIndicacao = !!itemIndicacao;
-
-      const indicId =
-        indicacaoAdvogadoId == null || indicacaoAdvogadoId === ""
-          ? null
-          : Number(indicacaoAdvogadoId);
-
-      if (exigeIndicacao) {
-        if (!Number.isFinite(indicId)) {
-          return res.status(400).json({ message: "Selecione o Advogado de Indicação (obrigatório para este modelo)." });
-        }
-      }
-
-    }
-
     const splitsArr = Array.isArray(splits) ? splits : [];
     const normalizedSplits = splitsArr
       .map((s) => ({
@@ -2979,15 +2962,8 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           modeloDistribuicaoId: modeloId,
           usaSplitSocio: usaSplit,
           repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
-          repasseIndicacaoAdvogadoId: (indicacaoBp ?? 0) > 0 ? repasseIndicacaoAdvogadoId : null,
-        },
-
-
-        // ✅ novo: indicação (quando não exigido, fica null sem quebrar nada)
-        repasseIndicacaoAdvogadoId:
-          (typeof indicacaoAdvogadoId !== "undefined")
-            ? (indicacaoAdvogadoId == null || indicacaoAdvogadoId === "" ? null : Number(indicacaoAdvogadoId))
-            : undefined,
+          repasseIndicacaoAdvogadoId:
+          (indicacaoBp ?? 0) > 0 ? repasseIndicacaoAdvogadoId : null,
         },
 
         select: {
