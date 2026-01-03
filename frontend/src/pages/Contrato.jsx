@@ -325,9 +325,6 @@ export default function ContratoPage({ user }) {
   // ✅ indicação (modelo com destinoTipo INDICACAO)
   const [repasseIndicacaoAdvogadoId, setRepasseIndicacaoAdvogadoId] = useState(null);
 
-  // ✅ itens do modelo (para painel read-only à direita + detectar INDICACAO)
-  const [itensByModeloId, setItensByModeloId] = useState({});
-
   // splits: [{ advogadoId, percentualBp }]
   const [repasseSplits, setRepasseSplits] = useState([]);
 
@@ -1098,76 +1095,78 @@ const totalRecebido = useMemo(() => {
              CARD — REPASSE
       ========================= */}
       <Card title="Repasse">
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* linha Modelo + Split */}
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, alignItems: "end" }}>
-            <div>
-              <label className="text-xs text-slate-600">Modelo de Distribuição</label>
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={repasseModeloId ?? ""}
-                disabled={!repasseEditMode}
-                onChange={async (e) => {
-                  const v = e.target.value ? Number(e.target.value) : null;
-                  setRepasseModeloId(v);
-                  if (v) await ensureModeloItens(v);
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* ESQUERDA — Configuração do Repasse */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* linha Modelo + Split */}
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, alignItems: "end" }}>
+              <div>
+                <label className="text-xs text-slate-600">Modelo de Distribuição</label>
+                <select
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={repasseModeloId ?? ""}
+                  disabled={!repasseEditMode}
+                  onChange={async (e) => {
+                    const v = e.target.value ? Number(e.target.value) : null;
+                    setRepasseModeloId(v);
+                    if (v) await ensureModeloItens(v);
 
-                  // se o novo modelo NÃO tiver indicação, limpa
-                  const itens = v ? (itensByModeloId[v] || []) : [];
-                  const exige = itens.some((it) => String(it?.destinoTipo || "").toUpperCase() === "INDICACAO");
-                  if (!exige) setRepasseIndicacaoAdvogadoId(null);
-                }}
-                
-              >
-                <option value="">— Selecione —</option>
-                {modelosDistribuicao.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.codigo ? `${m.codigo} — ${m.descricao || ""}` : (m.descricao || `Modelo #${m.id}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+                    // se o novo modelo NÃO tiver indicação, limpa
+                    const itens = v ? (itensByModeloId[v] || []) : [];
+                    const exige = itens.some((it) => String(it?.destinoTipo || "").toUpperCase() === "INDICACAO");
+                    if (!exige) setRepasseIndicacaoAdvogadoId(null);
+                  }}                
+                >
+                  <option value="">— Selecione —</option>
+                  {modelosDistribuicao.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.codigo ? `${m.codigo} — ${m.descricao || ""}` : (m.descricao || `Modelo #${m.id}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div> 
             <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 18 }}>
-              <input
-                type="checkbox"
-                checked={repasseUsaSplit}
-                disabled={!repasseEditMode}
-                {repasseExigeIndicacao && (
-                  <div>
-                    <label className="text-xs text-slate-600">Indicação</label>
-                    <select
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-                      value={repasseIndicacaoAdvogadoId ?? ""}
-                      onChange={async (e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">— Selecione —</option>
-                      {(advogadosDisponiveis || []).map((a) => (
-                        <option key={a.id} value={a.id}>{a.nome}</option>
-                      ))}
-                    </select>
-                   <div className="mt-1 text-xs text-slate-500">
-                     Este modelo possui a cota <span className="font-semibold">INDICAÇÃO</span> (ex.: 20%).
-                   </div>
-                 </div>
-               )}
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={repasseUsaSplit}
+                  disabled={!repasseEditMode}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRepasseUsaSplit(checked);
 
-               onChange={(e) => {
-                 const checked = e.target.checked;
-                  setRepasseUsaSplit(checked);
-
-                  // se ativar split, limpa advogado único; se desativar, limpa tabela de splits
-                  if (checked) {
-                    setRepasseAdvPrincipalId(null);
-                  } else {
-                    setRepasseSplits([]);
-                    setRepasseSplitDraft({});
-                  }
-                }}
-              />
-              <span className="text-sm">Split</span>
+                    if (checked) {
+                      setRepasseAdvPrincipalId(null);
+                    } else {
+                      setRepasseSplits([]);
+                      setRepasseSplitDraft({});
+                    }
+                  }}
+                />
+                Split
+              </label>
             </div>
-          </div>
+
+            {repasseExigeIndicacao && (
+              <div>
+                <label className="text-xs text-slate-600">Indicação</label>
+                <select
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={repasseIndicacaoAdvogadoId ?? ""}
+                  disabled={!repasseEditMode}
+                  onChange={(e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">— Selecione —</option>
+                  {(advogadosDisponiveis || []).map((a) => (
+                    <option key={a.id} value={a.id}>{a.nome}</option>
+                  ))}
+                </select>
+              <div className="mt-1 text-xs text-slate-500">
+                Este modelo possui a cota <span className="font-semibold">INDICAÇÃO</span>.
+              </div>
+            </div>
+          )}
       
           {/* Advogado (sem split) — tirar “Principal” */}
           {!repasseUsaSplit && (
