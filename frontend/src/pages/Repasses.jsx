@@ -168,10 +168,10 @@ export default function RepassesPage({ user }) {
                     const statusRaw = l.parcelaStatus || l.status;
                     const vencRaw = l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt;
                     const bg = rowBgByStatus(statusRaw, vencRaw);
+                    const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
+                    const pend = [];
                   }
 
-                  const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
-                  const pend = [];
                   if (l.pendencias?.modeloAusente) pend.push("Modelo");
                   if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
                   if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
