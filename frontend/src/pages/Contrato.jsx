@@ -333,6 +333,9 @@ export default function ContratoPage({ user }) {
   const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
   const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
 
+  // ✅ contrato: isenção de tributação (líquido = bruto)
+  const [repasseIsentoTributacao, setRepasseIsentoTributacao] = useState(false);
+
   // ✅ indicação (modelo com destinoTipo INDICACAO)
   const [repasseIndicacaoAdvogadoId, setRepasseIndicacaoAdvogadoId] = useState(null);
 
@@ -461,20 +464,15 @@ async function salvarRepasseConfig() {
     }
 
     const body = {
-      modeloDistribuicaoId: Number(repasseModeloId),
-      usaSplitSocio: Boolean(repasseUsaSplit),
-      advogadoPrincipalId: repasseUsaSplit ? null : Number(repasseAdvPrincipalId),
+      modeloDistribuicaoId: repasseModeloId,
+      usaSplitSocio: repasseUsaSplit,
+      isentoTributacao: repasseIsentoTributacao,
+      advogadoPrincipalId: repasseUsaSplit ? null : repasseAdvPrincipalId,
       indicacaoAdvogadoId: repasseIndicacaoAdvogadoId,
-
-      // ✅ contrato inteiro: líquido = bruto (backend zera imposto)
-      isentoTributacao: Boolean(isentoTributacao),
-
-      splits: repasseUsaSplit
-        ? repasseSplits.map((r) => ({
-            advogadoId: Number(r.advogadoId),
-            percentualBp: Number(r.percentualBp),
-          }))
-        : [],
+      splits: (repasseSplits || []).map((s) => ({
+        advogadoId: s.advogadoId,
+        percentualBp: s.percentualBp,
+      })),
     };
 
     await apiFetch(`/contratos/${contrato.id}/repasse-config`, {
@@ -723,8 +721,8 @@ useEffect(() => {
   }
   setRepasseIndicacaoAdvogadoId(contrato.repasseIndicacaoAdvogadoId ?? null);
 
-  // ✅ isenção de tributação (contrato inteiro)
-  setIsentoTributacao(Boolean(contrato?.isentoTributacao));
+  // ✅ contrato: isenção de tributação
+  setRepasseIsentoTributacao(Boolean(contrato.isentoTributacao));
 
   setRepasseUsaSplit(Boolean(contrato.usaSplitSocio));
 
@@ -1116,7 +1114,7 @@ const totalRecebido = useMemo(() => {
              CARD — REPASSE
       ========================= */}
       <Card title="Repasse">
-  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
     {/* ESQUERDA — form */}
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* linha Modelo + Split */}
@@ -1178,18 +1176,21 @@ const totalRecebido = useMemo(() => {
         </div>
       </div>
 
-      {/* Tributação (contrato inteiro) */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-        <label className="flex items-center gap-2 text-sm">
+      {/* Isenção de tributação (contrato inteiro) */}
+      {repasseEditMode ? (
+        <label className="inline-flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={!!isentoTributacao}
-            disabled={!repasseEditMode}
-            onChange={(e) => setIsentoTributacao(e.target.checked)}
+            checked={!!repasseIsentoTributacao}
+            onChange={(e) => setRepasseIsentoTributacao(e.target.checked)}
           />
-          <span className="font-semibold">Isento de tributação</span>
+          Isento de tributação
         </label>
-      </div>
+      ) : (
+        <div className="text-sm text-slate-700">
+          <strong>Tributação:</strong> {repasseIsentoTributacao ? "Isento" : "Normal"}
+        </div>
+      )}
 
       {/* Advogado (sem split) — tirar “Principal” */}
       {!repasseUsaSplit && (
