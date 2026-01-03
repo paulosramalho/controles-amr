@@ -166,34 +166,42 @@ export default function RepassesPage({ user }) {
                 <tbody>
                   {data.linhas.map((l) => {
                     const statusRaw = l.parcelaStatus || l.status;
-                    const vencRaw = l.vencimento || l.parcelaVencimento || l.dataVencimento || l.vencimentoFmt;
+                    const vencRaw =
+                      l.vencimento ||
+                      l.parcelaVencimento ||
+                      l.dataVencimento ||
+                      l.vencimentoFmt;
+
                     const bg = rowBgByStatus(statusRaw, vencRaw);
-                    const advMap = new Map((l.advogados || []).map((a) => [a.advogadoId, a.valor]));
+
+                    const advMap = new Map(
+                      (l.advogados || []).map((a) => [a.advogadoId, a.valor])
+                    );
+                    
                     const pend = [];
-                  }
+                    if (l.pendencias?.modeloAusente) pend.push("Modelo");
+                    if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
+                    if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
 
-                  if (l.pendencias?.modeloAusente) pend.push("Modelo");
-                  if (l.pendencias?.splitAusenteComSocio) pend.push("Split");
-                  if (l.pendencias?.splitExcedido) pend.push("Split>Socio");
+                    return (
+                      <tr key={l.parcelaId} style={{ background: bg }}>
+                        <td style={td}>{l.numeroContrato || `#${l.contratoId}`}</td>
+                        <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
+                        <td style={tdNum}>{money(l.valorBruto)}</td>
+                        <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
+                        <td style={tdNum}>{money(l.imposto)}</td>
+                        <td style={tdNum}>{money(l.liquido)}</td>
 
-                  return (
-                    <tr key={l.parcelaId} style={{ background: bg }}>
-                      <td style={td}>{l.numeroContrato || `#${l.contratoId}`}</td>
-                      <td style={td}>{l.clienteNome || `#${l.clienteId}`}</td>
-                      <td style={tdNum}>{money(l.valorBruto)}</td>
-                      <td style={tdNum}>{(l.aliquotaBp / 100).toFixed(2)}%</td>
-                      <td style={tdNum}>{money(l.imposto)}</td>
-                      <td style={tdNum}>{money(l.liquido)}</td>
+                        {advogadoCols.map((c) => (
+                          <td key={c.id} style={tdNum}>{money(advMap.get(c.id) || 0)}</td>
+                        ))}
 
-                      {advogadoCols.map((c) => (
-                        <td key={c.id} style={tdNum}>{money(advMap.get(c.id) || 0)}</td>
-                      ))}
-
-                      <td style={tdNum}>{money(l.escritorio)}</td>
-                      <td style={tdNum}>{money(l.fundoReserva)}</td>
-                      <td style={td}>{pend.length ? pend.join(", ") : "-"}</td>
-                    </tr>
-                  );
+                        <td style={tdNum}>{money(l.escritorio)}</td>
+                        <td style={tdNum}>{money(l.fundoReserva)}</td>
+                        <td style={td}>{pend.length ? pend.join(", ") : "-"}</td>
+                      </tr>
+                    );
+                  })}
 
                   {totalsRow && (
                     <tr style={{ background: "#fafafa", fontWeight: 700 }}>
