@@ -1117,6 +1117,7 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
           include: {
             cliente: true,
             repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
+            repasseIndicacaoAdvogado: { select: { id: true, nome: true } },
             repasseSplits: {
               include: { advogado: { select: { id: true, nome: true } } },
               orderBy: { id: "asc" },
@@ -1206,18 +1207,70 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
       let frBp = 0;
       let escBp = 0;
       let socioBp = 0;
+      let indicacaoBp = 0;
 
-      if (modelo?.itens?.length) {
-        for (const it of modelo.itens) {
-          if (it.destinoTipo === "FUNDO_RESERVA") frBp += it.percentualBp;
-          if (it.destinoTipo === "ESCRITORIO") escBp += it.percentualBp;
-          if (it.destinoTipo === "SOCIO") socioBp += it.percentualBp;
-        }
+      for (const it of modelo.itens) {
+        const tipo = String(it.destinoTipo || it.destinatario || "").toUpperCase();
+
+        if (tipo === "FUNDO_RESERVA") frBp += it.percentualBp;
+        if (tipo === "ESCRITORIO") escBp += it.percentualBp;
+        if (tipo === "SOCIO") socioBp += it.percentualBp;
+        if (tipo === "INDICACAO") indicacaoBp += it.percentualBp;
       }
 
       const fundoReservaCent = Math.round(liquidoCent * bpToRate(frBp));
       const escritorioCent = Math.round(liquidoCent * bpToRate(escBp));
       const socioTotalCent = Math.round(liquidoCent * bpToRate(socioBp));
+      const valorIndicacao = 
+        indicacaoBp > 0
+        ? Math.round(liquidoCent * bpToRate(indicacaoBp))
+        : 0;
+      
+      // ------------------------------
+      // Advogados do Repasse (SOCIO + INDICAÇÃO)
+      // ------------------------------
+      const advogados = [];
+
+      // SOCIO → advogado principal ou splits (se houver)
+      if (valorSocio > 0) {
+        if (p.contrato.usaSplitSocio && Array.isArray(p.contrato.repasseSplits) && p.contrato.repasseSplits.length) {
+          for (const s of p.contrato.repasseSplits) {
+            advogados.push({
+              advogadoId: s.advogadoId,
+              nome: s.advogado?.nome || `Advogado #${s.advogadoId}`,
+              origem: "SOCIO",
+              valorCentavos: Math.round(valorSocio * bpToRate(s.percentualBp)),
+            });
+          }
+        } else if (p.contrato.repasseAdvogadoPrincipal) {
+          advogados.push({
+            advogadoId: p.contrato.repasseAdvogadoPrincipal.id,
+            nome: p.contrato.repasseAdvogadoPrincipal.nome,
+            origem: "SOCIO",
+            valorCentavos: valorSocio,
+          });
+        }
+      }
+
+      // INDICAÇÃO → entra como mais um advogado
+      if (valorIndicacao > 0 && p.contrato.repasseIndicacaoAdvogado) {
+        const advId = p.contrato.repasseIndicacaoAdvogado.id;
+
+        // se for o MESMO advogado do SOCIO, soma valores
+        const existente = advogados.find((a) => a.advogadoId === advId);
+
+        if (existente) {
+          existente.valorCentavos += valorIndicacao;
+          existente.origem = "SOCIO+INDICACAO";
+        } else {
+          advogados.push({
+            advogadoId: advId,
+            nome: p.contrato.repasseIndicacaoAdvogado.nome,
+            origem: "INDICACAO",
+            valorCentavos: valorIndicacao,
+          });
+        }
+      }
 
       // Splits dos advogados (bp sobre o LÍQUIDO)
       // Prioridade:
@@ -1268,6 +1321,14 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         numeroContrato: p.contrato?.numeroContrato,
         clienteId: p.contrato?.cliente?.id,
         clienteNome: p.contrato?.cliente?.nomeRazaoSocial,
+
+        advogados: advogados.map((a) => ({
+          advogadoId: a.advogadoId,
+          nome: a.nome,
+          origem: a.origem,
+          valor: a.valorCentavos / 100,
+        })),
+
 
         dataRecebimento: p.dataRecebimento,
         valorBruto: fromCents(valorBrutoCent),
@@ -2806,6 +2867,14 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       splits, // [{ advogadoId, percentualBp }]
     } = req.body || {};
 
+    const repasseIndicacaoAdvogadoIdRaw =
+      (req.body && (req.body.repasseIndicacaoAdvogadoId ?? req.body.indicacaoAdvogadoId)) ?? null;
+
+    const repasseIndicacaoAdvogadoId =
+      repasseIndicacaoAdvogadoIdRaw == null || repasseIndicacaoAdvogadoIdRaw === ""
+        ? null
+        : Number(repasseIndicacaoAdvogadoIdRaw);
+
     const modeloId = modeloDistribuicaoId == null ? null : Number(modeloDistribuicaoId);
     if (modeloId !== null && !Number.isFinite(modeloId)) {
       return res.status(400).json({ message: "modeloDistribuicaoId inválido." });
@@ -2832,8 +2901,10 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
     });
     if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
 
-    // %SOCIO do modelo para validar splits
+    // %SOCIO e %INDICACAO do modelo para validar splits e exigir indicação
     let socioBp = null;
+    let indicacaoBp = null;
+
     if (modeloId !== null) {
       const modelo = await prisma.modeloDistribuicao.findUnique({
         where: { id: modeloId },
@@ -2841,11 +2912,21 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       });
       if (!modelo) return res.status(400).json({ message: "Modelo de distribuição não encontrado." });
 
-      const itemSocio = (modelo.itens || []).find(
-        (it) => it.destinoTipo === "SOCIO" || it.destinatario === "SOCIO"
+      // ✅ compatível com modelos antigos (destinatario) e com os atuais (destinoTipo)
+      const itens = modelo.itens || [];
+
+      const itemSocio = itens.find(
+        (it) => String(it?.destinoTipo || "").toUpperCase() === "SOCIO" || String(it?.destinatario || "").toUpperCase() === "SOCIO"
       );
       socioBp = itemSocio ? Number(itemSocio.percentualBp) : 0;
       if (!Number.isFinite(socioBp)) socioBp = 0;
+
+      const itemIndicacao = itens.find(
+        (it) => String(it?.destinoTipo || "").toUpperCase() === "INDICACAO" || String(it?.destinatario || "").toUpperCase() === "INDICACAO"
+      );
+      indicacaoBp = itemIndicacao ? Number(itemIndicacao.percentualBp) : 0;
+      if (!Number.isFinite(indicacaoBp)) indicacaoBp = 0;
+    }
 
       // ✅ INDICACAO no modelo (modelo F, etc.)
       const itemIndicacao = (modelo.itens || []).find((it) => it.destinoTipo === "INDICACAO");
@@ -2883,6 +2964,13 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
         });
       }
     }
+    
+    // ✅ Regra: se o modelo exige INDICACAO, precisa de advogado de indicação (independente de split)
+    if ((indicacaoBp ?? 0) > 0) {
+      if (!Number.isFinite(repasseIndicacaoAdvogadoId)) {
+        return res.status(400).json({ message: "Selecione o Advogado de Indicação (obrigatório para este modelo)." });
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const contratoUpd = await tx.contratoPagamento.update({
@@ -2891,14 +2979,15 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           modeloDistribuicaoId: modeloId,
           usaSplitSocio: usaSplit,
           repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
-          repasseIndicacaoAdvogadoId: indicacaoAdvogadoId ?? null,
-        }
+          repasseIndicacaoAdvogadoId: (indicacaoBp ?? 0) > 0 ? repasseIndicacaoAdvogadoId : null,
+        },
 
-          // ✅ novo: indicação (quando não exigido, fica null sem quebrar nada)
-          repasseIndicacaoAdvogadoId:
-            (typeof indicacaoAdvogadoId !== "undefined")
-              ? (indicacaoAdvogadoId == null || indicacaoAdvogadoId === "" ? null : Number(indicacaoAdvogadoId))
-              : undefined,
+
+        // ✅ novo: indicação (quando não exigido, fica null sem quebrar nada)
+        repasseIndicacaoAdvogadoId:
+          (typeof indicacaoAdvogadoId !== "undefined")
+            ? (indicacaoAdvogadoId == null || indicacaoAdvogadoId === "" ? null : Number(indicacaoAdvogadoId))
+            : undefined,
         },
 
         select: {
@@ -2906,7 +2995,9 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           modeloDistribuicaoId: true,
           usaSplitSocio: true,
           repasseAdvogadoPrincipalId: true,
+          repasseIndicacaoAdvogadoId: true,
         },
+
       });
 
       // split OFF: limpa tabela de splits
