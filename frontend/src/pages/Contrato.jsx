@@ -209,7 +209,7 @@ function statusToBadge(st) {
   if (s === "ATRASADO") return { label: "Atrasado", tone: "red" };
   if (s === "QUITADO") return { label: "Quitado", tone: "green" };
   if (s === "CANCELADO") return { label: "Cancelado", tone: "slate" };
-  if (s === "RENEGOCIADO") return { label: "Renegociado", tone: "purple" };
+  if (s === "RENEGOCIADO") return { label: "Renegociado", tone: "amber" };
   return { label: "Em dia", tone: "blue" };
 }
 
