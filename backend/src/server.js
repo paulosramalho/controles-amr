@@ -1197,38 +1197,44 @@ app.get("/api/repasses/previa", requireAuth, requireAdmin, async (req, res) => {
         ? "RECEBIDA"
         : (p.vencimento && p.vencimento < hoje ? "ATRASADA" : "PREVISTA");
 
-      const impostoCent = Math.round(valorBrutoCent * bpToRate(aliquotaBp));
+      const isentoTributacao = Boolean(p.contrato?.isentoTributacao);
+
+      const impostoCent = isentoTributacao
+        ? 0
+        : Math.round(valorBrutoCent * bpToRate(aliquotaBp));
+
       const liquidoCent = valorBrutoCent - impostoCent;
 
+
       const modeloId = p.modeloDistribuicaoId || contratoModeloMap.get(p.contratoId) || null;
-const modelo = modeloId ? modeloMap.get(modeloId) : null;
+      const modelo = modeloId ? modeloMap.get(modeloId) : null;
 
-// Itens do modelo (bp sobre o líquido)
-let frBp = 0;
-let escBp = 0;
-let socioBp = 0;
-let indicacaoBp = 0;
+      // Itens do modelo (bp sobre o líquido)
+      let frBp = 0;
+      let escBp = 0;
+      let socioBp = 0;
+      let indicacaoBp = 0;
 
-const itensModelo = Array.isArray(modelo?.itens) ? modelo.itens : [];
+      const itensModelo = Array.isArray(modelo?.itens) ? modelo.itens : [];
 
-for (const it of itensModelo) {
-  const tipo = String(it.destinoTipo || it.destinatario || "").toUpperCase();
+      for (const it of itensModelo) {
+        const tipo = String(it.destinoTipo || it.destinatario || "").toUpperCase();
 
-  if (tipo === "FUNDO_RESERVA") frBp += Number(it.percentualBp || 0);
-  if (tipo === "ESCRITORIO") escBp += Number(it.percentualBp || 0);
-  if (tipo === "SOCIO") socioBp += Number(it.percentualBp || 0);
-  if (tipo === "INDICACAO") indicacaoBp += Number(it.percentualBp || 0);
-}
+        if (tipo === "FUNDO_RESERVA") frBp += Number(it.percentualBp || 0);
+        if (tipo === "ESCRITORIO") escBp += Number(it.percentualBp || 0);
+        if (tipo === "SOCIO") socioBp += Number(it.percentualBp || 0);
+        if (tipo === "INDICACAO") indicacaoBp += Number(it.percentualBp || 0);
+     }
 
       const fundoReservaCent = Math.round(liquidoCent * bpToRate(frBp));
       const escritorioCent = Math.round(liquidoCent * bpToRate(escBp));
       const socioTotalCent = Math.round(liquidoCent * bpToRate(socioBp));
-const valorSocioCent = socioTotalCent;
+      const valorSocioCent = socioTotalCent;
 
-const valorIndicacao =
-  indicacaoBp > 0
-    ? Math.round(liquidoCent * bpToRate(indicacaoBp))
-    : 0;
+      const valorIndicacao =
+        indicacaoBp > 0
+        ? Math.round(liquidoCent * bpToRate(indicacaoBp))
+        : 0;
 
       
       // Splits dos advogados (bp sobre o LÍQUIDO)
@@ -2769,7 +2775,7 @@ app.patch("/api/pagamentos-avulsos/:id/cancelar", requireAuth, requireAdmin, asy
 app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { numeroContrato, valorTotal, formaPagamento, observacoes } = req.body || {};
+    const { numeroContrato, valorTotal, formaPagamento, observacoes, isentoTributacao } = req.body || {};
 
     const data = {};
 
@@ -2790,6 +2796,10 @@ app.put("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
     }
 
     if (observacoes !== undefined) data.observacoes = observacoes ? String(observacoes) : null;
+    
+    if (typeof isentoTributacao !== "undefined") {
+      data.isentoTributacao = Boolean(isentoTributacao);
+    }
 
     const updated = await prisma.contratoPagamento.update({
       where: { id },
@@ -2836,7 +2846,7 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       usaSplitSocio,
       advogadoPrincipalId,
       indicacaoAdvogadoId, // ✅ novo (quando modelo tiver INDICACAO)
-      splits, // [{ advogadoId, percentualBp }]
+      splits, // [{ advogadoId, percentualBp }]      
     } = req.body || {};
 
     const repasseIndicacaoAdvogadoIdRaw =
