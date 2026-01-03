@@ -1181,7 +1181,7 @@ const totalRecebido = useMemo(() => {
                 <option value="">— Selecione —</option>
                 {advogadosDisponiveis.map((a) => (
                   <option key={a.id} value={a.id}>{a.nome}</option>
-                ))}
+                )}
               </select>
             </div>
             {repasseExigeIndicacao && (
