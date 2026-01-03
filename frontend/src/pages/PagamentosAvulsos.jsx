@@ -272,14 +272,7 @@ const somaSplitsBp = useMemo(() => {
               <option value="OUTRO">OUTRO</option>
             </select>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-              <input
-                type="checkbox"
-                checked={!!form.isentoTributacao}
-                onChange={(e) => setForm((f) => ({ ...f, isentoTributacao: e.target.checked }))}
-              />
-              <span>Isento de tributação</span>
-            </div>
+            
 
           </div>
 
@@ -294,13 +287,26 @@ const somaSplitsBp = useMemo(() => {
           </div>
 
           <div>
-            <label>Valor recebido (R$)</label>
-            <input
-              style={input}
-              value={form.valorRecebido}
-              onChange={(e) => setForm((f) => ({ ...f, valorRecebido: moneyMask(e.target.value) }))}
-              placeholder="R$ 0,00"
-            />
+
+            <div>
+              <label>Valor recebido (R$)</label>
+              <input
+                style={input}
+                value={form.valorRecebido}
+                onChange={(e) => setForm((f) => ({ ...f, valorRecebido: moneyMask(e.target.value) }))}
+                placeholder="R$ 0,00"
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={!!form.isentoTributacao}
+                onChange={(e) => setForm((f) => ({ ...f, isentoTributacao: e.target.checked }))}
+              />
+              <span>Isento de tributação</span>
+            </div>
+
           </div>
 
           <div style={{ gridColumn: "1 / -1" }}>
