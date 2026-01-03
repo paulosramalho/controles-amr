@@ -77,8 +77,8 @@ model ContratoPagamento {
   renegociadoPorId           Int?
   modeloDistribuicaoId       Int?
   repasseAdvogadoPrincipalId Int?
-  repasseIndicacaoAdvogadoId Int?
   usaSplitSocio              Boolean                        @default(false)
+  repasseIndicacaoAdvogadoId Int?
   cliente                    Cliente                        @relation(fields: [clienteId], references: [id])
   contratoOrigem             ContratoPagamento?             @relation("ContratoOrigem", fields: [contratoOrigemId], references: [id])
   derivados                  ContratoPagamento[]            @relation("ContratoOrigem")
@@ -290,6 +290,7 @@ model Usuario {
   telefone              String?
   tipoUsuario           TipoUsuario           @default(USUARIO)
   contratosRenegociados ContratoPagamento[]   @relation("ContratoRenegociadoPor")
+  PagamentoAvulso       PagamentoAvulso[]
   parcelasCanceladas    ParcelaContrato[]     @relation("ParcelaCanceladaPor")
   movimentosParcela     ParcelaMovimento[]    @relation("MovimentoCriadoPor")
   repassesAjustes       RepasseAjuste[]       @relation("RepasseAjusteCriadoPor")
@@ -298,7 +299,6 @@ model Usuario {
   RetificacaoContrato   RetificacaoContrato[]
   RetificacaoParcela    RetificacaoParcela[]
   advogado              Advogado?             @relation(fields: [advogadoId], references: [id])
-  PagamentoAvulso       PagamentoAvulso[]
 
   @@index([ativo])
   @@index([role])
@@ -319,11 +319,11 @@ model Advogado {
   contratosComoPrincipalRepasse ContratoPagamento[]            @relation("ContratoRepasseAdvogadoPrincipal")
   contratosComoIndicacaoRepasse ContratoPagamento[]            @relation("ContratoRepasseIndicacaoAdvogado")
   ContratoRepasseSplitAdvogado  ContratoRepasseSplitAdvogado[]
+  PagamentoAvulso               PagamentoAvulso[]
+  PagamentoAvulsoSplit          PagamentoAvulsoSplit[]
   ParcelaSplitAdvogado          ParcelaSplitAdvogado[]
   RepasseLinhaAdvogado          RepasseLinhaAdvogado[]
   usuario                       Usuario?
-  PagamentoAvulso               PagamentoAvulso[]
-  PagamentoAvulsoSplit          PagamentoAvulsoSplit[]
 
   @@index([ativo])
 }
@@ -371,8 +371,8 @@ model ModeloDistribuicao {
   ativo            Boolean                  @default(true)
   contratosDefault ContratoPagamento[]      @relation("ContratoModeloDistribuicao")
   itens            ModeloDistribuicaoItem[]
-  parcelasOverride ParcelaContrato[]        @relation("ParcelaModeloDistribuicao")
   PagamentoAvulso  PagamentoAvulso[]
+  parcelasOverride ParcelaContrato[]        @relation("ParcelaModeloDistribuicao")
 
   @@map("ModeloDistribuicao")
 }
@@ -436,32 +436,24 @@ model ContratoRepasseSplitAdvogado {
 }
 
 model PagamentoAvulso {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // opcional: pode existir pagamento sem cliente cadastrado
-  clienteId Int?
-  cliente   Cliente? @relation(fields: [clienteId], references: [id])
-
-  descricao       String
-  dataRecebimento DateTime
-  valorRecebido   Decimal  @db.Decimal(12, 2)
-  meioRecebimento String?
-
-  // regra de repasse
+  id                   Int                    @id @default(autoincrement())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  clienteId            Int?
+  descricao            String
+  dataRecebimento      DateTime
+  valorRecebido        Decimal                @db.Decimal(12, 2)
+  meioRecebimento      String?
   modeloDistribuicaoId Int
-  modeloDistribuicao   ModeloDistribuicao @relation(fields: [modeloDistribuicaoId], references: [id])
-
-  advogadoPrincipalId Int?
-  advogadoPrincipal   Advogado? @relation(fields: [advogadoPrincipalId], references: [id])
-
-  usaSplitSocio Boolean                @default(false)
-  splits        PagamentoAvulsoSplit[]
-
-  canceladoEm    DateTime?
-  canceladoPorId Int?
-  canceladoPor   Usuario?  @relation(fields: [canceladoPorId], references: [id])
+  advogadoPrincipalId  Int?
+  usaSplitSocio        Boolean                @default(false)
+  canceladoEm          DateTime?
+  canceladoPorId       Int?
+  advogadoPrincipal    Advogado?              @relation(fields: [advogadoPrincipalId], references: [id])
+  canceladoPor         Usuario?               @relation(fields: [canceladoPorId], references: [id])
+  cliente              Cliente?               @relation(fields: [clienteId], references: [id])
+  modeloDistribuicao   ModeloDistribuicao     @relation(fields: [modeloDistribuicaoId], references: [id])
+  splits               PagamentoAvulsoSplit[]
 
   @@index([dataRecebimento])
   @@index([clienteId])
@@ -471,12 +463,10 @@ model PagamentoAvulso {
 model PagamentoAvulsoSplit {
   id                Int             @id @default(autoincrement())
   pagamentoAvulsoId Int
+  advogadoId        Int
+  percentualBp      Int
+  advogado          Advogado        @relation(fields: [advogadoId], references: [id])
   pagamentoAvulso   PagamentoAvulso @relation(fields: [pagamentoAvulsoId], references: [id], onDelete: Cascade)
-
-  advogadoId Int
-  advogado   Advogado @relation(fields: [advogadoId], references: [id])
-
-  percentualBp Int
 
   @@index([pagamentoAvulsoId])
   @@index([advogadoId])
