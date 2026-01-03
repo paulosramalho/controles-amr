@@ -1168,29 +1168,6 @@ const totalRecebido = useMemo(() => {
         </div>
       </div>
 
-      {/* Indicação (quando o modelo exigir INDICACAO) */}
-      {repasseExigeIndicacao && (
-        <div>
-          <label className="text-xs text-slate-600">Indicação</label>
-          <select
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            value={repasseIndicacaoAdvogadoId ?? ""}
-            disabled={!repasseEditMode}
-            onChange={(e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">— Selecione —</option>
-            {advogadosDisponiveis.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nome}
-              </option>
-            ))}
-          </select>
-          <div className="mt-1 text-xs text-slate-500">
-            Obrigatório para este modelo (destinoTipo = INDICACAO).
-          </div>
-        </div>
-      )}
-
       {/* Advogado (sem split) — tirar “Principal” */}
       {!repasseUsaSplit && (
         <div>
@@ -1307,6 +1284,29 @@ const totalRecebido = useMemo(() => {
                 excede o percentual definido no modelo aplicado ({(repasseSocioBp / 100).toFixed(2).replace(".", ",")}%).
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+{/* Indicação (quando o modelo exigir INDICACAO) */}
+      {repasseExigeIndicacao && (
+        <div>
+          <label className="text-xs text-slate-600">Indicação</label>
+          <select
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            value={repasseIndicacaoAdvogadoId ?? ""}
+            disabled={!repasseEditMode}
+            onChange={(e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— Selecione —</option>
+            {advogadosDisponiveis.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}
+              </option>
+            ))}
+          </select>
+          <div className="mt-1 text-xs text-slate-500">
+            Obrigatório para este modelo (destinoTipo = INDICACAO).
           </div>
         </div>
       )}
