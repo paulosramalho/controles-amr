@@ -1188,12 +1188,7 @@ const totalRecebido = useMemo(() => {
             onChange={(e) => setIsentoTributacao(e.target.checked)}
           />
           <span className="font-semibold">Isento de tributação</span>
-          <span className="text-slate-500">(líquido = bruto)</span>
         </label>
-
-        <div className="mt-1 text-xs text-slate-500">
-          Vale para o contrato inteiro (impacta imposto/líquido no repasse).
-        </div>
       </div>
 
       {/* Advogado (sem split) — tirar “Principal” */}
@@ -1394,13 +1389,6 @@ const totalRecebido = useMemo(() => {
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <div className="text-xs font-semibold text-slate-600">Modelo de Distribuição</div>
 
-      <div className="mt-2 text-xs text-slate-600">
-        Tributação:{" "}
-        <span className="font-semibold text-slate-900">
-          {isentoTributacao ? "Isento (líquido = bruto)" : "Normal"}
-        </span>
-      </div>
-
       <div className="mt-1 text-sm font-semibold text-slate-900">
         {(() => {
           const m = (modelosDistribuicao || []).find((x) => Number(x.id) === Number(repasseModeloId));
@@ -1437,6 +1425,14 @@ const totalRecebido = useMemo(() => {
           </tbody>
         </table>
       </div>
+
+      <div className="mt-2 text-xs text-slate-600">
+        Tributação:{" "}
+        <span className="font-semibold text-slate-900">
+          {isentoTributacao ? "Isento" : "Normal"}
+        </span>
+      </div>
+
     </div>
   </div>
 </Card>
