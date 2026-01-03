@@ -2802,6 +2802,7 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       modeloDistribuicaoId,
       usaSplitSocio,
       advogadoPrincipalId,
+      indicacaoAdvogadoId, // ✅ novo (quando modelo tiver INDICACAO)
       splits, // [{ advogadoId, percentualBp }]
     } = req.body || {};
 
@@ -2845,6 +2846,22 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       );
       socioBp = itemSocio ? Number(itemSocio.percentualBp) : 0;
       if (!Number.isFinite(socioBp)) socioBp = 0;
+
+      // ✅ INDICACAO no modelo (modelo F, etc.)
+      const itemIndicacao = (modelo.itens || []).find((it) => it.destinoTipo === "INDICACAO");
+      const exigeIndicacao = !!itemIndicacao;
+
+      const indicId =
+        indicacaoAdvogadoId == null || indicacaoAdvogadoId === ""
+          ? null
+          : Number(indicacaoAdvogadoId);
+
+      if (exigeIndicacao) {
+        if (!Number.isFinite(indicId)) {
+          return res.status(400).json({ message: "Selecione o Advogado de Indicação (obrigatório para este modelo)." });
+        }
+      }
+
     }
 
     const splitsArr = Array.isArray(splits) ? splits : [];
@@ -2874,7 +2891,14 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           modeloDistribuicaoId: modeloId,
           usaSplitSocio: usaSplit,
           repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
+
+          // ✅ novo: indicação (quando não exigido, fica null sem quebrar nada)
+          repasseIndicacaoAdvogadoId:
+            (typeof indicacaoAdvogadoId !== "undefined")
+              ? (indicacaoAdvogadoId == null || indicacaoAdvogadoId === "" ? null : Number(indicacaoAdvogadoId))
+              : undefined,
         },
+
         select: {
           id: true,
           modeloDistribuicaoId: true,
@@ -3479,140 +3503,6 @@ app.patch("/api/contratos/:id/toggle", requireAuth, requireAdmin, async (req, re
   }
 });
 
-// =========================
-// CONTRATOS — REPASSE CONFIG (admin-only)
-// PATCH /api/contratos/:id/repasse-config
-// =========================
-app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const contratoId = Number(req.params.id);
-    if (!Number.isFinite(contratoId)) {
-      return res.status(400).json({ message: "ID de contrato inválido." });
-    }
-
-    const {
-      modeloDistribuicaoId,
-      usaSplitSocio,
-      advogadoPrincipalId,
-      splits, // [{ advogadoId, percentualBp }]
-    } = req.body || {};
-
-    const modeloId = modeloDistribuicaoId == null ? null : Number(modeloDistribuicaoId);
-    if (modeloId !== null && !Number.isFinite(modeloId)) {
-      return res.status(400).json({ message: "modeloDistribuicaoId inválido." });
-    }
-
-    const usaSplit = Boolean(usaSplitSocio);
-
-    const advPrincipalId =
-      advogadoPrincipalId == null || advogadoPrincipalId === ""
-        ? null
-        : Number(advogadoPrincipalId);
-
-    if (!usaSplit) {
-      // Regra C: sem split => exige 1 advogado principal
-      if (!Number.isFinite(advPrincipalId)) {
-        return res.status(400).json({ message: "Selecione o Advogado Principal (sem split)." });
-      }
-    }
-
-    // Carrega contrato (só pra garantir que existe)
-    const contrato = await prisma.contratoPagamento.findUnique({
-      where: { id: contratoId },
-      select: { id: true },
-    });
-    if (!contrato) return res.status(404).json({ message: "Contrato não encontrado." });
-
-    // Se tiver modelo, precisamos do %SOCIO para validar splits
-    let socioBp = null;
-    if (modeloId !== null) {
-      const modelo = await prisma.modeloDistribuicao.findUnique({
-        where: { id: modeloId },
-        include: { itens: true },
-      });
-      if (!modelo) {
-        return res.status(400).json({ message: "Modelo de distribuição não encontrado." });
-      }
-
-      // Ajuste aqui se o seu campo/destino for diferente (ex.: destino: "SOCIO")
-      const itemSocio = (modelo.itens || []).find((it) => it.destinatario === "SOCIO");
-      socioBp = itemSocio ? Number(itemSocio.percentualBp) : 0;
-      if (!Number.isFinite(socioBp)) socioBp = 0;
-    }
-
-    // Normaliza splits
-    const splitsArr = Array.isArray(splits) ? splits : [];
-    const normalizedSplits = splitsArr
-      .map((s) => ({
-        advogadoId: Number(s?.advogadoId),
-        percentualBp: Number(s?.percentualBp),
-      }))
-      .filter((s) => Number.isFinite(s.advogadoId) && Number.isFinite(s.percentualBp) && s.percentualBp > 0);
-
-    if (usaSplit) {
-      if (normalizedSplits.length < 2) {
-        return res.status(400).json({ message: "Split ativado: informe ao menos 2 advogados com percentual." });
-      }
-
-      const somaBp = normalizedSplits.reduce((acc, s) => acc + s.percentualBp, 0);
-
-      if (socioBp !== null && somaBp > socioBp) {
-        return res.status(400).json({
-          message: `Split excede o percentual do SOCIO no modelo. Soma do split: ${somaBp} bp; SOCIO no modelo: ${socioBp} bp.`,
-        });
-      }
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      // Atualiza contrato
-      const contratoUpd = await tx.contratoPagamento.update({
-        where: { id: contratoId },
-        data: {
-          modeloDistribuicaoId: modeloId,
-          usaSplitSocio: usaSplit,
-          repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
-        },
-        select: {
-          id: true,
-          modeloDistribuicaoId: true,
-          usaSplitSocio: true,
-          repasseAdvogadoPrincipalId: true,
-        },
-      });
-
-      // Limpa splits se split OFF
-      if (!usaSplit) {
-        await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId } });
-        return { contrato: contratoUpd, splits: [] };
-      }
-
-      // Split ON: substitui tudo (simples e seguro)
-      await tx.contratoRepasseSplitAdvogado.deleteMany({ where: { contratoId } });
-
-      await tx.contratoRepasseSplitAdvogado.createMany({
-        data: normalizedSplits.map((s) => ({
-          contratoId,
-          advogadoId: s.advogadoId,
-          percentualBp: s.percentualBp,
-        })),
-      });
-
-      const splitsSaved = await tx.contratoRepasseSplitAdvogado.findMany({
-        where: { contratoId },
-        include: { advogado: true },
-        orderBy: [{ id: "asc" }],
-      });
-
-      return { contrato: contratoUpd, splits: splitsSaved };
-    });
-
-    return res.json(result);
-  } catch (err) {
-    console.error("[contratos][repasse-config][PATCH]", err);
-    return res.status(500).json({ message: "Erro ao salvar configuração de repasse do contrato." });
-  }
-});
-
 // Confirmar recebimento de uma parcela
 app.patch(
   "/api/parcelas/:id/confirmar",
@@ -3899,6 +3789,7 @@ app.get("/api/contratos/:id", requireAuth, requireAdmin, async (req, res) => {
         },
         modeloDistribuicao: { select: { id: true, codigo: true, descricao: true } },
         repasseAdvogadoPrincipal: { select: { id: true, nome: true } },
+        repasseIndicacaoAdvogado: { select: { id: true, nome: true } },
         repasseSplits: {
           include: { advogado: { select: { id: true, nome: true } } },
         orderBy: { id: "asc" },
