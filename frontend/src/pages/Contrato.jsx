@@ -336,6 +336,9 @@ export default function ContratoPage({ user }) {
   // ✅ indicação (modelo com destinoTipo INDICACAO)
   const [repasseIndicacaoAdvogadoId, setRepasseIndicacaoAdvogadoId] = useState(null);
 
+  // ✅ tributação (flag do contrato inteiro)
+  const [isentoTributacao, setIsentoTributacao] = useState(false);
+
   // splits: [{ advogadoId, percentualBp }]
   const [repasseSplits, setRepasseSplits] = useState([]);
 
@@ -462,6 +465,10 @@ async function salvarRepasseConfig() {
       usaSplitSocio: Boolean(repasseUsaSplit),
       advogadoPrincipalId: repasseUsaSplit ? null : Number(repasseAdvPrincipalId),
       indicacaoAdvogadoId: repasseIndicacaoAdvogadoId,
+
+      // ✅ contrato inteiro: líquido = bruto (backend zera imposto)
+      isentoTributacao: Boolean(isentoTributacao),
+
       splits: repasseUsaSplit
         ? repasseSplits.map((r) => ({
             advogadoId: Number(r.advogadoId),
@@ -715,6 +722,9 @@ useEffect(() => {
     ensureModeloItens(contrato.modeloDistribuicaoId);
   }
   setRepasseIndicacaoAdvogadoId(contrato.repasseIndicacaoAdvogadoId ?? null);
+
+  // ✅ isenção de tributação (contrato inteiro)
+  setIsentoTributacao(Boolean(contrato?.isentoTributacao));
 
   setRepasseUsaSplit(Boolean(contrato.usaSplitSocio));
 
@@ -1168,6 +1178,24 @@ const totalRecebido = useMemo(() => {
         </div>
       </div>
 
+      {/* Tributação (contrato inteiro) */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={!!isentoTributacao}
+            disabled={!repasseEditMode}
+            onChange={(e) => setIsentoTributacao(e.target.checked)}
+          />
+          <span className="font-semibold">Isento de tributação</span>
+          <span className="text-slate-500">(líquido = bruto)</span>
+        </label>
+
+        <div className="mt-1 text-xs text-slate-500">
+          Vale para o contrato inteiro (impacta imposto/líquido no repasse).
+        </div>
+      </div>
+
       {/* Advogado (sem split) — tirar “Principal” */}
       {!repasseUsaSplit && (
         <div>
@@ -1365,6 +1393,13 @@ const totalRecebido = useMemo(() => {
     {/* DIREITA — modelo (read-only) */}
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <div className="text-xs font-semibold text-slate-600">Modelo de Distribuição</div>
+
+      <div className="mt-2 text-xs text-slate-600">
+        Tributação:{" "}
+        <span className="font-semibold text-slate-900">
+          {isentoTributacao ? "Isento (líquido = bruto)" : "Normal"}
+        </span>
+      </div>
 
       <div className="mt-1 text-sm font-semibold text-slate-900">
         {(() => {
