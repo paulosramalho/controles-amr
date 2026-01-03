@@ -217,7 +217,7 @@ function toneClass(tone) {
   // Mesmo padrão visual do Badge em Pagamentos (sólido, texto branco)
   if (tone === "red") return "bg-red-600 text-white";
   if (tone === "green") return "bg-emerald-600 text-white";
-  if (tone === "purple") return "bg-purple-600 text-white";
+  if (tone === "amber") return "bg-amber-500 text-white";
   if (tone === "slate") return "bg-slate-700 text-white";
   return "bg-blue-600 text-white";
 }
