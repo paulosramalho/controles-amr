@@ -2891,6 +2891,8 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           modeloDistribuicaoId: modeloId,
           usaSplitSocio: usaSplit,
           repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
+          repasseIndicacaoAdvogadoId: indicacaoAdvogadoId ?? null,
+        }
 
           // ✅ novo: indicação (quando não exigido, fica null sem quebrar nada)
           repasseIndicacaoAdvogadoId:
