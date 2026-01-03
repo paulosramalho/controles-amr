@@ -322,6 +322,12 @@ export default function ContratoPage({ user }) {
   const [repasseUsaSplit, setRepasseUsaSplit] = useState(false);
   const [repasseAdvPrincipalId, setRepasseAdvPrincipalId] = useState(null);
 
+  // ✅ indicação (modelo com destinoTipo INDICACAO)
+  const [repasseIndicacaoAdvogadoId, setRepasseIndicacaoAdvogadoId] = useState(null);
+
+  // ✅ itens do modelo (para painel read-only à direita + detectar INDICACAO)
+  const [itensByModeloId, setItensByModeloId] = useState({});
+
   // splits: [{ advogadoId, percentualBp }]
   const [repasseSplits, setRepasseSplits] = useState([]);
 
@@ -361,6 +367,19 @@ const repasseSomaSplitsBp = useMemo(() => {
 }, [repasseUsaSplit, repasseSplits]);
 
 const repasseSplitExcede = repasseUsaSplit && repasseSomaSplitsBp > repasseSocioBp;
+
+// itens do modelo selecionado (para regras além de SOCIO, ex.: INDICACAO)
+const repasseModeloItens = useMemo(() => {
+  const idNum = repasseModeloId ? Number(repasseModeloId) : null;
+  if (!idNum) return [];
+  return itensByModeloId[idNum] || [];
+}, [repasseModeloId, itensByModeloId]);
+
+const repasseExigeIndicacao = useMemo(() => {
+  return (repasseModeloItens || []).some(
+    (it) => String(it?.destinoTipo || "").toUpperCase() === "INDICACAO"
+  );
+}, [repasseModeloItens]);
 
   async function load() {
     try {
@@ -409,6 +428,10 @@ async function salvarRepasseConfig() {
       throw new Error("Selecione um Modelo de Distribuição.");
     }
 
+    if (repasseExigeIndicacao && !repasseIndicacaoAdvogadoId) {
+      throw new Error("Selecione o Advogado de Indicação (obrigatório para este modelo).");
+    }
+
     if (!repasseUsaSplit) {
       if (!repasseAdvPrincipalId) {
         throw new Error("Sem split: selecione o Advogado Principal do repasse.");
@@ -430,6 +453,7 @@ async function salvarRepasseConfig() {
       modeloDistribuicaoId: Number(repasseModeloId),
       usaSplitSocio: Boolean(repasseUsaSplit),
       advogadoPrincipalId: repasseUsaSplit ? null : Number(repasseAdvPrincipalId),
+      indicacaoAdvogadoId: repasseIndicacaoAdvogadoId,
       splits: repasseUsaSplit
         ? repasseSplits.map((r) => ({
             advogadoId: Number(r.advogadoId),
@@ -618,6 +642,20 @@ useEffect(() => {
   })();
 }, []);
 
+async function ensureModeloItens(modeloId) {
+  const idNum = Number(modeloId);
+  if (!Number.isFinite(idNum)) return;
+  if (itensByModeloId[idNum]) return; // cache
+
+  try {
+    const itens = await apiFetch(`/modelo-distribuicao/${idNum}/itens`);
+    setItensByModeloId((prev) => ({ ...prev, [idNum]: Array.isArray(itens) ? itens : [] }));
+  } catch (e) {
+    console.error("Erro ao carregar itens do modelo", e);
+    setItensByModeloId((prev) => ({ ...prev, [idNum]: [] }));
+  }
+}
+
 // quando escolhe um modelo no REPASSE, busca os itens dele (1x) para calcular SOCIO corretamente
 useEffect(() => {
   (async () => {
@@ -664,6 +702,11 @@ useEffect(() => {
     contrato.modeloDistribuicaoId ??
     null
   );
+
+  if (contrato.modeloDistribuicaoId) {
+    ensureModeloItens(contrato.modeloDistribuicaoId);
+  }
+  setRepasseIndicacaoAdvogadoId(contrato.repasseIndicacaoAdvogadoId ?? null);
 
   setRepasseUsaSplit(Boolean(contrato.usaSplitSocio));
 
@@ -1064,15 +1107,17 @@ const totalRecebido = useMemo(() => {
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={repasseModeloId ?? ""}
                 disabled={!repasseEditMode}
-                 onChange={(e) => {
+                onChange={async (e) => {
                   const v = e.target.value ? Number(e.target.value) : null;
                   setRepasseModeloId(v);
+                  if (v) await ensureModeloItens(v);
 
-                  // ao trocar modelo, também zera splits/draft para evitar validação “fantasma”
-                  setRepasseSplits([]);
-                  setRepasseSplitDraft({});
-                  if (!repasseUsaSplit) setRepasseAdvPrincipalId(null);
-                }}                
+                  // se o novo modelo NÃO tiver indicação, limpa
+                  const itens = v ? (itensByModeloId[v] || []) : [];
+                  const exige = itens.some((it) => String(it?.destinoTipo || "").toUpperCase() === "INDICACAO");
+                  if (!exige) setRepasseIndicacaoAdvogadoId(null);
+                }}
+                
               >
                 <option value="">— Selecione —</option>
                 {modelosDistribuicao.map((m) => (
@@ -1088,8 +1133,27 @@ const totalRecebido = useMemo(() => {
                 type="checkbox"
                 checked={repasseUsaSplit}
                 disabled={!repasseEditMode}
-                onChange={(e) => {
-                  const checked = e.target.checked;
+                {repasseExigeIndicacao && (
+                  <div>
+                    <label className="text-xs text-slate-600">Indicação</label>
+                    <select
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      value={repasseIndicacaoAdvogadoId ?? ""}
+                      onChange={async (e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">— Selecione —</option>
+                      {(advogadosDisponiveis || []).map((a) => (
+                        <option key={a.id} value={a.id}>{a.nome}</option>
+                      ))}
+                    </select>
+                   <div className="mt-1 text-xs text-slate-500">
+                     Este modelo possui a cota <span className="font-semibold">INDICAÇÃO</span> (ex.: 20%).
+                   </div>
+                 </div>
+               )}
+
+               onChange={(e) => {
+                 const checked = e.target.checked;
                   setRepasseUsaSplit(checked);
 
                   // se ativar split, limpa advogado único; se desativar, limpa tabela de splits
@@ -1121,6 +1185,25 @@ const totalRecebido = useMemo(() => {
                 ))}
               </select>
             </div>
+
+            {/* Indicação (quando o modelo exigir INDICACAO) */}
+            {repasseExigeIndicacao && (
+              <div>
+                <label className="text-xs text-slate-600">Indicação</label>
+                <select
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={repasseIndicacaoAdvogadoId ?? ""}
+                  disabled={!repasseEditMode}
+                  onChange={(e) => setRepasseIndicacaoAdvogadoId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">— Selecione —</option>
+                  {advogadosDisponiveis.map((a) => (
+                    <option key={a.id} value={a.id}>{a.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
           )}
 
           {/* Splits (com split) — igual Avulso */}
@@ -1246,7 +1329,48 @@ const totalRecebido = useMemo(() => {
               </>
             )}
           </div>
+      
+          {/* DIREITA — modelo (read-only) */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold text-slate-600">Modelo de Distribuição</div>
 
+            <div className="mt-1 text-sm font-semibold text-slate-900">
+              {(() => {
+                const m = (modelosDistribuicao || []).find((x) => Number(x.id) === Number(repasseModeloId));
+                return m ? `${m.codigo || m.cod || ""} — ${m.descricao || ""}` : "—";
+              })()}
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-slate-500">
+                  <tr className="border-b">
+                    <th className="py-2 px-3">Destino</th>
+                    <th className="py-2 px-3">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(repasseModeloItens || []).map((it) => (
+                    <tr key={it.id} className="border-b last:border-b-0">
+                      <td className="py-2 px-3">
+                        {String(it.destinoTipo || it.destinatario || "—")}
+                      </td>
+                      <td className="py-2 px-3">
+                        {((Number(it.percentualBp || 0) / 100).toFixed(2)).replace(".", ",")}
+                      </td>
+                    </tr>
+                  ))}
+                  {(!repasseModeloItens || repasseModeloItens.length === 0) && (
+                    <tr>
+                      <td colSpan={2} className="py-3 px-3 text-slate-500">
+                        Selecione um modelo para ver os itens.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </Card>
 
