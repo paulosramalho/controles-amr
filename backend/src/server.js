@@ -2846,6 +2846,7 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
       usaSplitSocio,
       advogadoPrincipalId,
       indicacaoAdvogadoId, // ✅ novo (quando modelo tiver INDICACAO)
+      isentoTributacao
       splits, // [{ advogadoId, percentualBp }]      
     } = req.body || {};
 
@@ -2946,6 +2947,9 @@ app.patch("/api/contratos/:id/repasse-config", requireAuth, requireAdmin, async 
           repasseAdvogadoPrincipalId: usaSplit ? null : advPrincipalId,
           repasseIndicacaoAdvogadoId:
           (indicacaoBp ?? 0) > 0 ? repasseIndicacaoAdvogadoId : null,
+          ...(typeof isentoTributacao !== "undefined"
+          ? { isentoTributacao: Boolean(isentoTributacao) }
+          : {}),
         },
 
         select: {
