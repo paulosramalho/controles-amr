@@ -466,7 +466,7 @@ async function salvarRepasseConfig() {
     const body = {
       modeloDistribuicaoId: repasseModeloId,
       usaSplitSocio: repasseUsaSplit,
-      isentoTributacao: repasseIsentoTributacao,
+      isentoTributacao: !!repasseIsentoTributacao,
       advogadoPrincipalId: repasseUsaSplit ? null : repasseAdvPrincipalId,
       indicacaoAdvogadoId: repasseIndicacaoAdvogadoId,
       splits: (repasseSplits || []).map((s) => ({
@@ -474,6 +474,8 @@ async function salvarRepasseConfig() {
         percentualBp: s.percentualBp,
       })),
     };
+
+    setIsentoTributacao(!!repasseIsentoTributacao);
 
     await apiFetch(`/contratos/${contrato.id}/repasse-config`, {
       method: "PATCH",
@@ -1430,7 +1432,8 @@ const totalRecebido = useMemo(() => {
       <div className="mt-2 text-xs text-slate-600">
         Tributação:{" "}
         <span className="font-semibold text-slate-900">
-          {isentoTributacao ? "Isento" : "Normal"}
+          {/* onde hoje está: {isentoTributacao ? "Isento" : "Normal"} */}
+          {(repasseEditMode ? repasseIsentoTributacao : isentoTributacao) ? "Isento" : "Normal"}
         </span>
       </div>
 
