@@ -268,6 +268,17 @@ function percentMask(value) {
 /* =========================
    Page
 ========================= */
+function labelDestino(tipo) {
+  const t = String(tipo || "").toUpperCase();
+
+  if (t === "INDICACAO") return "Indicação";
+  if (t === "SOCIO") return "Advogado";
+  if (t === "FUNDO_RESERVA") return "Fundo de Reserva";
+  if (t === "ESCRITORIO") return "Escritório";
+
+  return tipo || "—";
+}
+
 export default function ContratoPage({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1373,17 +1384,7 @@ const totalRecebido = useMemo(() => {
           <tbody>
             {(repasseModeloItens || []).map((it) => (
               <tr key={it.id} className="border-b last:border-b-0">
-                <td className="py-2 px-3">
-                  function labelDestino(tipo) {
-                    const t = String(tipo || "").toUpperCase();
-
-                    if (t === "INDICACAO") return "Indicação";
-                    if (t === "SOCIO") return "Advogado";
-                    if (t === "FUNDO_RESERVA") return "Fundo de Reserva";
-                    if (t === "ESCRITORIO") return "Escritório";
-
-                    return tipo || "—";
-                  }
+                <td className="py-2 px-3">                  
                   {labelDestino(it.destinoTipo || it.destinatario)}
                 </td>
                 <td className="py-2 px-3">
