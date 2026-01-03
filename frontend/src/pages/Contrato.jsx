@@ -477,7 +477,7 @@ async function salvarRepasseConfig() {
     setRepasseSplitDraft({});
     setRepasseEditMode(false);
 
-    await reloadContrato();
+    await load();
   } catch (e) {
     setRepasseError(e?.message || "Erro ao salvar configuração de repasse.");
   } finally {
@@ -1281,7 +1281,7 @@ const totalRecebido = useMemo(() => {
                   <button
                     type="button"
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                    onClick={() => removerRepasseSplit(idx)}
+                    onClick={() => repasseRemoveSplitRow(idx)}
                   >
                     Remover
                   </button>
@@ -1327,7 +1327,7 @@ const totalRecebido = useMemo(() => {
                 setRepasseError(null);
                 setRepasseSplitDraft({});
                 setRepasseEditMode(false);
-                await reloadContrato(); // 🔁 volta exatamente ao estado do backend
+                await load(); // 🔁 volta exatamente ao estado do backend
               }}
             >
               Cancelar
@@ -1374,7 +1374,17 @@ const totalRecebido = useMemo(() => {
             {(repasseModeloItens || []).map((it) => (
               <tr key={it.id} className="border-b last:border-b-0">
                 <td className="py-2 px-3">
-                  {String(it.destinoTipo || it.destinatario || "—")}
+                  function labelDestino(tipo) {
+                    const t = String(tipo || "").toUpperCase();
+
+                    if (t === "INDICACAO") return "Indicação";
+                    if (t === "SOCIO") return "Advogado";
+                    if (t === "FUNDO_RESERVA") return "Fundo de Reserva";
+                    if (t === "ESCRITORIO") return "Escritório";
+
+                    return tipo || "—";
+                  }
+                  {labelDestino(it.destinoTipo || it.destinatario)}
                 </td>
                 <td className="py-2 px-3">
                   {((Number(it.percentualBp || 0) / 100).toFixed(2)).replace(".", ",")}
